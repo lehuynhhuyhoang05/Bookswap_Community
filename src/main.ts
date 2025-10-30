@@ -1,45 +1,29 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
-import { default as morgan } from 'morgan';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const configService = app.get(ConfigService);
 
-  // Global prefix
-  app.setGlobalPrefix('api/v1');
+  // Global validation pipe
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+  }));
 
   // CORS
   app.enableCors({
-    origin: configService.get('FRONTEND_URL') || 'http://localhost:5173',
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
     credentials: true,
   });
 
-  // Global pipes for validation
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: {
-        enableImplicitConversion: true,
-      },
-    }),
-  );
-
-  // HTTP request logging
-  app.use(morgan('dev'));
-
   // Swagger setup
   const config = new DocumentBuilder()
-    .setTitle(configService.get('SWAGGER_TITLE') || 'BookSwap API')
-    .setDescription(
-      configService.get('SWAGGER_DESCRIPTION') || 'API documentation for BookSwap Community',
-    )
-    .setVersion(configService.get('SWAGGER_VERSION') || '1.0')
+    .setTitle('BookSwap Community API')
+    .setDescription('API documentation for BookSwap - A book exchange social platform')
+    .setVersion('1.0')
     .addBearerAuth(
       {
         type: 'http',
@@ -51,21 +35,17 @@ async function bootstrap() {
       },
       'JWT-auth',
     )
-    .addTag('Authentication', 'Authentication endpoints (register, login, OAuth)')
+    .addTag('Authentication', 'User authentication endpoints')
     .addTag('Users', 'User management endpoints')
-    .addTag('Books', 'Book management and listing endpoints')
-    .addTag('Personal Library', 'Personal book library management')
-    .addTag('Exchanges', 'Book exchange requests and management')
-    .addTag('Messaging', 'Real-time messaging between users')
-    .addTag('Reviews', 'Review and rating system')
-    .addTag('Notifications', 'User notifications')
-    .addTag('Admin', 'Admin panel endpoints')
+    .addTag('Books', 'Book management endpoints')
+    .addTag('Exchanges', 'Book exchange endpoints')
+    .addTag('Messages', 'Messaging system endpoints')
+    .addTag('Reviews', 'Review and rating endpoints')
+    .addTag('Admin', 'Admin management endpoints')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document, {
-    customSiteTitle: 'BookSwap API Docs',
-    customCss: '.swagger-ui .topbar { display: none }',
     swaggerOptions: {
       persistAuthorization: true,
       tagsSorter: 'alpha',
@@ -73,18 +53,10 @@ async function bootstrap() {
     },
   });
 
-  const port = configService.get('PORT') || 3000;
+  const port = process.env.PORT || 3000;
   await app.listen(port);
-
-  console.log(`
-  🚀 BookSwap Backend is running!
   
-  📝 API Documentation: http://localhost:${port}/api/docs
-  🔧 API Endpoint: http://localhost:${port}/api/v1
-  🗄️  Database Admin: http://localhost:8080 (Adminer)
-  
-  Environment: ${configService.get('NODE_ENV')}
-  `);
+  console.log(`🚀 Application is running on: http://localhost:${port}`);
+  console.log(`📚 Swagger UI: http://localhost:${port}/api/docs`);
 }
-
 bootstrap();
