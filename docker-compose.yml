@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: bookswap_mysql
+    restart: "no"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: bookswap_db
+      MYSQL_USER: bookswap_user
+      MYSQL_PASSWORD: bookswap_pass
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - bookswap_network
+
+  # Adminer - Database Management Tool
+  adminer:
+    image: adminer:latest
+    container_name: bookswap_adminer
+    restart: "no"
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: mysql
+      ADMINER_DESIGN: dracula
+    networks:
+      - bookswap_network
+    depends_on:
+      - mysql
+
+  # Redis (for caching & sessions)
+  redis:
+    image: redis:7-alpine
+    container_name: bookswap_redis
+    restart: "no"
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - bookswap_network
+
+  # NestJS Application (will be added later)
+  # backend:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: bookswap_backend
+  #   restart: always
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - NODE_ENV=development
+  #   volumes:
+  #     - .:/app
+  #     - /app/node_modules
+  #   networks:
+  #     - bookswap_network
+  #   depends_on:
+  #     - mysql
+  #     - redis
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  bookswap_network:
+    driver: bridge
