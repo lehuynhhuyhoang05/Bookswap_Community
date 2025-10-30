@@ -1,16 +1,19 @@
-import { NestFactory } from '@nestjs/core';
+// src/main.ts
+import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-
+import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
+import { HttpExceptionLogFilter } from './common/filters/http-exception-log.filter';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Global validation pipe
+  // Validation global
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
     forbidNonWhitelisted: true,
     transform: true,
+    transformOptions: { enableImplicitConversion: true },
   }));
 
   // CORS
@@ -19,20 +22,17 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Swagger setup
+  // Global JWT Guard: mọi route mặc định cần JWT, trừ khi @Public()
+  const reflector = app.get(Reflector);
+  app.useGlobalGuards(new JwtAuthGuard(reflector));
+app.useGlobalFilters(new HttpExceptionLogFilter());
+  // Swagger
   const config = new DocumentBuilder()
     .setTitle('BookSwap Community API')
     .setDescription('API documentation for BookSwap - A book exchange social platform')
     .setVersion('1.0')
     .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        name: 'JWT',
-        description: 'Enter JWT token',
-        in: 'header',
-      },
+      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', in: 'header', description: 'Paste only the token' },
       'JWT-auth',
     )
     .addTag('Authentication', 'User authentication endpoints')
@@ -46,17 +46,12 @@ async function bootstrap() {
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-      tagsSorter: 'alpha',
-      operationsSorter: 'alpha',
-    },
+    swaggerOptions: { persistAuthorization: true, tagsSorter: 'alpha', operationsSorter: 'alpha' },
   });
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  
-  console.log(`🚀 Application is running on: http://localhost:${port}`);
-  console.log(`📚 Swagger UI: http://localhost:${port}/api/docs`);
+  console.log(`🚀 http://localhost:${port}`);
+  console.log(`📚 Swagger: http://localhost:${port}/api/docs`);
 }
 bootstrap();

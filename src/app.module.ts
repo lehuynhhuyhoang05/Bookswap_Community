@@ -5,7 +5,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthModule } from './modules/auth/auth.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
-
+import { BooksModule } from './modules/books/books.module';
+import { MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { RequestAuthLogMiddleware } from './common/middlewares/request-auth-log.middleware';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -25,9 +27,13 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     }),
 
     AuthModule,
-  ],
+    BooksModule,],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestAuthLogMiddleware).forRoutes('*');
+  }
+}

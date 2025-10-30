@@ -1,7 +1,9 @@
+// src/modules/auth/auth.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import { AuthController } from './controllers/auth.controller';
 import { AuthService } from './services/auth.service';
@@ -15,15 +17,33 @@ import { EmailService } from '../../infrastructure/external-services/email/email
 
 @Module({
   imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forFeature([User, Member, PasswordResetToken, EmailVerificationToken]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'dev_secret',
-      signOptions: { expiresIn: '7d' },
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>('JWT_SECRET');
+        if (!secret) throw new Error('JWT_SECRET is not defined');
+
+        // Ưu tiên ENV số giây; nếu không có thì mặc định 7 ngày
+        // (60 * 60 * 24 * 7 = 604800)
+        const expEnv = config.get<string>('JWT_EXPIRES_IN'); // ví dụ: "604800"
+        const expiresIn = expEnv ? Number(expEnv) : 60 * 60 * 24 * 7;
+
+        if (Number.isNaN(expiresIn)) {
+          throw new Error('JWT_EXPIRES_IN must be a number of seconds');
+        }
+
+        return {
+          secret,
+          signOptions: { expiresIn }, // number OK với type của @nestjs/jwt v10
+        };
+      },
     }),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, EmailService],
-  exports: [AuthService],
+  exports: [AuthService, JwtModule],
 })
 export class AuthModule {}
