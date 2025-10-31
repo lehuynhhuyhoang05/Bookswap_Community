@@ -7,16 +7,27 @@ import {
   HttpStatus,
   Query,
   Header,
+  UseGuards,
+  Req,
+  Headers,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { 
+  ApiTags, 
+  ApiOperation, 
+  ApiResponse,
+  ApiBearerAuth
+} from '@nestjs/swagger';
 import { AuthService } from '../services/auth.service';
 import {
   RegisterDto,
   LoginDto,
   ForgotPasswordDto,
   ResetPasswordDto,
+  RefreshTokenDto,
+  UserProfileResponseDto,
 } from '../dto/auth.dto';
 import { Public } from '../../../common/decorators/public.decorator';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -59,6 +70,69 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Invalid or expired token' })
   async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
     return this.authService.resetPassword(resetPasswordDto);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get current user profile' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Profile retrieved successfully',
+    type: UserProfileResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async getProfile(@Req() req) {
+    return this.authService.getProfile(req.user.userId);
+  }
+
+  @Post('refresh')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Refresh access token' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Token refreshed successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        access_token: { type: 'string', example: 'eyJhbGc...' },
+        token_type: { type: 'string', example: 'Bearer' },
+        expires_in: { type: 'string', example: '7d' },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
+  async refreshToken(@Body() refreshTokenDto: RefreshTokenDto) {
+    return this.authService.refreshAccessToken(refreshTokenDto.refresh_token);
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Logout user' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Logout successful',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Logout successful' },
+        success: { type: 'boolean', example: true },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async logout(@Req() req, @Headers('authorization') authorization: string) {
+    // Extract token from "Bearer <token>"
+    const token = authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return { message: 'No token provided', success: false };
+    }
+
+    return this.authService.logout(req.user.userId, token);
   }
 
   // CLICK xác thực -> hiện trang HTML "OK, login đi"
