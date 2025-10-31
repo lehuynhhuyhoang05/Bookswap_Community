@@ -9,6 +9,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { BooksModule } from './modules/books/books.module';
 import { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { RequestAuthLogMiddleware } from './common/middlewares/request-auth-log.middleware';
+import { LibraryModule } from './modules/library/library.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -29,7 +30,8 @@ import { RequestAuthLogMiddleware } from './common/middlewares/request-auth-log.
     }),
 
     AuthModule,
-    BooksModule,],
+    BooksModule,
+    LibraryModule,],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
