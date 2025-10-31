@@ -77,6 +77,7 @@ export class User {
 
   @UpdateDateColumn()
   updated_at: Date;
+  status: AccountStatus;
 
   constructor() {
     this.user_id = uuidv4();

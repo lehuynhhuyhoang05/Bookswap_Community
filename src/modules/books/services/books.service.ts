@@ -14,16 +14,17 @@ import { Member } from '../../../infrastructure/database/entities/member.entity'
 import { CreateBookDto, UpdateBookDto } from '../dto/create-book.dto';
 import { GoogleBooksService } from '../../../infrastructure/external-services/google-books/google-books.service';
 import { GoogleBookResult } from '../../../infrastructure/external-services/google-books/google-books.types';
+
 @Injectable()
 export class BooksService {
   private readonly logger = new Logger(BooksService.name);
 
   constructor(
     @InjectRepository(Book)
-    private bookRepository: Repository<Book>,
+    private readonly bookRepository: Repository<Book>,
     @InjectRepository(Member)
-    private memberRepository: Repository<Member>,
-    private googleBooksService: GoogleBooksService,
+    private readonly memberRepository: Repository<Member>,
+    private readonly googleBooksService: GoogleBooksService,
   ) {}
 
   /** ---------------------------------------------------------
@@ -95,7 +96,7 @@ export class BooksService {
   }
 
   /** ---------------------------------------------------------
-   *  LOG #2: Danh sách public — phân trang & search
+   *  LOG #2: Danh sách public — phân trang & search (SAFE SELECT)
    *  --------------------------------------------------------- */
   async findAll(page: number = 1, limit: number = 20, search?: string) {
     this.logger.log(`[findAll] page=${page} limit=${limit} search="${search || ''}"`);
@@ -103,8 +104,64 @@ export class BooksService {
 
     const qb = this.bookRepository
       .createQueryBuilder('book')
-      .leftJoinAndSelect('book.owner', 'owner')
-      .leftJoinAndSelect('owner.user', 'user')
+      .leftJoin('book.owner', 'owner')
+      .leftJoin('owner.user', 'user')
+      // ✅ CHỈ CHỌN CỘT AN TOÀN — KHÔNG SELECT password_hash
+      .select([
+        // BOOK
+        'book.book_id',
+        'book.owner_id',
+        'book.title',
+        'book.author',
+        'book.isbn',
+        'book.google_books_id',
+        'book.publisher',
+        'book.publish_date',
+        'book.description',
+        'book.category',
+        'book.language',
+        'book.page_count',
+        'book.cover_image_url',
+        'book.book_condition',
+        'book.status',
+        'book.views',
+        'book.deleted_at',
+        'book.created_at',
+        'book.updated_at',
+
+        // OWNER (Member)
+        'owner.member_id',
+        'owner.user_id',
+        'owner.region',
+        'owner.phone',
+        'owner.address',
+        'owner.bio',
+        'owner.trust_score',
+        'owner.average_rating',
+        'owner.is_verified',
+        'owner.verification_date',
+        'owner.total_exchanges',
+        'owner.completed_exchanges',
+        'owner.cancelled_exchanges',
+        'owner.created_at',
+        'owner.updated_at',
+
+        // USER (an toàn — KHÔNG password_hash)
+        'user.user_id',
+        'user.email',
+        'user.full_name',
+        'user.avatar_url',
+        'user.role',
+        'user.account_status',
+        'user.auth_provider',
+        'user.google_id',
+        'user.is_email_verified',
+        'user.email_verified_at',
+        'user.last_login_at',
+        'user.deleted_at',
+        'user.created_at',
+        'user.updated_at',
+      ])
       .where('book.deleted_at IS NULL')
       .andWhere('book.status = :status', { status: BookStatus.AVAILABLE });
 
@@ -115,7 +172,12 @@ export class BooksService {
       );
     }
 
-    const [books, total] = await qb.skip(skip).take(limit).orderBy('book.created_at', 'DESC').getManyAndCount();
+    const [books, total] = await qb
+      .orderBy('book.created_at', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
     this.logger.debug(`[findAll] found=${books.length} total=${total}`);
 
     return {
@@ -141,6 +203,7 @@ export class BooksService {
       throw new NotFoundException('Member profile not found');
     }
 
+    // Không join user nên vốn dĩ không thể lộ password_hash
     const items = await this.bookRepository.find({
       where: { owner_id: member.member_id, deleted_at: IsNull() },
       order: { created_at: 'DESC' },
@@ -150,23 +213,90 @@ export class BooksService {
   }
 
   /** ---------------------------------------------------------
-   *  LOG #4: Chi tiết — auto tăng views
+   *  LOG #4: Chi tiết — auto tăng views (SAFE SELECT)
    *  --------------------------------------------------------- */
   async findOne(bookId: string): Promise<Book> {
     this.logger.log(`[findOne] bookId=${bookId}`);
-    const book = await this.bookRepository.findOne({
-      where: { book_id: bookId, deleted_at: IsNull() },
-      relations: ['owner', 'owner.user'],
-    });
+
+    // ✅ Tăng views mà không cần load full entity
+    await this.bookRepository
+      .createQueryBuilder()
+      .update(Book)
+      .set({ views: () => 'views + 1' })
+      .where('book_id = :bookId', { bookId })
+      .execute();
+
+    // ✅ Truy vấn lại với SELECT an toàn (không password_hash)
+    const qb = this.bookRepository
+      .createQueryBuilder('book')
+      .leftJoin('book.owner', 'owner')
+      .leftJoin('owner.user', 'user')
+      .select([
+        // BOOK
+        'book.book_id',
+        'book.owner_id',
+        'book.title',
+        'book.author',
+        'book.isbn',
+        'book.google_books_id',
+        'book.publisher',
+        'book.publish_date',
+        'book.description',
+        'book.category',
+        'book.language',
+        'book.page_count',
+        'book.cover_image_url',
+        'book.book_condition',
+        'book.status',
+        'book.views',
+        'book.deleted_at',
+        'book.created_at',
+        'book.updated_at',
+
+        // OWNER
+        'owner.member_id',
+        'owner.user_id',
+        'owner.region',
+        'owner.phone',
+        'owner.address',
+        'owner.bio',
+        'owner.trust_score',
+        'owner.average_rating',
+        'owner.is_verified',
+        'owner.verification_date',
+        'owner.total_exchanges',
+        'owner.completed_exchanges',
+        'owner.cancelled_exchanges',
+        'owner.created_at',
+        'owner.updated_at',
+
+        // USER (no password_hash)
+        'user.user_id',
+        'user.email',
+        'user.full_name',
+        'user.avatar_url',
+        'user.role',
+        'user.account_status',
+        'user.auth_provider',
+        'user.google_id',
+        'user.is_email_verified',
+        'user.email_verified_at',
+        'user.last_login_at',
+        'user.deleted_at',
+        'user.created_at',
+        'user.updated_at',
+      ])
+      .where('book.book_id = :bookId', { bookId })
+      .andWhere('book.deleted_at IS NULL');
+
+    const book = await qb.getOne();
 
     if (!book) {
       this.logger.warn('[findOne] Book not found');
       throw new NotFoundException('Book not found');
     }
 
-    book.views += 1;
-    await this.bookRepository.save(book);
-    this.logger.debug(`[findOne] +1 view -> views=${book.views}`);
+    this.logger.debug(`[findOne] views incremented -> views=${book.views}`);
     return book;
   }
 
@@ -215,35 +345,91 @@ export class BooksService {
   /** ---------------------------------------------------------
    *  LOG #7: Google Books search — theo dõi query/maxResults
    *  --------------------------------------------------------- */
- async searchGoogleBooks(query: string, maxResults: number = 20): Promise<GoogleBookResult[]> {
-  this.logger.log(`[searchGoogleBooks] query="${query}" maxResults=${maxResults}`);
+  async searchGoogleBooks(query: string, maxResults: number = 20): Promise<GoogleBookResult[]> {
+    this.logger.log(`[searchGoogleBooks] query="${query}" maxResults=${maxResults}`);
 
-  const rs = await this.googleBooksService.searchBooks(query, maxResults);
-  // rs hiện là GoogleBookResult[]
+    const rs = await this.googleBooksService.searchBooks(query, maxResults);
+    const count = Array.isArray(rs) ? rs.length : 0;
+    this.logger.debug(`[searchGoogleBooks] items=${count}`);
 
-  const count = Array.isArray(rs) ? rs.length : 0;
-  this.logger.debug(`[searchGoogleBooks] items=${count}`);
+    return rs;
+  }
 
-  return rs; // trả về mảng
-}
   /** ---------------------------------------------------------
-   *  LOG #8: By category — phân trang
+   *  LOG #8: By category — phân trang (SAFE SELECT)
    *  --------------------------------------------------------- */
   async findBooksByCategory(category: string, page: number = 1, limit: number = 20) {
     this.logger.log(`[findBooksByCategory] category="${category}" page=${page} limit=${limit}`);
     const skip = (page - 1) * limit;
 
-    const [books, total] = await this.bookRepository.findAndCount({
-      where: {
-        category,
-        status: BookStatus.AVAILABLE,
-        deleted_at: IsNull(),
-      },
-      relations: ['owner', 'owner.user'],
-      skip,
-      take: limit,
-      order: { created_at: 'DESC' },
-    });
+    const qb = this.bookRepository
+      .createQueryBuilder('book')
+      .leftJoin('book.owner', 'owner')
+      .leftJoin('owner.user', 'user')
+      .select([
+        // BOOK
+        'book.book_id',
+        'book.owner_id',
+        'book.title',
+        'book.author',
+        'book.isbn',
+        'book.google_books_id',
+        'book.publisher',
+        'book.publish_date',
+        'book.description',
+        'book.category',
+        'book.language',
+        'book.page_count',
+        'book.cover_image_url',
+        'book.book_condition',
+        'book.status',
+        'book.views',
+        'book.deleted_at',
+        'book.created_at',
+        'book.updated_at',
+
+        // OWNER
+        'owner.member_id',
+        'owner.user_id',
+        'owner.region',
+        'owner.phone',
+        'owner.address',
+        'owner.bio',
+        'owner.trust_score',
+        'owner.average_rating',
+        'owner.is_verified',
+        'owner.verification_date',
+        'owner.total_exchanges',
+        'owner.completed_exchanges',
+        'owner.cancelled_exchanges',
+        'owner.created_at',
+        'owner.updated_at',
+
+        // USER (no password_hash)
+        'user.user_id',
+        'user.email',
+        'user.full_name',
+        'user.avatar_url',
+        'user.role',
+        'user.account_status',
+        'user.auth_provider',
+        'user.google_id',
+        'user.is_email_verified',
+        'user.email_verified_at',
+        'user.last_login_at',
+        'user.deleted_at',
+        'user.created_at',
+        'user.updated_at',
+      ])
+      .where('book.category = :category', { category })
+      .andWhere('book.status = :status', { status: BookStatus.AVAILABLE })
+      .andWhere('book.deleted_at IS NULL');
+
+    const [books, total] = await qb
+      .orderBy('book.created_at', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
 
     this.logger.debug(`[findBooksByCategory] found=${books.length} total=${total}`);
     return {
@@ -256,13 +442,14 @@ export class BooksService {
       },
     };
   }
-  async getGoogleBookById(googleBookId: string) {
-  this.logger.log(`[getGoogleBookById] id=${googleBookId}`);
-  return this.googleBooksService.getBookById(googleBookId);
-}
 
-async searchGoogleBookByISBN(isbn: string) {
-  this.logger.log(`[searchGoogleBookByISBN] isbn=${isbn}`);
-  return this.googleBooksService.searchByISBN(isbn);
-}
+  async getGoogleBookById(googleBookId: string) {
+    this.logger.log(`[getGoogleBookById] id=${googleBookId}`);
+    return this.googleBooksService.getBookById(googleBookId);
+  }
+
+  async searchGoogleBookByISBN(isbn: string) {
+    this.logger.log(`[searchGoogleBookByISBN] isbn=${isbn}`);
+    return this.googleBooksService.searchByISBN(isbn);
+  }
 }

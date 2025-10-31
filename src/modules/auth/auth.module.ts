@@ -14,11 +14,12 @@ import { Member } from '../../infrastructure/database/entities/member.entity';
 import { PasswordResetToken } from '../../infrastructure/database/entities/password-reset-token.entity';
 import { EmailVerificationToken } from '../../infrastructure/database/entities/email-verification-token.entity';
 import { EmailService } from '../../infrastructure/external-services/email/email.service';
+import { TokenBlacklist } from 'src/infrastructure/database/entities/token-blacklist.entity';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    TypeOrmModule.forFeature([User, Member, PasswordResetToken, EmailVerificationToken]),
+    TypeOrmModule.forFeature([User, Member, PasswordResetToken, EmailVerificationToken,TokenBlacklist]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       inject: [ConfigService],

@@ -3,8 +3,10 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
 import * as bcrypt from 'bcrypt';
@@ -14,7 +16,7 @@ import { User, AuthProvider, UserRole } from '../../../infrastructure/database/e
 import { Member } from '../../../infrastructure/database/entities/member.entity';
 import { PasswordResetToken } from '../../../infrastructure/database/entities/password-reset-token.entity';
 import { EmailVerificationToken } from '../../../infrastructure/database/entities/email-verification-token.entity';
-
+import { TokenBlacklist } from '../../../infrastructure/database/entities/token-blacklist.entity';
 import { EmailService } from '../../../infrastructure/external-services/email/email.service';
 import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto } from '../dto/auth.dto';
 
@@ -25,8 +27,11 @@ export class AuthService {
     @InjectRepository(Member) private memberRepository: Repository<Member>,
     @InjectRepository(PasswordResetToken) private resetTokenRepository: Repository<PasswordResetToken>,
     @InjectRepository(EmailVerificationToken) private emailVerifyRepo: Repository<EmailVerificationToken>,
+     @InjectRepository(TokenBlacklist) 
+    private tokenBlacklistRepo: Repository<TokenBlacklist>,
     private jwtService: JwtService,
     private emailService: EmailService,
+    private configService: ConfigService,
   ) {}
 
   /** -------- Register -------- */
@@ -54,8 +59,19 @@ export class AuthService {
     await this.issueEmailVerificationTokenAndSend(savedUser);
 
     const payload = { sub: savedUser.user_id, email: savedUser.email, role: savedUser.role };
+    
+    const access_token = this.jwtService.sign(payload, {
+      expiresIn: this.configService.get('JWT_EXPIRATION') || '7d',
+    });
+
+    const refresh_token = this.jwtService.sign(payload, {
+      secret: this.configService.get('JWT_REFRESH_SECRET'),
+      expiresIn: this.configService.get('JWT_REFRESH_EXPIRATION') || '30d',
+    });
+
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token,
+      refresh_token,
       user: {
         user_id: savedUser.user_id,
         email: savedUser.email,
@@ -80,8 +96,19 @@ export class AuthService {
     await this.userRepository.save(user);
 
     const payload = { sub: user.user_id, email: user.email, role: user.role };
+    
+    const access_token = this.jwtService.sign(payload, {
+      expiresIn: this.configService.get('JWT_EXPIRATION') || '7d',
+    });
+
+    const refresh_token = this.jwtService.sign(payload, {
+      secret: this.configService.get('JWT_REFRESH_SECRET'),
+      expiresIn: this.configService.get('JWT_REFRESH_EXPIRATION') || '30d',
+    });
+
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token,
+      refresh_token,
       user: {
         user_id: user.user_id,
         email: user.email,
@@ -156,6 +183,165 @@ export class AuthService {
     await this.emailVerifyRepo.save(record);
 
     return { message: 'Email verified successfully' };
+  }
+
+  /** -------- GET /auth/me -------- */
+  async getProfile(userId: string) {
+    const user = await this.userRepository.findOne({
+      where: { user_id: userId },
+      select: [
+        'user_id',
+        'email',
+        'full_name',
+        'avatar_url',
+        'role',
+        'is_email_verified',
+        'email_verified_at',
+        'last_login_at',
+      ],
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Get member profile if role is MEMBER
+    let memberProfile: Member | null = null;
+    if (user.role === UserRole.MEMBER) {
+      memberProfile = await this.memberRepository.findOne({
+        where: { user_id: userId },
+        select: [
+          'member_id',
+          'region',
+          'phone',
+          'bio',
+          'trust_score',
+          'average_rating',
+          'is_verified',
+          'total_exchanges',
+          'completed_exchanges',
+        ],
+      });
+    }
+
+    return {
+      user_id: user.user_id,
+      email: user.email,
+      full_name: user.full_name,
+      avatar_url: user.avatar_url,
+      role: user.role,
+      is_email_verified: user.is_email_verified,
+      email_verified_at: user.email_verified_at,
+      last_login_at: user.last_login_at,
+      member: memberProfile,
+    };
+  }
+
+  /** -------- POST /auth/refresh -------- */
+  async refreshAccessToken(refreshToken: string) {
+    try {
+      // Verify refresh token với secret riêng
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: this.configService.get('JWT_REFRESH_SECRET'),
+      });
+
+      // Check if token is blacklisted
+      const isBlacklisted = await this.tokenBlacklistRepo.findOne({
+        where: { 
+          token: refreshToken,
+          expires_at: MoreThan(new Date()),
+        },
+      });
+
+      if (isBlacklisted) {
+        throw new UnauthorizedException('Token has been revoked');
+      }
+
+      // Check if user still exists and is active
+      const user = await this.userRepository.findOne({
+        where: { user_id: payload.sub },
+      });
+
+      if (!user || user.account_status !== 'ACTIVE') {
+        throw new UnauthorizedException('User not found or inactive');
+      }
+
+      // Generate new access token
+      const newPayload = {
+        sub: user.user_id,
+        email: user.email,
+        role: user.role,
+      };
+
+      const access_token = this.jwtService.sign(newPayload, {
+        expiresIn: this.configService.get('JWT_EXPIRATION') || '7d',
+      });
+
+      return {
+        access_token,
+        token_type: 'Bearer',
+        expires_in: '7d',
+      };
+    } catch (error) {
+      if (error.name === 'TokenExpiredError') {
+        throw new UnauthorizedException('Refresh token expired');
+      }
+      if (error.name === 'JsonWebTokenError') {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+      throw error;
+    }
+  }
+
+  /** -------- POST /auth/logout -------- */
+  async logout(userId: string, accessToken: string) {
+    try {
+      // Decode token để lấy expiration time
+      const decoded = this.jwtService.decode(accessToken) as any;
+      
+      if (!decoded || !decoded.exp) {
+        throw new BadRequestException('Invalid token');
+      }
+
+      // Thêm token vào blacklist
+      const expiresAt = new Date(decoded.exp * 1000);
+      
+      const blacklistEntry = this.tokenBlacklistRepo.create({
+        token: accessToken,
+        user_id: userId,
+        expires_at: expiresAt,
+      });
+
+      await this.tokenBlacklistRepo.save(blacklistEntry);
+
+      return {
+        message: 'Logout successful',
+        success: true,
+      };
+    } catch (error) {
+      throw new BadRequestException('Failed to logout');
+    }
+  }
+
+  /** -------- Helper: Check if token is blacklisted -------- */
+  async isTokenBlacklisted(token: string): Promise<boolean> {
+    const blacklisted = await this.tokenBlacklistRepo.findOne({
+      where: {
+        token,
+        expires_at: MoreThan(new Date()),
+      },
+    });
+
+    return !!blacklisted;
+  }
+
+  /** -------- Cleanup expired blacklist tokens (run by cron) -------- */
+  async cleanupExpiredBlacklistTokens(): Promise<void> {
+    await this.tokenBlacklistRepo
+      .createQueryBuilder()
+      .delete()
+      .where('expires_at < :now', { now: new Date() })
+      .execute();
   }
 
   /** -------- Helpers -------- */
