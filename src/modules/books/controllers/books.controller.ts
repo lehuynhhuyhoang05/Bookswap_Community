@@ -57,8 +57,8 @@ export class BooksController {
       dtoTitle: dto?.title,
     });
 
-    const userId = req.user?.sub;
-    console.log('[CTRL /books][POST] userId =', userId);
+    const userId = req.user?.sub || req.user?.userId;
+    console.log('[CTRL /books][POST] userId =', userId, 'user =', req.user);
 
     const result = await this.booksService.createBook(userId, dto);
 
@@ -71,7 +71,7 @@ export class BooksController {
   }
 
   /** ---------------------------------------------------------
-   *  Get my library (requires JWT)
+   *  1. Most specific route (my-library)
    *  --------------------------------------------------------- */
   @Get('my-library')
   @UseGuards(JwtAuthGuard)
@@ -84,40 +84,20 @@ export class BooksController {
   }
 
   /** ---------------------------------------------------------
-   *  Public listing
+   *  2. Specific prefix (search/google)
    *  --------------------------------------------------------- */
   @Public()
-  @Get()
-  @ApiOperation({ summary: 'Get all available books (public)' })
-  @ApiQuery({ name: 'page', required: false, example: 1 })
-  @ApiQuery({ name: 'limit', required: false, example: 20 })
-  @ApiQuery({
-    name: 'search',
-    required: false,
-    description: 'Search by title, author, ISBN, or category',
-  })
-  findAll(
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
-    @Query('search') search?: string,
-  ) {
-    return this.booksService.findAll(page, limit, search);
+  @Get('search/google')
+  @ApiOperation({ summary: 'Search books in Google Books API' })
+  @ApiQuery({ name: 'query', required: true, example: 'Clean Code' })
+  @ApiQuery({ name: 'maxResults', required: false, example: 20 })
+  @ApiResponse({ status: 200, description: 'Google Books search results' })
+  searchGoogleBooks(@Query() q: SearchGoogleBooksQueryDto) {
+    return this.booksService.searchGoogleBooks(q.query, q.maxResults ?? 20);
   }
 
   /** ---------------------------------------------------------
-   *  Public: get by internal book id
-   *  --------------------------------------------------------- */
-  @Public()
-  @Get(':id')
-  @ApiOperation({ summary: 'Get book details by ID' })
-  @ApiResponse({ status: 200, description: 'Book details retrieved successfully' })
-  @ApiResponse({ status: 404, description: 'Book not found' })
-  findOne(@Param('id') id: string) {
-    return this.booksService.findOne(id);
-  }
-
-  /** ---------------------------------------------------------
-   *  Public: list by category
+   *  3. Dynamic param with prefix (category/:category)
    *  --------------------------------------------------------- */
   @Public()
   @Get('category/:category')
@@ -163,33 +143,76 @@ export class BooksController {
     return this.booksService.remove(id, req.user.sub);
   }
 
-  /** =========================================================
-   *  GOOGLE BOOKS (Public)
-   *  ========================================================= */
+  /** ---------------------------------------------------------
+   *  4. Dynamic param with prefix (region/:region)
+   *  --------------------------------------------------------- */
 
   @Public()
-  @Get('search/google')
-  @ApiOperation({ summary: 'Search books in Google Books API' })
-  @ApiQuery({ name: 'query', required: true, example: 'Clean Code' })
-  @ApiQuery({ name: 'maxResults', required: false, example: 20 })
-  @ApiResponse({ status: 200, description: 'Google Books search results' })
-  searchGoogleBooks(@Query() q: SearchGoogleBooksQueryDto) {
-    return this.booksService.searchGoogleBooks(q.query, q.maxResults ?? 20);
+  @Get('region/:region')
+  @ApiOperation({ 
+    summary: 'Get books by owner region',
+    description: 'Search for available books from owners in a specific region/city. Useful for finding books nearby for local exchanges.',
+  })
+  @ApiParam({ 
+    name: 'region', 
+    example: 'Ho Chi Minh City',
+    description: 'Region/City name (case-sensitive)',
+  })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Books from specified region retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: { type: 'object' },
+        },
+        meta: {
+          type: 'object',
+          properties: {
+            total: { type: 'number', example: 50 },
+            page: { type: 'number', example: 1 },
+            limit: { type: 'number', example: 20 },
+            totalPages: { type: 'number', example: 3 },
+            region: { type: 'string', example: 'Ho Chi Minh City' },
+          },
+        },
+      },
+    },
+  })
+  findByRegion(
+    @Param('region') region: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.booksService.findBooksByRegion(region, page, limit);
   }
 
   @Public()
-  @Get('google/:googleBookId')
-  @ApiOperation({ summary: 'Get a Google Book by ID' })
-  @ApiResponse({ status: 200, description: 'Google Book detail mapped to internal shape' })
-  getGoogleBookById(@Param() p: GoogleBookIdParamDto) {
-    return this.booksService.getGoogleBookById(p.googleBookId);
-  }
-
-  @Public()
-  @Get('google/isbn/:isbn')
-  @ApiOperation({ summary: 'Find a Google Book by ISBN (10/13)' })
-  @ApiResponse({ status: 200, description: 'First matched Google Book for given ISBN' })
-  searchByIsbn(@Param() p: GoogleIsbnParamDto) {
-    return this.booksService.searchGoogleBookByISBN(p.isbn);
+  @Get('regions/available')
+  @ApiOperation({ 
+    summary: 'Get list of available regions',
+    description: 'Returns all regions/cities that have available books for exchange',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Available regions retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        regions: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['Ho Chi Minh City', 'Hanoi', 'Da Nang'],
+        },
+        total: { type: 'number', example: 3 },
+      },
+    },
+  })
+  getAvailableRegions() {
+    return this.booksService.getAvailableRegions();
   }
 }

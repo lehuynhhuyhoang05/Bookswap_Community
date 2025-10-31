@@ -452,4 +452,124 @@ export class BooksService {
     this.logger.log(`[searchGoogleBookByISBN] isbn=${isbn}`);
     return this.googleBooksService.searchByISBN(isbn);
   }
+
+  /** ---------------------------------------------------------
+   *  LOG #9: By region — phân trang (SAFE SELECT)
+   *  F-MEM-04: Tìm kiếm nâng cao theo khu vực
+   *  --------------------------------------------------------- */
+  async findBooksByRegion(region: string, page: number = 1, limit: number = 20) {
+    this.logger.log(`[findBooksByRegion] region="${region}" page=${page} limit=${limit}`);
+    const skip = (page - 1) * limit;
+
+    const qb = this.bookRepository
+      .createQueryBuilder('book')
+      .leftJoin('book.owner', 'owner')
+      .leftJoin('owner.user', 'user')
+      .select([
+        // BOOK
+        'book.book_id',
+        'book.owner_id',
+        'book.title',
+        'book.author',
+        'book.isbn',
+        'book.google_books_id',
+        'book.publisher',
+        'book.publish_date',
+        'book.description',
+        'book.category',
+        'book.language',
+        'book.page_count',
+        'book.cover_image_url',
+        'book.book_condition',
+        'book.status',
+        'book.views',
+        'book.deleted_at',
+        'book.created_at',
+        'book.updated_at',
+
+        // OWNER
+        'owner.member_id',
+        'owner.user_id',
+        'owner.region',
+        'owner.phone',
+        'owner.address',
+        'owner.bio',
+        'owner.trust_score',
+        'owner.average_rating',
+        'owner.is_verified',
+        'owner.verification_date',
+        'owner.total_exchanges',
+        'owner.completed_exchanges',
+        'owner.cancelled_exchanges',
+        'owner.created_at',
+        'owner.updated_at',
+
+        // USER (no password_hash)
+        'user.user_id',
+        'user.email',
+        'user.full_name',
+        'user.avatar_url',
+        'user.role',
+        'user.account_status',
+        'user.auth_provider',
+        'user.google_id',
+        'user.is_email_verified',
+        'user.email_verified_at',
+        'user.last_login_at',
+        'user.deleted_at',
+        'user.created_at',
+        'user.updated_at',
+      ])
+      .where('owner.region = :region', { region })
+      .andWhere('book.status = :status', { status: BookStatus.AVAILABLE })
+      .andWhere('book.deleted_at IS NULL');
+
+    const [books, total] = await qb
+      .orderBy('book.created_at', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    this.logger.debug(`[findBooksByRegion] found=${books.length} total=${total} for region="${region}"`);
+    
+    return {
+      data: books,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        region,
+      },
+    };
+  }
+
+  /** ---------------------------------------------------------
+   *  LOG #10: Lấy danh sách các khu vực có sách available
+   *  --------------------------------------------------------- */
+  async getAvailableRegions() {
+    this.logger.log(`[getAvailableRegions] fetching distinct regions`);
+
+    const result = await this.bookRepository
+      .createQueryBuilder('book')
+      .innerJoin('book.owner', 'owner')
+      .select('DISTINCT owner.region', 'region')
+      .where('book.status = :status', { status: BookStatus.AVAILABLE })
+      .andWhere('book.deleted_at IS NULL')
+      .andWhere('owner.region IS NOT NULL')
+      .andWhere('owner.region != :empty', { empty: '' })
+      .orderBy('owner.region', 'ASC')
+      .getRawMany();
+
+    const regions = result
+      .map((r) => r.region)
+      .filter((r) => r && r.trim().length > 0);
+
+    this.logger.debug(`[getAvailableRegions] found ${regions.length} unique regions`);
+
+    return {
+      regions,
+      total: regions.length,
+    };
+  }
 }
