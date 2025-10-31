@@ -32,6 +32,7 @@ import {
 
 import { Public } from '../../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { SearchBooksDto, AdvancedSearchDto } from '../dto/books.dto';
 
 @ApiTags('Books')
 @Controller('books')
@@ -215,4 +216,26 @@ export class BooksController {
   getAvailableRegions() {
     return this.booksService.getAvailableRegions();
   }
+  @Public()
+@Get('search')
+@ApiOperation({ summary: 'Basic search books' })
+async searchBooks(@Query() query: SearchBooksDto) {
+  return this.booksService.searchBooks(query);
+}
+
+@Get('search/advanced')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth('bearer')
+@ApiOperation({ summary: 'Advanced search with filters' })
+async advancedSearch(@Query() query: AdvancedSearchDto) {
+  return this.booksService.advancedSearch(query);
+}
+
+@Get('wanted/search')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth('bearer')
+@ApiOperation({ summary: 'Search wanted books' })
+async searchWantedBooks(@Query() query: SearchBooksDto) {
+  return this.booksService.searchWantedBooks(query);
+}
 }
