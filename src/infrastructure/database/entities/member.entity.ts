@@ -1,9 +1,11 @@
 import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, OneToOne, JoinColumn } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from './user.entity';
-
+import { PersonalLibrary } from './personal-library.entity';
 @Entity('members')
 export class Member {
+  @OneToOne(() => PersonalLibrary, (library) => library.member)
+  library: PersonalLibrary;
   @PrimaryColumn('varchar', { length: 36 })
   member_id: string;
 
