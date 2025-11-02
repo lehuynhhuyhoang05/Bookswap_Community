@@ -71,7 +71,7 @@ export class ExchangesService {
 
     // 2. Validate receiver exists
     const receiver = await this.memberRepo.findOne({
-      where: { member_id: dto.receiver_id },
+      where: { user_id: dto.receiver_id },
       relations: ['user'],
     });
 

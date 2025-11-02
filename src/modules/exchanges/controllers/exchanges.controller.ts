@@ -15,6 +15,7 @@ import {
   DefaultValuePipe,
   ParseIntPipe,
   ParseUUIDPipe,
+  Logger, // ← THÊM
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -42,8 +43,10 @@ import {
 @ApiTags('Exchanges')
 @Controller('exchanges')
 @UseGuards(JwtAuthGuard)
-@ApiBearerAuth('bearer')
+@ApiBearerAuth('access-token') // ← SỬA: từ 'bearer' → 'access-token'
 export class ExchangesController {
+  private readonly logger = new Logger(ExchangesController.name); // ← THÊM LOGGER
+
   constructor(
     private readonly exchangesService: ExchangesService,
     private readonly matchingService: MatchingService,
@@ -60,7 +63,21 @@ export class ExchangesController {
     @Request() req,
     @Body() dto: CreateExchangeRequestDto,
   ): Promise<ExchangeRequestResponseDto> {
-    return this.exchangesService.createExchangeRequest(req.user.userId, dto);
+    const startTime = Date.now(); // ← THÊM TIMING
+    try {
+      this.logger.log(`[createRequest] START userId=${req.user?.userId}`);
+      this.logger.debug(`[createRequest] dto=${JSON.stringify(dto)}`);
+      
+      const result = await this.exchangesService.createExchangeRequest(req.user.userId, dto);
+      
+      const duration = Date.now() - startTime;
+      this.logger.log(`[createRequest] SUCCESS duration=${duration}ms`);
+      return result;
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      this.logger.error(`[createRequest] FAILED after ${duration}ms: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   @Get('requests')
@@ -70,6 +87,7 @@ export class ExchangesController {
     @Request() req,
     @Query() query: QueryExchangeRequestsDto,
   ): Promise<PaginatedExchangeRequestsDto> {
+    this.logger.log(`[getMyRequests] userId=${req.user?.userId} query=${JSON.stringify(query)}`);
     return this.exchangesService.getMyRequests(req.user.userId, query);
   }
 
@@ -81,6 +99,7 @@ export class ExchangesController {
   async getRequestById(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<ExchangeRequestResponseDto> {
+    this.logger.log(`[getRequestById] id=${id}`);
     return this.exchangesService.getRequestById(id);
   }
 
@@ -95,6 +114,7 @@ export class ExchangesController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: RespondToRequestDto,
   ): Promise<ExchangeRequestResponseDto> {
+    this.logger.log(`[respondToRequest] id=${id} userId=${req.user?.userId}`);
     return this.exchangesService.respondToRequest(req.user.userId, id, dto);
   }
 
@@ -109,6 +129,7 @@ export class ExchangesController {
     @Request() req,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<{ message: string }> {
+    this.logger.log(`[cancelRequest] id=${id} userId=${req.user?.userId}`);
     return this.exchangesService.cancelRequest(req.user.userId, id);
   }
 
@@ -118,6 +139,7 @@ export class ExchangesController {
   @ApiOperation({ summary: 'Get my exchange statistics' })
   @ApiResponse({ status: 200, description: 'Exchange statistics', type: ExchangeStatsResponseDto })
   async getMyStats(@Request() req): Promise<ExchangeStatsResponseDto> {
+    this.logger.log(`[getMyStats] userId=${req.user?.userId}`);
     return this.exchangesService.getExchangeStats(req.user.userId);
   }
 
@@ -130,7 +152,20 @@ export class ExchangesController {
   })
   @ApiResponse({ status: 201, description: 'Suggestions generated successfully' })
   async generateSuggestions(@Request() req) {
-    return this.matchingService.findMatchingSuggestions(req.user.userId);
+    const startTime = Date.now(); // ← THÊM TIMING
+    try {
+      this.logger.log(`[generateSuggestions] START userId=${req.user?.userId}`);
+      
+      const result = await this.matchingService.findMatchingSuggestions(req.user.userId);
+      
+      const duration = Date.now() - startTime;
+      this.logger.log(`[generateSuggestions] SUCCESS found=${result.total} duration=${duration}ms`);
+      return result;
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      this.logger.error(`[generateSuggestions] FAILED after ${duration}ms: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   @Get('suggestions')
@@ -150,6 +185,7 @@ export class ExchangesController {
     @Request() req,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
+    this.logger.log(`[getMySuggestions] userId=${req.user?.userId} limit=${limit}`);
     return this.matchingService.getMySuggestions(req.user.userId, limit);
   }
 
@@ -162,6 +198,7 @@ export class ExchangesController {
     @Request() req,
     @Param('id', new ParseUUIDPipe({ version: '4' })) suggestionId: string,
   ) {
+    this.logger.log(`[markSuggestionViewed] suggestionId=${suggestionId} userId=${req.user?.userId}`);
     return this.matchingService.markSuggestionViewed(req.user.userId, suggestionId);
   }
 
@@ -174,6 +211,7 @@ export class ExchangesController {
     @Request() req,
     @Query() query: QueryExchangesDto,
   ): Promise<PaginatedExchangesDto> {
+    this.logger.log(`[getMyExchanges] userId=${req.user?.userId} query=${JSON.stringify(query)}`);
     return this.exchangesService.getMyExchanges(req.user.userId, query);
   }
 
@@ -185,6 +223,7 @@ export class ExchangesController {
   async getExchangeById(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<ExchangeResponseDto> {
+    this.logger.log(`[getExchangeById] id=${id}`);
     return this.exchangesService.getExchangeById(id);
   }
 
@@ -198,6 +237,7 @@ export class ExchangesController {
     @Request() req,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<ExchangeResponseDto> {
+    this.logger.log(`[confirmExchange] id=${id} userId=${req.user?.userId}`);
     return this.exchangesService.confirmExchange(req.user.userId, id);
   }
 }
