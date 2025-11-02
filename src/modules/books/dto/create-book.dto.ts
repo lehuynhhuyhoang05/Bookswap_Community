@@ -1,11 +1,19 @@
 import { IsString, IsOptional, IsEnum, IsNotEmpty, MaxLength, IsInt, IsDateString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
 import { BookCondition } from '../../../infrastructure/database/entities/book.entity';
 
 export class CreateBookDto {
-  @ApiPropertyOptional({ description: 'Google Books ID (auto-fill from search)' })
+  @ApiPropertyOptional({
+    description: 'Google Books ID (auto-fill from search)',
+    example: 'zyTCAlFPjgYC',
+  })
   @IsOptional()
   @IsString()
+  @Transform(({ value }) => {
+    const v = (value ?? '').toString().trim();
+    return v && v.toLowerCase() !== 'string' ? v : undefined; // tránh placeholder "string"
+  })
   google_books_id?: string;
 
   @ApiProperty({ example: 'Clean Code', description: 'Book title' })
@@ -56,6 +64,7 @@ export class CreateBookDto {
 
   @ApiPropertyOptional({ example: 464 })
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   page_count?: number;
 
@@ -65,10 +74,10 @@ export class CreateBookDto {
   @MaxLength(500)
   cover_image_url?: string;
 
-  @ApiPropertyOptional({ 
-    enum: BookCondition, 
+  @ApiPropertyOptional({
+    enum: BookCondition,
     example: BookCondition.GOOD,
-    description: 'Book physical condition'
+    description: 'Book physical condition',
   })
   @IsOptional()
   @IsEnum(BookCondition)
@@ -124,6 +133,7 @@ export class UpdateBookDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   page_count?: number;
 
@@ -147,6 +157,7 @@ export class SearchGoogleBooksDto {
 
   @ApiPropertyOptional({ example: 20, description: 'Max results (default: 20)' })
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   maxResults?: number;
 }

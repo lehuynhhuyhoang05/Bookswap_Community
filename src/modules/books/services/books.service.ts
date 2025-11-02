@@ -1,4 +1,3 @@
-// src/modules/books/services/books.service.ts
 import {
   Injectable,
   NotFoundException,
@@ -16,6 +15,14 @@ import { CreateBookDto, UpdateBookDto } from '../dto/create-book.dto';
 import { SearchBooksDto, AdvancedSearchDto } from '../dto/books.dto';
 import { GoogleBooksService } from '../../../infrastructure/external-services/google-books/google-books.service';
 import { GoogleBookResult } from '../../../infrastructure/external-services/google-books/google-books.types';
+
+function withTimeout<T>(p: Promise<T>, ms: number, tag = 'timeout'): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(tag)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); })
+     .catch((e) => { clearTimeout(t); reject(e); });
+  });
+}
 
 @Injectable()
 export class BooksService {
@@ -207,11 +214,11 @@ export class BooksService {
     }
 
     // Sorting
-    const sortField = 
+    const sortField =
       sort_by === 'title' ? 'book.title' :
       sort_by === 'author' ? 'book.author' :
       'book.created_at';
-    
+
     qb.orderBy(sortField, order);
 
     // Pagination
@@ -313,66 +320,76 @@ export class BooksService {
 
   // ==================== EXISTING METHODS (Keep all) ====================
 
-  /** LOG #1: Tạo sách */
-  async createBook(userId: string, createBookDto: CreateBookDto): Promise<Book> {
-    this.logger.log(`[createBook] >>> start userId=${userId || '(none)'} title="${createBookDto?.title}"`);
+ async createBook(userId: string, createBookDto: CreateBookDto): Promise<Book> {
+  this.logger.log(`[createBook] >>> start userId=${userId || '(none)'} title="${createBookDto?.title}"`);
 
-    try {
-      if (!userId) {
-        this.logger.error('[createBook] Missing userId');
-        throw new UnauthorizedException('Missing user');
-      }
-
-      const member = await this.memberRepository.findOne({ where: { user_id: userId } });
-      this.logger.debug(`[createBook] member=${member ? member.member_id : 'null'}`);
-
-      if (!member) {
-        this.logger.warn('[createBook] Member profile not found');
-        throw new NotFoundException('Member profile not found');
-      }
-
-      // Google Books integration
-      if (createBookDto.google_books_id) {
-        this.logger.debug(`[createBook] google_books_id=${createBookDto.google_books_id}`);
-        try {
-          const gb = await this.googleBooksService.getBookById(createBookDto.google_books_id);
-          this.logger.debug(`[createBook] GoogleBooks fetched: title="${gb?.title}"`);
-
-          createBookDto = {
-            ...createBookDto,
-            title: createBookDto.title || gb.title,
-            author: createBookDto.author || gb.authors?.join(', '),
-            publisher: createBookDto.publisher || gb.publisher,
-            publish_date: createBookDto.publish_date || gb.publishedDate,
-            description: createBookDto.description || gb.description,
-            cover_image_url: createBookDto.cover_image_url || gb.imageLinks?.thumbnail,
-            language: createBookDto.language || gb.language || 'vi',
-            category: createBookDto.category || gb.categories?.[0],
-            isbn: createBookDto.isbn || gb.isbn,
-            page_count: createBookDto.page_count || gb.pageCount,
-          };
-        } catch (err: any) {
-          this.logger.warn(`[createBook] GoogleBooks fetch failed: ${err?.message}`);
-        }
-      }
-
-      const toSave = this.bookRepository.create({
-        ...createBookDto,
-        owner_id: member.member_id,
-        language: createBookDto.language || 'vi',
-      });
-
-      const saved = await this.bookRepository.save(toSave);
-      this.logger.log(`[createBook] <<< saved book_id=${saved.book_id}`);
-
-      return saved;
-    } catch (err: any) {
-      this.logger.error('[createBook] ERROR', err?.stack || err);
-      if (err instanceof UnauthorizedException) throw err;
-      if (err instanceof NotFoundException) throw err;
-      throw new InternalServerErrorException('Cannot create book');
+  try {
+    if (!userId) {
+      this.logger.error('[createBook] Missing userId');
+      throw new UnauthorizedException('Missing user');
     }
+
+    const member = await this.memberRepository.findOne({ where: { user_id: userId } });
+    this.logger.debug(`[createBook] member=${member ? member.member_id : 'null'}`);
+
+    if (!member) {
+      this.logger.warn('[createBook] Member profile not found');
+      throw new NotFoundException('Member profile not found');
+    }
+
+    // Google Books integration – BỎ QUA nếu placeholder/invalid + hard-timeout
+    const gbId = createBookDto.google_books_id?.trim();
+    const shouldFetch =
+      !!gbId &&
+      gbId.toLowerCase() !== 'string' &&
+      gbId.length > 5;
+
+    if (shouldFetch) {
+      this.logger.debug(`[createBook] google_books_id=${gbId} - Fetching metadata...`);
+      try {
+        const gb = await withTimeout(
+          this.googleBooksService.getBookById(gbId),
+          5000, // ← TĂNG TỪ 3000 LÊN 5000ms
+          'GoogleBooks timeout',
+        );
+        this.logger.debug(`[createBook] GoogleBooks fetched successfully: title="${gb?.title}"`);
+
+        createBookDto = {
+          ...createBookDto,
+          title: createBookDto.title || gb.title,
+          author: createBookDto.author || gb.authors?.join(', '),
+          publisher: createBookDto.publisher || gb.publisher,
+          publish_date: createBookDto.publish_date || gb.publishedDate,
+          description: createBookDto.description || gb.description,
+          cover_image_url: createBookDto.cover_image_url || gb.imageLinks?.thumbnail,
+          language: createBookDto.language || gb.language || 'vi',
+          category: createBookDto.category || gb.categories?.[0],
+          isbn: createBookDto.isbn || gb.isbn,
+          page_count: createBookDto.page_count || gb.pageCount,
+        };
+      } catch (err: any) {
+        // Không throw để không chặn tạo sách
+        this.logger.warn(`[createBook] Skip GoogleBooks enrich: ${err?.message}`);
+      }
+    }
+
+    const toSave = this.bookRepository.create({
+      ...createBookDto,
+      owner_id: member.member_id,
+      language: createBookDto.language || 'vi',
+    });
+
+    const saved = await this.bookRepository.save(toSave);
+    this.logger.log(`[createBook] <<< saved book_id=${saved.book_id}`);
+
+    return saved;
+  } catch (err: any) {
+    this.logger.error('[createBook] ERROR', err?.stack || err);
+    if (err instanceof UnauthorizedException) throw err;
+    if (err instanceof NotFoundException) throw err;
+    throw new InternalServerErrorException('Cannot create book');
   }
+}
 
   /** LOG #2: Danh sách public */
   async findAll(page: number = 1, limit: number = 20, search?: string) {

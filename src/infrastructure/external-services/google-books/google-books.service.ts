@@ -1,6 +1,7 @@
+// src/infrastructure/external-services/google-books/google-books.service.ts
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 
 export interface GoogleBookResult {
   id: string;
@@ -13,58 +14,66 @@ export interface GoogleBookResult {
   pageCount?: number;
   categories?: string[];
   language?: string;
-  imageLinks?: {
-    thumbnail?: string;
-    smallThumbnail?: string;
-  };
+  imageLinks?: { thumbnail?: string; smallThumbnail?: string };
 }
 
 @Injectable()
 export class GoogleBooksService {
   private readonly logger = new Logger(GoogleBooksService.name);
-  private readonly apiUrl = 'https://www.googleapis.com/books/v1/volumes';
+  private readonly api: AxiosInstance;
   private readonly apiKey: string;
 
-  constructor(private configService: ConfigService) {
-    this.apiKey = this.configService.get<string>('GOOGLE_BOOKS_API_KEY') || '';
+  constructor(private readonly config: ConfigService) {
+    this.apiKey = this.config.get<string>('GOOGLE_BOOKS_API_KEY') || '';
+
+    this.api = axios.create({
+      baseURL: 'https://www.googleapis.com/books/v1',
+      timeout: 4000,                           // ⬅ timeout cứng 4s
+      // paramsSerializer để không sai encode
+      paramsSerializer: { indexes: null },
+    });
+
+    // Retry nhẹ khi lỗi mạng (2 lần, backoff tuyến tính)
+    this.api.interceptors.response.use(
+      (r) => r,
+      async (err) => {
+        const cfg = err.config as any;
+        cfg.__retryCount = cfg.__retryCount ?? 0;
+        if (cfg.__retryCount < 2 && (err.code === 'ECONNABORTED' || !err.response)) {
+          cfg.__retryCount++;
+          await new Promise((r) => setTimeout(r, 300 * cfg.__retryCount));
+          return this.api.request(cfg);
+        }
+        return Promise.reject(err);
+      },
+    );
   }
 
-  async searchBooks(query: string, maxResults: number = 20): Promise<GoogleBookResult[]> {
+  async searchBooks(query: string, maxResults = 20): Promise<GoogleBookResult[]> {
     try {
-      const params: any = {
-        q: query,
-        maxResults,
-      };
+      const params: any = { q: query, maxResults };
+      if (this.apiKey) params.key = this.apiKey;
 
-      // Only add API key if it exists
-      if (this.apiKey) {
-        params.key = this.apiKey;
-      }
-
-      const response = await axios.get(this.apiUrl, { params });
-
-      if (!response.data.items) {
-        return [];
-      }
-
-      return response.data.items.map(item => this.formatBookData(item));
-    } catch (error) {
-      this.logger.error(`Google Books API error: ${error.message}`);
-      throw error;
+      const { data } = await this.api.get('/volumes', { params });
+      if (!data?.items) return [];
+      return data.items.map((item: any) => this.format(item));
+    } catch (error: any) {
+      this.logger.warn(`Google Books search failed: ${error?.message}`);
+      // lỗi mềm: trả mảng rỗng để không chặn luồng
+      return [];
     }
   }
 
   async getBookById(googleBookId: string): Promise<GoogleBookResult> {
     try {
       const params: any = {};
-      if (this.apiKey) {
-        params.key = this.apiKey;
-      }
+      if (this.apiKey) params.key = this.apiKey;
 
-      const response = await axios.get(`${this.apiUrl}/${googleBookId}`, { params });
-      return this.formatBookData(response.data);
-    } catch (error) {
-      this.logger.error(`Failed to fetch book ${googleBookId}: ${error.message}`);
+      const { data } = await this.api.get(`/volumes/${encodeURIComponent(googleBookId)}`, { params });
+      return this.format(data);
+    } catch (error: any) {
+      this.logger.warn(`Fetch volume ${googleBookId} failed: ${error?.message}`);
+      // Bắn NotFound để tầng trên có thể bỏ qua enrich
       throw new NotFoundException('Book not found in Google Books');
     }
   }
@@ -72,43 +81,35 @@ export class GoogleBooksService {
   async searchByISBN(isbn: string): Promise<GoogleBookResult> {
     try {
       const params: any = { q: `isbn:${isbn}` };
-      if (this.apiKey) {
-        params.key = this.apiKey;
-      }
+      if (this.apiKey) params.key = this.apiKey;
 
-      const response = await axios.get(this.apiUrl, { params });
-
-      if (!response.data.items || response.data.items.length === 0) {
-        throw new NotFoundException('Book not found by ISBN');
-      }
-
-      return this.formatBookData(response.data.items[0]);
-    } catch (error) {
-      this.logger.error(`ISBN search error: ${error.message}`);
+      const { data } = await this.api.get('/volumes', { params });
+      if (!data?.items?.length) throw new NotFoundException('Book not found by ISBN');
+      return this.format(data.items[0]);
+    } catch (error: any) {
+      this.logger.warn(`ISBN search failed: ${error?.message}`);
       throw error;
     }
   }
 
-  private formatBookData(item: any): GoogleBookResult {
-    const volumeInfo = item.volumeInfo || {};
-    const industryIdentifiers = volumeInfo.industryIdentifiers || [];
-    
-    const isbn = industryIdentifiers.find(
-      (id) => id.type === 'ISBN_13' || id.type === 'ISBN_10'
-    )?.identifier;
+  private format(item: any): GoogleBookResult {
+    const v = item?.volumeInfo ?? {};
+    const ids = v.industryIdentifiers ?? [];
+    const isbn = ids.find((x: any) => x?.type === 'ISBN_13')?.identifier
+              ?? ids.find((x: any) => x?.type === 'ISBN_10')?.identifier;
 
     return {
-      id: item.id,
-      title: volumeInfo.title,
-      authors: volumeInfo.authors,
-      publisher: volumeInfo.publisher,
-      publishedDate: volumeInfo.publishedDate,
-      description: volumeInfo.description,
+      id: item?.id,
+      title: v.title,
+      authors: v.authors,
+      publisher: v.publisher,
+      publishedDate: v.publishedDate,
+      description: v.description,
       isbn,
-      pageCount: volumeInfo.pageCount,
-      categories: volumeInfo.categories,
-      language: volumeInfo.language,
-      imageLinks: volumeInfo.imageLinks,
+      pageCount: v.pageCount,
+      categories: v.categories,
+      language: v.language,
+      imageLinks: v.imageLinks,
     };
   }
 }
