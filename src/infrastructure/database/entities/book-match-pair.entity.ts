@@ -1,3 +1,4 @@
+// src/infrastructure/database/entities/book-match-pair.entity.ts
 import {
   Entity,
   PrimaryColumn,
@@ -9,6 +10,8 @@ import {
 import { ExchangeSuggestion } from './exchange-suggestion.entity';
 import { Book } from './book.entity';
 
+export type PairDirection = 'THEY_WANT_FROM_ME' | 'I_WANT_FROM_THEM';
+
 @Entity('book_match_pairs')
 export class BookMatchPair {
   @PrimaryColumn('varchar', { length: 36 })
@@ -17,11 +20,18 @@ export class BookMatchPair {
   @Column('varchar', { length: 36 })
   suggestion_id: string;
 
-  @Column('varchar', { length: 36 })
-  book_a_id: string;
+  @Column('varchar', { length: 36, nullable: true })
+  book_a_id: string | null; // có thể NULL
 
-  @Column('varchar', { length: 36 })
-  book_b_id: string;
+  @Column('varchar', { length: 36, nullable: true })
+  book_b_id: string | null; // có thể NULL
+
+  @Column({
+    type: 'enum',
+    enum: ['THEY_WANT_FROM_ME', 'I_WANT_FROM_THEM'],
+    default: 'THEY_WANT_FROM_ME',
+  })
+  pair_direction: PairDirection;
 
   @Column('varchar', { length: 255, nullable: true })
   match_reason: string;
@@ -32,18 +42,17 @@ export class BookMatchPair {
   @CreateDateColumn()
   created_at: Date;
 
-  // Relations
   @ManyToOne(() => ExchangeSuggestion, (sugg) => sugg.match_pairs, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'suggestion_id' })
   suggestion: ExchangeSuggestion;
 
-  @ManyToOne(() => Book, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Book, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'book_a_id' })
   book_a: Book;
 
-  @ManyToOne(() => Book, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Book, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'book_b_id' })
   book_b: Book;
 }

@@ -31,10 +31,10 @@ export class ExchangeSuggestion {
   is_viewed: boolean;
 
   @Column('timestamp', { nullable: true })
-  viewed_at: Date;
+viewed_at: Date | null;
 
-  @Column('timestamp', { nullable: true })
-  expired_at: Date;
+@Column('timestamp', { nullable: true })
+expired_at: Date | null;
 
   @CreateDateColumn()
   created_at: Date;

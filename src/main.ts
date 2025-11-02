@@ -5,6 +5,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { HttpExceptionLogFilter } from './common/filters/http-exception-log.filter';
+import { TimeoutInterceptor } from './common/interceptors/timeout.interceptor'; // ← THÊM
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -27,6 +28,9 @@ async function bootstrap() {
   const reflector = app.get(Reflector);
   app.useGlobalGuards(new JwtAuthGuard(reflector));
   app.useGlobalFilters(new HttpExceptionLogFilter());
+  
+  // ← THÊM TIMEOUT INTERCEPTOR (30 giây cho tất cả requests)
+  app.useGlobalInterceptors(new TimeoutInterceptor(30000));
 
   // Swagger
   const config = new DocumentBuilder()
@@ -38,11 +42,13 @@ async function bootstrap() {
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
+        name: 'Authorization',
         in: 'header',
-        description: 'Enter JWT token (without "Bearer " prefix)',
+        description: 'Enter JWT token (without "Bearer" prefix)'
       },
-      'bearer', // ← ĐỔI TỪ 'JWT-auth' THÀNH 'bearer'
+      'access-token' // ← ĐÃ ĐÚNG TÊN
     )
+    .addSecurityRequirements('access-token') // ← Global security (tùy chọn)
     .addTag('Authentication', 'User authentication endpoints')
     .addTag('Users', 'User management endpoints')
     .addTag('Books', 'Book management endpoints')
@@ -59,13 +65,23 @@ async function bootstrap() {
       persistAuthorization: true,
       tagsSorter: 'alpha',
       operationsSorter: 'alpha',
+      // ← THÊM REQUEST INTERCEPTOR ĐỂ DEBUG
+      requestInterceptor: (req) => {
+        console.log('[Swagger Request]', {
+          url: req.url,
+          method: req.method,
+          headers: req.headers,
+        });
+        return req;
+      },
     },
   });
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  console.log(`🚀 http://localhost:${port}`);
-  console.log(`📚 Swagger: http://localhost:${port}/api/docs`);
+  console.log(`🚀 Server running: http://localhost:${port}`);
+  console.log(`📚 Swagger UI: http://localhost:${port}/api/docs`);
+  console.log(`⏱️  Request timeout: 30 seconds`);
 }
 
 bootstrap();

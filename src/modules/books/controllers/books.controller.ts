@@ -12,6 +12,7 @@ import {
   DefaultValuePipe,
   ParseIntPipe,
   UseGuards,
+  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -29,167 +30,140 @@ import {
   GoogleBookIdParamDto,
   GoogleIsbnParamDto,
 } from '../dto/google-books.dto';
+import { SearchBooksDto, AdvancedSearchDto } from '../dto/books.dto';
 
 import { Public } from '../../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { SearchBooksDto, AdvancedSearchDto } from '../dto/books.dto';
+import { Logger } from '@nestjs/common';
 
 @ApiTags('Books')
 @Controller('books')
 export class BooksController {
+  private readonly logger = new Logger(BooksController.name);
+  
   constructor(private readonly booksService: BooksService) {}
 
-  /** ---------------------------------------------------------
-   *  Create book (requires JWT)
-   *  --------------------------------------------------------- */
+  /** =========================================================
+   *  SECTION 1: CREATE BOOK (POST)
+   *  ========================================================= */
   @Post()
-  @UseGuards(JwtAuthGuard) // nếu bạn đã set Global Guard thì có thể bỏ dòng này
-  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token') // ← ĐÃ SỬA
   @ApiOperation({ summary: 'Add a new book to your library' })
   @ApiResponse({ status: 201, description: 'Book created successfully' })
   @ApiResponse({ status: 404, description: 'Member profile not found' })
+  @ApiResponse({ status: 408, description: 'Request timeout' })
   async create(@Request() req, @Body() dto: CreateBookDto) {
-    console.log('[CTRL /books][POST] >>>', {
-      authSample:
-        req.headers?.authorization?.slice(0, 30) +
-          (req.headers?.authorization?.length > 30 ? '...' : '') || '(none)',
-      reqUser: req.user || null,
-      bodyKeys: Object.keys(dto || {}),
-      dtoTitle: dto?.title,
-    });
+    const startTime = Date.now(); // ← THÊM DEBUG TIMING
+    try {
+      const userId = req.user?.sub || req.user?.userId;
+      this.logger.log(`[create] START userId=${userId}`);
+      this.logger.debug(`[create] dto=${JSON.stringify(dto)}`);
+      this.logger.debug(`[create] User from token: ${JSON.stringify(req.user)}`);
 
-    const userId = req.user?.sub || req.user?.userId;
-    console.log('[CTRL /books][POST] userId =', userId, 'user =', req.user);
+      if (!userId) {
+        throw new UnauthorizedException('User ID not found in request');
+      }
 
-    const result = await this.booksService.createBook(userId, dto);
-
-    console.log('[CTRL /books][POST] <<<', {
-      createdId: (result as any)?.book_id || (result as any)?.id || null,
-      title: (result as any)?.title || dto?.title,
-    });
-
-    return result;
+      const result = await this.booksService.createBook(userId, dto);
+      
+      const duration = Date.now() - startTime; // ← THÊM DEBUG TIMING
+      this.logger.log(`[create] SUCCESS bookId=${result.book_id} duration=${duration}ms`);
+      return result;
+    } catch (error: any) {
+      const duration = Date.now() - startTime; // ← THÊM DEBUG TIMING
+      this.logger.error(
+        `[create] FAILED after ${duration}ms: ${error.message}`, 
+        error.stack
+      );
+      throw error;
+    }
   }
 
-  /** ---------------------------------------------------------
-   *  1. Most specific route (my-library)
-   *  --------------------------------------------------------- */
+  /** =========================================================
+   *  SECTION 2: SPECIFIC ROUTES (must be before dynamic params)
+   *  ========================================================= */
+
   @Get('my-library')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('JWT-auth')
+  @ApiBearerAuth('access-token') // ← ĐÃ SỬA
   @ApiOperation({ summary: 'Get your personal book collection' })
   @ApiResponse({ status: 200, description: 'Your books retrieved successfully' })
   async findMyBooks(@Request() req) {
-    console.log('[CTRL /books/my-library][GET] req.user =', req.user);
-    return this.booksService.findMyBooks(req.user.sub);
+    return this.booksService.findMyBooks(req.user.sub || req.user.userId);
   }
-
-  /** ---------------------------------------------------------
-   *  2. Specific prefix (search/google)
-   *  --------------------------------------------------------- */
-  @Public()
-  @Get('search/google')
-  @ApiOperation({ summary: 'Search books in Google Books API' })
-  @ApiQuery({ name: 'query', required: true, example: 'Clean Code' })
-  @ApiQuery({ name: 'maxResults', required: false, example: 20 })
-  @ApiResponse({ status: 200, description: 'Google Books search results' })
-  searchGoogleBooks(@Query() q: SearchGoogleBooksQueryDto) {
-    return this.booksService.searchGoogleBooks(q.query, q.maxResults ?? 20);
-  }
-
-  /** ---------------------------------------------------------
-   *  3. Dynamic param with prefix (category/:category)
-   *  --------------------------------------------------------- */
-  @Public()
-  @Get('category/:category')
-  @ApiOperation({ summary: 'Get books by category' })
-  @ApiParam({ name: 'category', example: 'Programming' })
-  @ApiQuery({ name: 'page', required: false, example: 1 })
-  @ApiQuery({ name: 'limit', required: false, example: 20 })
-  findByCategory(
-    @Param('category') category: string,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
-  ) {
-    return this.booksService.findBooksByCategory(category, page, limit);
-  }
-
-  /** ---------------------------------------------------------
-   *  Update (requires JWT; must be owner)
-   *  --------------------------------------------------------- */
-  @Patch(':id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Update your book information' })
-  @ApiResponse({ status: 200, description: 'Book updated successfully' })
-  @ApiResponse({ status: 403, description: 'You can only update your own books' })
-  @ApiResponse({ status: 404, description: 'Book not found' })
-  update(@Param('id') id: string, @Request() req, @Body() dto: UpdateBookDto) {
-    console.log('[CTRL /books/:id][PATCH]', { id, reqUser: req.user });
-    return this.booksService.update(id, req.user.sub, dto);
-  }
-
-  /** ---------------------------------------------------------
-   *  Delete (requires JWT; must be owner)
-   *  --------------------------------------------------------- */
-  @Delete(':id')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Delete your book (soft delete)' })
-  @ApiResponse({ status: 200, description: 'Book deleted successfully' })
-  @ApiResponse({ status: 403, description: 'You can only delete your own books' })
-  @ApiResponse({ status: 404, description: 'Book not found' })
-  remove(@Param('id') id: string, @Request() req) {
-    console.log('[CTRL /books/:id][DELETE]', { id, reqUser: req.user });
-    return this.booksService.remove(id, req.user.sub);
-  }
-
-  /** ---------------------------------------------------------
-   *  4. Dynamic param with prefix (region/:region)
-   *  --------------------------------------------------------- */
 
   @Public()
-  @Get('region/:region')
+  @Get('search')
   @ApiOperation({ 
-    summary: 'Get books by owner region',
-    description: 'Search for available books from owners in a specific region/city. Useful for finding books nearby for local exchanges.',
+    summary: 'Basic search books',
+    description: 'Search books by title, author, or ISBN. Public endpoint.',
   })
-  @ApiParam({ 
-    name: 'region', 
-    example: 'Ho Chi Minh City',
-    description: 'Region/City name (case-sensitive)',
-  })
+  @ApiQuery({ name: 'q', required: true, example: 'Clean Code', description: 'Search query' })
+  @ApiQuery({ name: 'category', required: false, example: 'Programming' })
   @ApiQuery({ name: 'page', required: false, example: 1 })
   @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiResponse({ 
     status: 200, 
-    description: 'Books from specified region retrieved successfully',
+    description: 'Search results',
     schema: {
       type: 'object',
       properties: {
-        data: {
-          type: 'array',
-          items: { type: 'object' },
-        },
+        data: { type: 'array', items: { type: 'object' } },
         meta: {
           type: 'object',
           properties: {
-            total: { type: 'number', example: 50 },
-            page: { type: 'number', example: 1 },
-            limit: { type: 'number', example: 20 },
-            totalPages: { type: 'number', example: 3 },
-            region: { type: 'string', example: 'Ho Chi Minh City' },
+            total: { type: 'number' },
+            page: { type: 'number' },
+            limit: { type: 'number' },
+            totalPages: { type: 'number' },
+            query: { type: 'string' },
           },
         },
       },
     },
   })
-  findByRegion(
-    @Param('region') region: string,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
-  ) {
-    return this.booksService.findBooksByRegion(region, page, limit);
+  async searchBooks(@Query() query: SearchBooksDto) {
+    return this.booksService.searchBooks(query);
+  }
+
+  @Get('search/advanced')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token') // ← ĐÃ SỬA
+  @ApiOperation({ 
+    summary: 'Advanced search with filters',
+    description: 'Search books with multiple filters (category, region, condition, etc.)',
+  })
+  @ApiResponse({ status: 200, description: 'Advanced search results' })
+  async advancedSearch(@Query() query: AdvancedSearchDto) {
+    return this.booksService.advancedSearch(query);
+  }
+
+  @Public()
+  @Get('search/google')
+  @ApiOperation({ summary: 'Search books in Google Books API' })
+  @ApiQuery({ name: 'query', required: true, example: 'Clean Code' })
+  @ApiQuery({ 
+    name: 'maxResults', 
+    required: false, 
+    example: 20,
+    description: '1–40 (Google API limit)',
+  })
+  @ApiResponse({ status: 200, description: 'Google Books search results' })
+  searchGoogleBooks(@Query() q: SearchGoogleBooksQueryDto) {
+    return this.booksService.searchGoogleBooks(q.query, q.maxResults ?? 20);
+  }
+
+  @Get('wanted/search')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token') // ← ĐÃ SỬA
+  @ApiOperation({ 
+    summary: 'Search wanted books',
+    description: 'Search books that other members want. Useful to see what you can offer.',
+  })
+  @ApiResponse({ status: 200, description: 'Wanted books search results' })
+  async searchWantedBooks(@Query() query: SearchBooksDto) {
+    return this.booksService.searchWantedBooks(query);
   }
 
   @Public()
@@ -216,26 +190,202 @@ export class BooksController {
   getAvailableRegions() {
     return this.booksService.getAvailableRegions();
   }
+
+  /** =========================================================
+   *  SECTION 3: DYNAMIC ROUTES WITH PREFIXES
+   *  ========================================================= */
+
   @Public()
-@Get('search')
-@ApiOperation({ summary: 'Basic search books' })
-async searchBooks(@Query() query: SearchBooksDto) {
-  return this.booksService.searchBooks(query);
+  @Get('category/:category')
+  @ApiOperation({ summary: 'Get books by category' })
+  @ApiParam({ name: 'category', example: 'Programming' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
+  @ApiResponse({ status: 200, description: 'Books by category' })
+  findByCategory(
+    @Param('category') category: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.booksService.findBooksByCategory(category, page, limit);
+  }
+
+  @Public()
+  @Get('region/:region')
+  @ApiOperation({ 
+    summary: 'Get books by owner region',
+    description: 'Search for available books from owners in a specific region/city.',
+  })
+  @ApiParam({ 
+    name: 'region', 
+    example: 'Ho Chi Minh City',
+    description: 'Region/City name (case-sensitive)',
+  })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
+  @ApiResponse({ status: 200, description: 'Books from specified region' })
+  findByRegion(
+    @Param('region') region: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.booksService.findBooksByRegion(region, page, limit);
+  }
+
+  @Public()
+  @Get('google/:googleBookId')
+  @ApiOperation({ summary: 'Get a Google Book by ID' })
+  @ApiParam({ name: 'googleBookId', example: 'zyTCAlFPjgYC' })
+  @ApiResponse({ status: 200, description: 'Google Book detail' })
+  getGoogleBookById(@Param() p: GoogleBookIdParamDto) {
+    return this.booksService.getGoogleBookById(p.googleBookId);
+  }
+
+  @Public()
+  @Get('google/isbn/:isbn')
+  @ApiOperation({ summary: 'Find a Google Book by ISBN (10/13)' })
+  @ApiParam({ name: 'isbn', example: '9780132350884' })
+  @ApiResponse({ status: 200, description: 'First matched Google Book' })
+  searchByIsbn(@Param() p: GoogleIsbnParamDto) {
+    return this.booksService.searchGoogleBookByISBN(p.isbn);
+  }
+
+  /** =========================================================
+   *  SECTION 4: BASE ROUTES (GET, PATCH, DELETE with :id)
+   *  MUST BE LAST to avoid catching other routes
+   *  ========================================================= */
+
+  @Public()
+  @Get()
+  @ApiOperation({ 
+    summary: 'Get all available books (public)',
+    description: 'Browse all available books with optional search. Public endpoint.',
+  })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Search by title, author, ISBN',
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Books retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        data: { type: 'array', items: { type: 'object' } },
+        meta: {
+          type: 'object',
+          properties: {
+            total: { type: 'number' },
+            page: { type: 'number' },
+            limit: { type: 'number' },
+            totalPages: { type: 'number' },
+          },
+        },
+      },
+    },
+  })
+  findAll(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('search') search?: string,
+  ) {
+    return this.booksService.findAll(page, limit, search);
+  }
+
+  @Public()
+  @Get(':id')
+  @ApiOperation({ 
+    summary: 'Get book details by ID',
+    description: 'Get detailed information about a specific book. Public endpoint.',
+  })
+  @ApiParam({ name: 'id', description: 'Book UUID' })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Book details retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        book_id: { type: 'string' },
+        title: { type: 'string' },
+        author: { type: 'string' },
+        isbn: { type: 'string' },
+        description: { type: 'string' },
+        category: { type: 'string' },
+        book_condition: { type: 'string' },
+        status: { type: 'string' },
+        views: { type: 'number' },
+        owner: {
+          type: 'object',
+          properties: {
+            member_id: { type: 'string' },
+            region: { type: 'string' },
+            trust_score: { type: 'number' },
+            user: {
+              type: 'object',
+              properties: {
+                full_name: { type: 'string' },
+                avatar_url: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'Book not found' })
+  findOne(@Param('id') id: string) {
+    return this.booksService.findOne(id);
+  }
+
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token') // ← ĐÃ SỬA
+  @ApiOperation({ summary: 'Update your book information' })
+  @ApiParam({ name: 'id', description: 'Book UUID' })
+  @ApiResponse({ status: 200, description: 'Book updated successfully' })
+  @ApiResponse({ status: 403, description: 'You can only update your own books' })
+  @ApiResponse({ status: 404, description: 'Book not found' })
+  update(@Param('id') id: string, @Request() req, @Body() dto: UpdateBookDto) {
+    return this.booksService.update(id, req.user.sub || req.user.userId, dto);
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token') // ← ĐÃ SỬA
+  @ApiOperation({ summary: 'Delete your book (soft delete)' })
+  @ApiParam({ name: 'id', description: 'Book UUID' })
+  @ApiResponse({ status: 200, description: 'Book deleted successfully' })
+  @ApiResponse({ status: 403, description: 'You can only delete your own books' })
+  @ApiResponse({ status: 404, description: 'Book not found' })
+  remove(@Param('id') id: string, @Request() req) {
+    return this.booksService.remove(id, req.user.sub || req.user.userId);
+  }
+  // ============= DEBUG ENDPOINTS (XÓA SAU KHI DONE) =============
+@Post('test/auth')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth('access-token')
+@ApiOperation({ summary: '[DEBUG] Test authentication' })
+@ApiResponse({ status: 200, description: 'Auth working' })
+async testAuth(@Request() req) {
+  return {
+    message: 'Authentication working!',
+    user: req.user,
+    timestamp: new Date().toISOString(),
+  };
 }
 
-@Get('search/advanced')
-@UseGuards(JwtAuthGuard)
-@ApiBearerAuth('bearer')
-@ApiOperation({ summary: 'Advanced search with filters' })
-async advancedSearch(@Query() query: AdvancedSearchDto) {
-  return this.booksService.advancedSearch(query);
-}
-
-@Get('wanted/search')
-@UseGuards(JwtAuthGuard)
-@ApiBearerAuth('bearer')
-@ApiOperation({ summary: 'Search wanted books' })
-async searchWantedBooks(@Query() query: SearchBooksDto) {
-  return this.booksService.searchWantedBooks(query);
+@Public()
+@Post('test/no-auth')
+@ApiOperation({ summary: '[DEBUG] Test without auth' })
+@ApiResponse({ status: 200, description: 'No auth endpoint working' })
+async testNoAuth(@Body() dto: CreateBookDto) {
+  return {
+    message: 'No auth endpoint working!',
+    receivedDto: dto,
+    timestamp: new Date().toISOString(),
+  };
 }
 }

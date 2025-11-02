@@ -16,11 +16,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       context.getClass(),
     ]);
     const req = context.switchToHttp().getRequest();
+    const auth = req.headers?.authorization;
+    
     console.log('[GUARD] canActivate', {
       url: req.originalUrl || req.url,
       isPublic,
-      hasAuthHeader: !!req.headers?.authorization,
+      hasAuthHeader: !!auth,
+      authHeader: auth ? `${auth.substring(0, 15)}...` : null,
+      token: auth?.split(' ')[1] ? `${auth.split(' ')[1].substring(0, 20)}...` : null
     });
+    
     if (isPublic) return true;
     return super.canActivate(context);
   }
