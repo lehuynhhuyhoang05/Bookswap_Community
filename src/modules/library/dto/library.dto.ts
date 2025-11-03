@@ -1,81 +1,95 @@
 // src/modules/library/dto/library.dto.ts
+/**
+ * DTOs for Personal Library endpoints
+ * Includes comprehensive input validation
+ */
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import {
   IsString,
   IsOptional,
   IsInt,
+  IsNotEmpty,
   Min,
   Max,
   MaxLength,
   IsISBN,
+  IsEnum,
+  IsArray,
+  ArrayMinSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
 // ==================== CREATE WANTED BOOK ====================
 export class CreateWantedBookDto {
-  @ApiPropertyOptional({
+  @ApiProperty({
     example: 'Clean Code',
-    description: 'Book title',
+    description: 'Book title (required)',
+    maxLength: 255,
   })
-  @IsString()
-  @IsOptional()
-  @MaxLength(255)
-  title?: string;
+  @IsString({ message: 'title must be a string' })
+  @IsNotEmpty({ message: 'title is required' })
+  @MaxLength(255, { message: 'title must not exceed 255 characters' })
+  title: string;
 
   @ApiPropertyOptional({
     example: 'Robert C. Martin',
     description: 'Author name',
+    maxLength: 255,
   })
-  @IsString()
+  @IsString({ message: 'author must be a string' })
   @IsOptional()
-  @MaxLength(255)
+  @MaxLength(255, { message: 'author must not exceed 255 characters' })
   author?: string;
 
   @ApiPropertyOptional({
     example: '9780132350884',
-    description: 'ISBN-10 or ISBN-13',
+    description: 'ISBN-10 or ISBN-13 (validated if provided)',
   })
   @IsOptional()
-  @IsISBN()
+  @IsISBN(undefined, { message: 'isbn must be a valid ISBN-10 or ISBN-13' })
   isbn?: string;
 
   @ApiPropertyOptional({
     example: 'bCmVDwAAQBAJ',
     description: 'Google Books ID',
+    maxLength: 100,
   })
-  @IsString()
+  @IsString({ message: 'google_books_id must be a string' })
   @IsOptional()
-  @MaxLength(100)
+  @MaxLength(100, { message: 'google_books_id must not exceed 100 characters' })
   google_books_id?: string;
 
   @ApiPropertyOptional({
-    example: 'Technology',
+    example: 'Programming',
     description: 'Book category',
+    maxLength: 100,
   })
-  @IsString()
+  @IsString({ message: 'category must be a string' })
   @IsOptional()
-  @MaxLength(100)
+  @MaxLength(100, { message: 'category must not exceed 100 characters' })
   category?: string;
 
   @ApiPropertyOptional({
-    example: 5,
-    description: 'Priority level (0-10), higher = more wanted',
+    example: 9,
+    description: 'Priority level (0-10, higher is more important)',
     minimum: 0,
     maximum: 10,
   })
-  @IsInt()
+  @IsInt({ message: 'priority must be an integer' })
   @IsOptional()
-  @Min(0)
-  @Max(10)
+  @Min(0, { message: 'priority must be at least 0' })
+  @Max(10, { message: 'priority must not exceed 10' })
   @Type(() => Number)
-  priority?: number;
+  priority?: number = 5;
 
   @ApiPropertyOptional({
-    example: 'Looking for the latest edition with code examples',
-    description: 'Personal notes about the wanted book',
+    example: 'Looking for hardcover edition in excellent condition',
+    description: 'Additional notes about this wanted book',
+    maxLength: 500,
   })
-  @IsString()
+  @IsString({ message: 'notes must be a string' })
   @IsOptional()
+  @MaxLength(500, { message: 'notes must not exceed 500 characters' })
   notes?: string;
 }
 

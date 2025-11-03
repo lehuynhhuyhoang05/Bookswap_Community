@@ -8,6 +8,8 @@ import {
   Max,
   ArrayMinSize,
   IsNotEmpty,
+  MaxLength,
+  Matches,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -16,11 +18,12 @@ import { ExchangeRequestStatus } from '../../../infrastructure/database/entities
 // ==================== CREATE EXCHANGE REQUEST ====================
 export class CreateExchangeRequestDto {
   @ApiProperty({
-    description: 'ID of the member you want to exchange with (UUID or string)',
+    description: 'ID of the member you want to exchange with (member_id)',
     example: 'test-member-bob',
   })
-  @IsString()
-  @IsNotEmpty()
+  @IsString({ message: 'receiver_id must be a string' })
+  @IsNotEmpty({ message: 'receiver_id is required' })
+  @MaxLength(36, { message: 'receiver_id must not exceed 36 characters' })
   receiver_id: string;
 
   @ApiProperty({
@@ -28,9 +31,10 @@ export class CreateExchangeRequestDto {
     type: [String],
     example: ['test-book-alice-1', 'seed-book-nam-clrs'],
   })
-  @IsArray()
+  @IsArray({ message: 'offered_book_ids must be an array' })
   @ArrayMinSize(1, { message: 'You must offer at least 1 book' })
-  @IsString({ each: true })
+  @IsString({ each: true, message: 'Each book ID must be a string' })
+  @MaxLength(36, { each: true, message: 'Each book ID must not exceed 36 characters' })
   offered_book_ids: string[];
 
   @ApiProperty({
@@ -38,18 +42,32 @@ export class CreateExchangeRequestDto {
     type: [String],
     example: ['test-book-bob-1'],
   })
-  @IsArray()
+  @IsArray({ message: 'requested_book_ids must be an array' })
   @ArrayMinSize(1, { message: 'You must request at least 1 book' })
-  @IsString({ each: true })
+  @IsString({ each: true, message: 'Each book ID must be a string' })
+  @MaxLength(36, { each: true, message: 'Each book ID must not exceed 36 characters' })
   requested_book_ids: string[];
 
   @ApiPropertyOptional({
-    description: 'Optional message to receiver',
+    description: 'Optional message to receiver (max 500 characters)',
     example: 'Hi! I would love to exchange these books with you.',
+    maxLength: 500,
   })
-  @IsString()
+  @IsString({ message: 'message must be a string' })
   @IsOptional()
+  @MaxLength(500, { message: 'message must not exceed 500 characters' })
   message?: string;
+
+  @ApiPropertyOptional({
+    description: 'Priority level of exchange request',
+    enum: ['URGENT', 'HIGH', 'NORMAL', 'LOW'],
+    example: 'NORMAL',
+  })
+  @IsEnum(['URGENT', 'HIGH', 'NORMAL', 'LOW'], {
+    message: 'priority must be one of: URGENT, HIGH, NORMAL, LOW',
+  })
+  @IsOptional()
+  priority?: 'URGENT' | 'HIGH' | 'NORMAL' | 'LOW' = 'NORMAL';
 }
 
 // ==================== RESPOND TO REQUEST ====================
@@ -59,15 +77,19 @@ export class RespondToRequestDto {
     enum: ['accept', 'reject'],
     example: 'accept',
   })
-  @IsEnum(['accept', 'reject'])
+  @IsEnum(['accept', 'reject'], {
+    message: 'action must be either "accept" or "reject"',
+  })
   action: 'accept' | 'reject';
 
   @ApiPropertyOptional({
-    description: 'Reason for rejection (required if rejecting)',
+    description: 'Reason for rejection (required if rejecting, max 500 characters)',
     example: 'Sorry, I already exchanged this book with someone else.',
+    maxLength: 500,
   })
-  @IsString()
+  @IsString({ message: 'rejection_reason must be a string' })
   @IsOptional()
+  @MaxLength(500, { message: 'rejection_reason must not exceed 500 characters' })
   rejection_reason?: string;
 }
 
