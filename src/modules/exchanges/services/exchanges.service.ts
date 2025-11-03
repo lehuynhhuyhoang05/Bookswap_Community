@@ -71,7 +71,7 @@ export class ExchangesService {
 
     // 2. Validate receiver exists
     const receiver = await this.memberRepo.findOne({
-      where: { user_id: dto.receiver_id },
+      where: { member_id: dto.receiver_id },
       relations: ['user'],
     });
 
@@ -201,13 +201,17 @@ export class ExchangesService {
   async getMyRequests(userId: string, query: QueryExchangeRequestsDto) {
     this.logger.log(`[getMyRequests] userId=${userId}, query=${JSON.stringify(query)}`);
 
-    const member = await this.memberRepo.findOne({
+    // Get ALL member records for this user (in case of duplicate/old records)
+    const members = await this.memberRepo.find({
       where: { user_id: userId },
     });
 
-    if (!member) {
+    if (!members || members.length === 0) {
       throw new NotFoundException('Member profile not found');
     }
+
+    const memberIds = members.map((m) => m.member_id);
+    this.logger.log(`[getMyRequests] Found ${memberIds.length} member records: ${memberIds.join(', ')}`);
 
     const { status, type = 'received', page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
@@ -221,14 +225,14 @@ export class ExchangesService {
       .leftJoinAndSelect('request.request_books', 'request_books')
       .leftJoinAndSelect('request_books.book', 'book');
 
-    // Filter by type (sent or received)
+    // Filter by type (sent or received) - check ALL member records for this user
     if (type === 'sent') {
-      queryBuilder.where('request.requester_id = :memberId', {
-        memberId: member.member_id,
+      queryBuilder.where('request.requester_id IN (:...memberIds)', {
+        memberIds,
       });
     } else {
-      queryBuilder.where('request.receiver_id = :memberId', {
-        memberId: member.member_id,
+      queryBuilder.where('request.receiver_id IN (:...memberIds)', {
+        memberIds,
       });
     }
 
@@ -263,14 +267,16 @@ export class ExchangesService {
   ) {
     this.logger.log(`[respondToRequest] requestId=${requestId}, action=${dto.action}`);
 
-    // 1. Get member
-    const member = await this.memberRepo.findOne({
+    // 1. Get ALL member records for user
+    const members = await this.memberRepo.find({
       where: { user_id: userId },
     });
 
-    if (!member) {
+    if (!members || members.length === 0) {
       throw new NotFoundException('Member profile not found');
     }
+
+    const memberIds = members.map((m) => m.member_id);
 
     // 2. Get request
     const request = await this.requestRepo.findOne({
@@ -282,8 +288,8 @@ export class ExchangesService {
       throw new NotFoundException('Exchange request not found');
     }
 
-    // 3. Verify user is the receiver
-    if (request.receiver_id !== member.member_id) {
+    // 3. Verify user is the receiver (check ALL member records)
+    if (!memberIds.includes(request.receiver_id)) {
       throw new ForbiddenException('You are not authorized to respond to this request');
     }
 
@@ -372,13 +378,16 @@ export class ExchangesService {
   async cancelRequest(userId: string, requestId: string) {
     this.logger.log(`[cancelRequest] requestId=${requestId}`);
 
-    const member = await this.memberRepo.findOne({
+    // Get ALL member records for user
+    const members = await this.memberRepo.find({
       where: { user_id: userId },
     });
 
-    if (!member) {
+    if (!members || members.length === 0) {
       throw new NotFoundException('Member profile not found');
     }
+
+    const memberIds = members.map((m) => m.member_id);
 
     const request = await this.requestRepo.findOne({
       where: { request_id: requestId },
@@ -389,8 +398,8 @@ export class ExchangesService {
       throw new NotFoundException('Request not found');
     }
 
-    // Only requester can cancel
-    if (request.requester_id !== member.member_id) {
+    // Only requester can cancel (check ALL member records)
+    if (!memberIds.includes(request.requester_id)) {
       throw new ForbiddenException('Only the requester can cancel the request');
     }
 
@@ -417,13 +426,16 @@ export class ExchangesService {
   async getMyExchanges(userId: string, query: QueryExchangesDto) {
     this.logger.log(`[getMyExchanges] userId=${userId}`);
 
-    const member = await this.memberRepo.findOne({
+    // Get ALL member records for user
+    const members = await this.memberRepo.find({
       where: { user_id: userId },
     });
 
-    if (!member) {
+    if (!members || members.length === 0) {
       throw new NotFoundException('Member profile not found');
     }
+
+    const memberIds = members.map((m) => m.member_id);
 
     const { status, page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
@@ -436,8 +448,8 @@ export class ExchangesService {
       .leftJoinAndSelect('member_b.user', 'user_b')
       .leftJoinAndSelect('exchange.exchange_books', 'exchange_books')
       .leftJoinAndSelect('exchange_books.book', 'book')
-      .where('exchange.member_a_id = :memberId', { memberId: member.member_id })
-      .orWhere('exchange.member_b_id = :memberId', { memberId: member.member_id });
+      .where('exchange.member_a_id IN (:...memberIds)', { memberIds })
+      .orWhere('exchange.member_b_id IN (:...memberIds)', { memberIds });
 
     if (status) {
       queryBuilder.andWhere('exchange.status = :status', { status });
@@ -462,13 +474,16 @@ export class ExchangesService {
   async confirmExchange(userId: string, exchangeId: string) {
     this.logger.log(`[confirmExchange] exchangeId=${exchangeId}`);
 
-    const member = await this.memberRepo.findOne({
+    // Get ALL member records for user
+    const members = await this.memberRepo.find({
       where: { user_id: userId },
     });
 
-    if (!member) {
+    if (!members || members.length === 0) {
       throw new NotFoundException('Member profile not found');
     }
+
+    const memberIds = members.map((m) => m.member_id);
 
     const exchange = await this.exchangeRepo.findOne({
       where: { exchange_id: exchangeId },
@@ -478,16 +493,29 @@ export class ExchangesService {
       throw new NotFoundException('Exchange not found');
     }
 
-    // Verify user is part of exchange
-    if (
-      exchange.member_a_id !== member.member_id &&
-      exchange.member_b_id !== member.member_id
-    ) {
+    // Verify user is part of exchange (check ALL member records)
+    let isPartOfExchange = false;
+    let userIsMemberA = false;
+
+    for (const memberId of memberIds) {
+      if (exchange.member_a_id === memberId) {
+        isPartOfExchange = true;
+        userIsMemberA = true;
+        break;
+      }
+      if (exchange.member_b_id === memberId) {
+        isPartOfExchange = true;
+        userIsMemberA = false;
+        break;
+      }
+    }
+
+    if (!isPartOfExchange) {
       throw new ForbiddenException('You are not part of this exchange');
     }
 
     // Update confirmation
-    if (exchange.member_a_id === member.member_id) {
+    if (userIsMemberA) {
       exchange.member_a_confirmed = true;
       exchange.confirmed_by_a_at = new Date();
     } else {
@@ -541,46 +569,68 @@ export class ExchangesService {
 
   // ==================== GET EXCHANGE STATS ====================
   async getExchangeStats(userId: string) {
-    const member = await this.memberRepo.findOne({
+    // Get ALL member records for user
+    const members = await this.memberRepo.find({
       where: { user_id: userId },
     });
 
-    if (!member) {
+    if (!members || members.length === 0) {
       throw new NotFoundException('Member profile not found');
     }
 
+    const memberIds = members.map((m) => m.member_id);
+    let completedExchanges = 0;
+
+    // Sum completed_exchanges from all member records
+    for (const member of members) {
+      completedExchanges += member.completed_exchanges || 0;
+    }
+
     const totalSent = await this.requestRepo.count({
-      where: { requester_id: member.member_id },
+      where: { requester_id: memberIds.length === 1 ? memberIds[0] : undefined },
     });
 
     const totalReceived = await this.requestRepo.count({
-      where: { receiver_id: member.member_id },
+      where: { receiver_id: memberIds.length === 1 ? memberIds[0] : undefined },
     });
 
-    const pendingRequests = await this.requestRepo.count({
-      where: [
-        { requester_id: member.member_id, status: ExchangeRequestStatus.PENDING },
-        { receiver_id: member.member_id, status: ExchangeRequestStatus.PENDING },
-      ],
-    });
+    // For multiple member IDs, use query builder instead of count()
+    const requestRepo = this.requestRepo;
+    let sentCount = 0;
+    let receivedCount = 0;
 
-    const activeExchanges = await this.exchangeRepo.count({
-      where: [
-        { member_a_id: member.member_id, status: ExchangeStatus.PENDING },
-        { member_b_id: member.member_id, status: ExchangeStatus.PENDING },
-      ],
-    });
+    for (const memberId of memberIds) {
+      sentCount += await requestRepo.count({ where: { requester_id: memberId } });
+      receivedCount += await requestRepo.count({ where: { receiver_id: memberId } });
+    }
 
-    const completedExchanges = member.completed_exchanges;
+    let pendingCount = 0;
+    for (const memberId of memberIds) {
+      pendingCount += await requestRepo.count({
+        where: [
+          { requester_id: memberId, status: ExchangeRequestStatus.PENDING },
+          { receiver_id: memberId, status: ExchangeRequestStatus.PENDING },
+        ],
+      });
+    }
 
-    const successRate =
-      totalSent > 0 ? (completedExchanges / totalSent) * 100 : 0;
+    let activeCount = 0;
+    for (const memberId of memberIds) {
+      activeCount += await this.exchangeRepo.count({
+        where: [
+          { member_a_id: memberId, status: ExchangeStatus.PENDING },
+          { member_b_id: memberId, status: ExchangeStatus.PENDING },
+        ],
+      });
+    }
+
+    const successRate = sentCount > 0 ? (completedExchanges / sentCount) * 100 : 0;
 
     return {
-      total_requests_sent: totalSent,
-      total_requests_received: totalReceived,
-      pending_requests: pendingRequests,
-      active_exchanges: activeExchanges,
+      total_requests_sent: sentCount,
+      total_requests_received: receivedCount,
+      pending_requests: pendingCount,
+      active_exchanges: activeCount,
       completed_exchanges: completedExchanges,
       success_rate: Math.round(successRate * 10) / 10,
     };
