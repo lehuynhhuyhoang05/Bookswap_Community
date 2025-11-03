@@ -1,7 +1,6 @@
 import {
   IsString,
   IsArray,
-  IsUUID,
   IsOptional,
   IsEnum,
   IsInt,
@@ -17,31 +16,31 @@ import { ExchangeRequestStatus } from '../../../infrastructure/database/entities
 // ==================== CREATE EXCHANGE REQUEST ====================
 export class CreateExchangeRequestDto {
   @ApiProperty({
-    description: 'ID of the member you want to exchange with',
-    example: 'c1d2e3f4-a5b6-7890-cdef-1234567890ab',
+    description: 'ID of the member you want to exchange with (UUID or string)',
+    example: 'test-member-bob',
   })
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
   receiver_id: string;
 
   @ApiProperty({
     description: 'Books you are offering (from your library)',
     type: [String],
-    example: ['book-uuid-1', 'book-uuid-2'],
+    example: ['test-book-alice-1', 'seed-book-nam-clrs'],
   })
   @IsArray()
   @ArrayMinSize(1, { message: 'You must offer at least 1 book' })
-  @IsUUID('4', { each: true })
+  @IsString({ each: true })
   offered_book_ids: string[];
 
   @ApiProperty({
     description: 'Books you want from receiver',
     type: [String],
-    example: ['book-uuid-3'],
+    example: ['test-book-bob-1'],
   })
   @IsArray()
   @ArrayMinSize(1, { message: 'You must request at least 1 book' })
-  @IsUUID('4', { each: true })
+  @IsString({ each: true })
   requested_book_ids: string[];
 
   @ApiPropertyOptional({
