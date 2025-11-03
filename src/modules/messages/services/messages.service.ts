@@ -7,13 +7,16 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, Like } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Conversation } from '../../../infrastructure/database/entities/conversation.entity';
 import { Message } from '../../../infrastructure/database/entities/message.entity';
+import { MessageReaction } from '../../../infrastructure/database/entities/message-reaction.entity';
 import { Member } from '../../../infrastructure/database/entities/member.entity';
 import { ExchangeRequest, ExchangeRequestStatus } from '../../../infrastructure/database/entities/exchange-request.entity';
 import { SendMessageDto } from '../dto/send-message.dto';
+import { SearchMessagesDto } from '../dto/search-messages.dto';
+import { AddReactionDto } from '../dto/reaction.dto';
 
 @Injectable()
 export class MessagesService {
@@ -25,6 +28,9 @@ export class MessagesService {
 
     @InjectRepository(Message)
     private messageRepo: Repository<Message>,
+
+    @InjectRepository(MessageReaction)
+    private reactionRepo: Repository<MessageReaction>,
 
     @InjectRepository(Member)
     private memberRepo: Repository<Member>,
@@ -63,6 +69,7 @@ export class MessagesService {
             conversation_id: conv.conversation_id,
             receiver_id: member.member_id,
             is_read: false,
+            deleted_at: undefined, // Exclude deleted messages
           },
         });
 
@@ -133,8 +140,11 @@ export class MessagesService {
     const skip = (page - 1) * limit;
 
     const [messages, total] = await this.messageRepo.findAndCount({
-      where: { conversation_id: conversationId },
-      relations: ['sender', 'sender.user', 'receiver', 'receiver.user'],
+      where: { 
+        conversation_id: conversationId,
+        deleted_at: undefined, // Exclude deleted messages
+      },
+      relations: ['sender', 'sender.user', 'receiver', 'receiver.user', 'reactions', 'reactions.member'],
       order: { sent_at: 'DESC' },
       skip,
       take: limit,
@@ -164,24 +174,7 @@ export class MessagesService {
           region: otherMember.region,
         },
       },
-      messages: messages.reverse().map((msg) => ({
-        message_id: msg.message_id,
-        sender: {
-          member_id: msg.sender.member_id,
-          full_name: msg.sender.user.full_name,
-          avatar_url: msg.sender.user.avatar_url,
-        },
-        receiver: {
-          member_id: msg.receiver.member_id,
-          full_name: msg.receiver.user.full_name,
-          avatar_url: msg.receiver.user.avatar_url,
-        },
-        content: msg.content,
-        is_read: msg.is_read,
-        read_at: msg.read_at,
-        sent_at: msg.sent_at,
-        is_mine: msg.sender_id === member.member_id,
-      })),
+      messages: messages.reverse().map((msg) => this.formatMessage(msg, member.member_id)),
       pagination: {
         page,
         limit,
@@ -334,6 +327,7 @@ export class MessagesService {
         content: message.content,
         is_read: message.is_read,
         sent_at: message.sent_at,
+        reactions: [],
       },
       conversation_id: conversation.conversation_id,
     };
@@ -411,9 +405,287 @@ export class MessagesService {
       where: {
         receiver_id: member.member_id,
         is_read: false,
+        deleted_at: undefined, // Exclude deleted messages
       },
     });
 
     return { unread_count: count };
+  }
+
+  /**
+   * Search messages in a conversation
+   */
+  async searchMessages(userId: string, query: SearchMessagesDto) {
+    this.logger.log(`[searchMessages] userId=${userId}, q=${query.q}`);
+
+    const member = await this.memberRepo.findOne({ where: { user_id: userId } });
+    if (!member) throw new NotFoundException('Member profile not found');
+
+    // Validate user has access to conversation
+    const conversation = await this.conversationRepo.findOne({
+      where: { conversation_id: query.conversation_id },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    // Check authorization
+    if (
+      conversation.member_a_id !== member.member_id &&
+      conversation.member_b_id !== member.member_id
+    ) {
+      throw new ForbiddenException('You are not part of this conversation');
+    }
+
+    const skip = (query.page! - 1) * query.limit!;
+
+    const [messages, total] = await this.messageRepo.findAndCount({
+      where: {
+        conversation_id: query.conversation_id,
+        content: Like(`%${query.q}%`),
+        deleted_at: undefined, // Only include non-deleted messages
+      },
+      relations: ['sender', 'sender.user', 'receiver', 'receiver.user', 'reactions', 'reactions.member'],
+      order: { sent_at: 'DESC' },
+      skip,
+      take: query.limit!,
+    });
+
+    return {
+      messages: messages.reverse().map((msg) => this.formatMessage(msg, member.member_id)),
+      pagination: {
+        page: query.page!,
+        limit: query.limit!,
+        total,
+        total_pages: Math.ceil(total / query.limit!),
+      },
+    };
+  }
+
+  /**
+   * Delete a message (soft delete - only own messages, within 1 hour)
+   */
+  async deleteMessage(userId: string, messageId: string) {
+    this.logger.log(`[deleteMessage] userId=${userId}, messageId=${messageId}`);
+
+    const member = await this.memberRepo.findOne({ where: { user_id: userId } });
+    if (!member) throw new NotFoundException('Member profile not found');
+
+    const message = await this.messageRepo.findOne({
+      where: { message_id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Only sender can delete their own message
+    if (message.sender_id !== member.member_id) {
+      throw new ForbiddenException('Can only delete your own messages');
+    }
+
+    // Check if message is already deleted
+    if (message.deleted_at) {
+      throw new BadRequestException('Message is already deleted');
+    }
+
+    // Check if message is older than 1 hour
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    if (message.sent_at < oneHourAgo) {
+      throw new BadRequestException('Can only delete messages within 1 hour of sending');
+    }
+
+    // Soft delete
+    message.deleted_at = new Date();
+    await this.messageRepo.save(message);
+
+    this.logger.log(`[deleteMessage] SUCCESS messageId=${messageId}`);
+    return { success: true, message_id: messageId };
+  }
+
+  /**
+   * Add emoji reaction to a message
+   */
+  async addReaction(userId: string, messageId: string, dto: AddReactionDto) {
+    this.logger.log(`[addReaction] userId=${userId}, messageId=${messageId}, emoji=${dto.emoji}`);
+
+    const member = await this.memberRepo.findOne({ where: { user_id: userId } });
+    if (!member) throw new NotFoundException('Member profile not found');
+
+    // Verify message exists and not deleted
+    const message = await this.messageRepo.findOne({
+      where: { message_id: messageId },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    if (message.deleted_at) {
+      throw new BadRequestException('Cannot react to deleted message');
+    }
+
+    // Verify user has access to the conversation
+    const conversation = await this.conversationRepo.findOne({
+      where: { conversation_id: message.conversation_id },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    if (
+      conversation.member_a_id !== member.member_id &&
+      conversation.member_b_id !== member.member_id
+    ) {
+      throw new ForbiddenException('You are not part of this conversation');
+    }
+
+    // Check if user already reacted with this emoji
+    const existingReaction = await this.reactionRepo.findOne({
+      where: {
+        message_id: messageId,
+        member_id: member.member_id,
+        emoji: dto.emoji,
+      },
+    });
+
+    if (existingReaction) {
+      // Toggle off: delete the reaction
+      await this.reactionRepo.remove(existingReaction);
+      this.logger.log(`[addReaction] Removed reaction for user`);
+      return { success: true, action: 'removed', reaction_id: existingReaction.reaction_id };
+    }
+
+    // Add new reaction
+    const reaction = this.reactionRepo.create({
+      reaction_id: uuidv4(),
+      message_id: messageId,
+      member_id: member.member_id,
+      emoji: dto.emoji,
+    });
+
+    const saved = await this.reactionRepo.save(reaction);
+    this.logger.log(`[addReaction] Added reaction for user`);
+
+    return {
+      success: true,
+      action: 'added',
+      reaction: {
+        reaction_id: saved.reaction_id,
+        message_id: saved.message_id,
+        member_id: saved.member_id,
+        emoji: saved.emoji,
+        created_at: saved.created_at,
+      },
+    };
+  }
+
+  /**
+   * Remove emoji reaction from a message
+   */
+  async removeReaction(userId: string, reactionId: string) {
+    this.logger.log(`[removeReaction] userId=${userId}, reactionId=${reactionId}`);
+
+    const member = await this.memberRepo.findOne({ where: { user_id: userId } });
+    if (!member) throw new NotFoundException('Member profile not found');
+
+    const reaction = await this.reactionRepo.findOne({
+      where: { reaction_id: reactionId },
+    });
+
+    if (!reaction) {
+      throw new NotFoundException('Reaction not found');
+    }
+
+    // Only the user who added the reaction can remove it
+    if (reaction.member_id !== member.member_id) {
+      throw new ForbiddenException('Can only remove your own reactions');
+    }
+
+    await this.reactionRepo.remove(reaction);
+    this.logger.log(`[removeReaction] SUCCESS reactionId=${reactionId}`);
+
+    return { success: true, reaction_id: reactionId };
+  }
+
+  /**
+   * Get reactions summary for a message
+   */
+  async getMessageReactions(messageId: string, currentMemberId: string) {
+    const reactions = await this.reactionRepo.find({
+      where: { message_id: messageId },
+      relations: ['member'],
+    });
+
+    // Group by emoji
+    const grouped: { [emoji: string]: { count: number; members: string[]; userReacted: boolean } } = {};
+
+    reactions.forEach((reaction) => {
+      if (!grouped[reaction.emoji]) {
+        grouped[reaction.emoji] = { count: 0, members: [], userReacted: false };
+      }
+      grouped[reaction.emoji].count++;
+      grouped[reaction.emoji].members.push(reaction.member_id);
+      if (reaction.member_id === currentMemberId) {
+        grouped[reaction.emoji].userReacted = true;
+      }
+    });
+
+    return Object.entries(grouped).map(([emoji, data]) => ({
+      emoji,
+      count: data.count,
+      members: data.members,
+      current_user_reacted: data.userReacted,
+    }));
+  }
+
+  /**
+   * Helper: Format message for response
+   */
+  private formatMessage(msg: Message, currentMemberId: string) {
+    return {
+      message_id: msg.message_id,
+      sender: {
+        member_id: msg.sender.member_id,
+        full_name: msg.sender.user.full_name,
+        avatar_url: msg.sender.user.avatar_url,
+      },
+      receiver: {
+        member_id: msg.receiver.member_id,
+        full_name: msg.receiver.user.full_name,
+        avatar_url: msg.receiver.user.avatar_url,
+      },
+      content: msg.content,
+      is_read: msg.is_read,
+      read_at: msg.read_at,
+      sent_at: msg.sent_at,
+      is_mine: msg.sender_id === currentMemberId,
+      deleted_at: msg.deleted_at,
+      reactions: msg.reactions
+        ? msg.reactions.reduce(
+            (acc, reaction) => {
+              const existing = acc.find((r) => r.emoji === reaction.emoji);
+              if (existing) {
+                existing.count++;
+                existing.members.push(reaction.member_id);
+                if (reaction.member_id === currentMemberId) {
+                  existing.current_user_reacted = true;
+                }
+              } else {
+                acc.push({
+                  emoji: reaction.emoji,
+                  count: 1,
+                  members: [reaction.member_id],
+                  current_user_reacted: reaction.member_id === currentMemberId,
+                });
+              }
+              return acc;
+            },
+            [] as Array<{ emoji: string; count: number; members: string[]; current_user_reacted: boolean }>
+          )
+        : [],
+    };
   }
 }

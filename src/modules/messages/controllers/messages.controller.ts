@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Patch,
   Body,
   Param,
@@ -13,6 +14,7 @@ import {
   HttpStatus,
   ParseIntPipe,
   DefaultValuePipe,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -25,6 +27,8 @@ import {
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { MessagesService } from '../services/messages.service';
 import { SendMessageDto } from '../dto/send-message.dto';
+import { SearchMessagesDto } from '../dto/search-messages.dto';
+import { AddReactionDto } from '../dto/reaction.dto';
 
 @ApiTags('Messages')
 @ApiBearerAuth('bearer')
@@ -88,5 +92,83 @@ export class MessagesController {
   @ApiResponse({ status: 200, description: 'Unread count' })
   async getUnreadCount(@Request() req) {
     return this.messagesService.getUnreadCount(req.user.userId);
+  }
+
+  // ==================== MESSAGE SEARCH ====================
+
+  @Get('search')
+  @ApiOperation({
+    summary: 'Search messages in a conversation',
+    description: 'Full-text search for messages within a specific conversation',
+  })
+  @ApiQuery({ name: 'q', required: true, example: 'book' })
+  @ApiQuery({ name: 'conversation_id', required: true })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
+  @ApiResponse({ status: 200, description: 'Search results with pagination' })
+  @ApiResponse({ status: 400, description: 'Invalid search query' })
+  @ApiResponse({ status: 404, description: 'Conversation not found' })
+  async searchMessages(@Request() req, @Query() query: SearchMessagesDto) {
+    return this.messagesService.searchMessages(req.user.userId, query);
+  }
+
+  // ==================== MESSAGE DELETION ====================
+
+  @Delete(':messageId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Delete a message',
+    description: 'Soft delete your own message (only within 1 hour of sending)',
+  })
+  @ApiParam({ name: 'messageId', description: 'Message ID (UUID)' })
+  @ApiResponse({ status: 200, description: 'Message deleted successfully' })
+  @ApiResponse({ status: 400, description: 'Cannot delete message' })
+  @ApiResponse({ status: 403, description: 'Can only delete your own messages' })
+  @ApiResponse({ status: 404, description: 'Message not found' })
+  async deleteMessage(
+    @Request() req,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+  ) {
+    return this.messagesService.deleteMessage(req.user.userId, messageId);
+  }
+
+  // ==================== MESSAGE REACTIONS ====================
+
+  @Post(':messageId/reactions')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Add emoji reaction to a message',
+    description: 'Add emoji reaction. Can toggle by sending same emoji again',
+  })
+  @ApiParam({ name: 'messageId', description: 'Message ID (UUID)' })
+  @ApiResponse({ status: 201, description: 'Reaction added successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid emoji or deleted message' })
+  @ApiResponse({ status: 403, description: 'No access to conversation' })
+  @ApiResponse({ status: 404, description: 'Message not found' })
+  async addReaction(
+    @Request() req,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Body() dto: AddReactionDto,
+  ) {
+    return this.messagesService.addReaction(req.user.userId, messageId, dto);
+  }
+
+  @Delete(':messageId/reactions/:reactionId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Remove emoji reaction from a message',
+    description: 'Remove your own emoji reaction from a message',
+  })
+  @ApiParam({ name: 'messageId', description: 'Message ID' })
+  @ApiParam({ name: 'reactionId', description: 'Reaction ID' })
+  @ApiResponse({ status: 200, description: 'Reaction removed successfully' })
+  @ApiResponse({ status: 403, description: 'Can only remove your own reactions' })
+  @ApiResponse({ status: 404, description: 'Reaction not found' })
+  async removeReaction(
+    @Request() req,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+    @Param('reactionId', new ParseUUIDPipe()) reactionId: string,
+  ) {
+    return this.messagesService.removeReaction(req.user.userId, reactionId);
   }
 }

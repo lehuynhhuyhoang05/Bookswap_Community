@@ -46,6 +46,24 @@ lerna-debug.log*
 .temp
 .tmp
 
+# Development documentation (internal notes - do not commit)
+IMPROVEMENTS.md
+MIGRATION_IMPACT_ANALYSIS.md
+API_IMPACT_ANALYSIS.md
+MESSAGES_MODULE_DEVELOPMENT.md
+MESSAGE_FEATURES_IMPLEMENTATION.md
+TESTING_GUIDE.md
+COMMIT_SUMMARY.md
+00-README-MESSAGE-FEATURES.md
+IMPLEMENTATION_SUMMARY.md
+IMPLEMENTATION_COMPLETE.md
+
+# Development helper scripts (database migration, testing)
+check-reactions.js
+check-schema.js
+create-reactions-table.js
+run-migration.js
+
 # Runtime data
 pids
 *.pid
