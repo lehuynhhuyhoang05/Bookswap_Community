@@ -42,13 +42,10 @@ async function bootstrap() {
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
-        name: 'Authorization',
-        in: 'header',
-        description: 'Enter JWT token (without "Bearer" prefix)'
+        description: 'JWT token for authentication',
       },
-      'access-token' // 
+      'bearer'
     )
-    .addSecurityRequirements('access-token') // ← Global security (tùy chọn)
     .addTag('Authentication', 'User authentication endpoints')
     .addTag('Users', 'User management endpoints')
     .addTag('Books', 'Book management endpoints')

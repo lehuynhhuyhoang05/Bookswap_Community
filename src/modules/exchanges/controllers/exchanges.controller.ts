@@ -44,7 +44,7 @@ import {
 @ApiTags('Exchanges')
 @Controller('exchanges')
 @UseGuards(JwtAuthGuard)
-@ApiBearerAuth('access-token') // ← SỬA: từ 'bearer' → 'access-token'
+@ApiBearerAuth('bearer')
 export class ExchangesController {
   private readonly logger = new Logger(ExchangesController.name); // ← THÊM LOGGER
 
