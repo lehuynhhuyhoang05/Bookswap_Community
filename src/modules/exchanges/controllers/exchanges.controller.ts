@@ -38,6 +38,7 @@ import {
   ExchangeStatsResponseDto,
   PaginatedExchangesDto,
   PaginatedExchangeRequestsDto,
+  ExchangeSuggestionsResponseDto,
 } from '../dto/exchange.dto';
 
 @ApiTags('Exchanges')
@@ -150,8 +151,12 @@ export class ExchangesController {
     summary: 'Generate new exchange suggestions',
     description: 'F-MEM-07: Auto-matching algorithm to find potential exchange partners based on wanted books',
   })
-  @ApiResponse({ status: 201, description: 'Suggestions generated successfully' })
-  async generateSuggestions(@Request() req) {
+  @ApiResponse({ 
+    status: 201, 
+    description: 'Suggestions generated successfully',
+    type: ExchangeSuggestionsResponseDto,
+  })
+  async generateSuggestions(@Request() req): Promise<ExchangeSuggestionsResponseDto> {
     const startTime = Date.now(); // ← THÊM TIMING
     try {
       this.logger.log(`[generateSuggestions] START userId=${req.user?.userId}`);

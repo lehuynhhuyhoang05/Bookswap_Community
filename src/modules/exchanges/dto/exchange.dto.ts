@@ -295,3 +295,184 @@ export class PaginatedExchangesDto {
   @ApiProperty()
   pages: number;
 }
+
+// ==================== EXCHANGE SUGGESTIONS ====================
+export class BookDetailDto {
+  @ApiProperty({ example: 'book-uuid-1' })
+  book_id: string;
+
+  @ApiProperty({ example: 'Clean Code' })
+  title: string;
+
+  @ApiProperty({ example: 'Robert C. Martin' })
+  author: string;
+
+  @ApiProperty({ example: 'Programming' })
+  category: string;
+
+  @ApiProperty({ example: 'Like New' })
+  condition: string;
+
+  @ApiPropertyOptional({ example: 'https://example.com/cover.jpg' })
+  cover_image?: string;
+}
+
+export class WantDetailDto {
+  @ApiProperty({ example: 'want-uuid-1' })
+  wanted_id: string;
+
+  @ApiProperty({ example: 'Clean Code' })
+  title: string;
+
+  @ApiPropertyOptional({ example: 'Robert C. Martin' })
+  author?: string;
+
+  @ApiPropertyOptional({ example: 'Programming' })
+  category?: string;
+
+  @ApiProperty({ example: 8, description: 'Priority level 1-10' })
+  priority: number;
+}
+
+export class BookMatchDto {
+  @ApiProperty({ type: BookDetailDto })
+  my_book: BookDetailDto;
+
+  @ApiProperty({ type: WantDetailDto })
+  their_want: WantDetailDto;
+
+  @ApiProperty({ example: 0.856, description: 'Match score between 0 and 1' })
+  match_score: number;
+
+  @ApiProperty({
+    example: ['Exact title match', 'Same author', 'High priority want'],
+    description: 'Reasons why this is a good match',
+  })
+  reasons: string[];
+}
+
+export class ReverseBookMatchDto {
+  @ApiProperty({ type: BookDetailDto })
+  their_book: BookDetailDto;
+
+  @ApiProperty({ type: WantDetailDto })
+  my_want: WantDetailDto;
+
+  @ApiProperty({ example: 0.923, description: 'Match score between 0 and 1' })
+  match_score: number;
+
+  @ApiProperty({
+    example: ['Exact title match', 'Category: Programming', 'Excellent condition'],
+    description: 'Reasons why this is a good match',
+  })
+  reasons: string[];
+}
+
+export class MatchingBooksDto {
+  @ApiProperty({
+    type: [BookMatchDto],
+    description: 'Books they want from you',
+  })
+  they_want_from_me: BookMatchDto[];
+
+  @ApiProperty({
+    type: [ReverseBookMatchDto],
+    description: 'Books you want from them',
+  })
+  i_want_from_them: ReverseBookMatchDto[];
+}
+
+export class ScoreBreakdownDto {
+  @ApiProperty({ example: 0.285, description: 'Score from book matching (title, author, category)' })
+  book_match: number;
+
+  @ApiProperty({ example: 0.15, description: 'Score from member trust level' })
+  trust_score: number;
+
+  @ApiProperty({ example: 0.08, description: 'Score from exchange history' })
+  exchange_history: number;
+
+  @ApiProperty({ example: 0.06, description: 'Score from member ratings' })
+  rating: number;
+
+  @ApiProperty({ example: 0.1, description: 'Score from geographic proximity' })
+  geographic: number;
+
+  @ApiProperty({ example: 0.05, description: 'Score from member verification status' })
+  verification: number;
+
+  @ApiProperty({ example: 0.08, description: 'Score from want priority level' })
+  priority: number;
+
+  @ApiProperty({ example: 0.05, description: 'Score from book condition' })
+  condition: number;
+}
+
+export class SuggestionMemberDto {
+  @ApiProperty({ example: 'member-uuid-1' })
+  member_id: string;
+
+  @ApiProperty({ example: 'John Doe' })
+  full_name: string;
+
+  @ApiPropertyOptional({ example: 'https://example.com/avatar.jpg' })
+  avatar_url?: string;
+
+  @ApiProperty({ example: 'Hanoi' })
+  region: string;
+
+  @ApiProperty({ example: 4.5, description: 'Trust score from 0 to 5' })
+  trust_score: number;
+
+  @ApiProperty({ example: 4.8, description: 'Average rating from 0 to 5' })
+  average_rating: number;
+
+  @ApiProperty({ example: true })
+  is_verified: boolean;
+
+  @ApiProperty({ example: 15 })
+  completed_exchanges: number;
+}
+
+export class ExchangeSuggestionDto {
+  @ApiProperty({ example: 'suggestion-uuid-1' })
+  suggestion_id: string;
+
+  @ApiProperty({ example: 0.753, description: 'Overall match score between 0 and 1' })
+  match_score: number;
+
+  @ApiProperty({ example: 4, description: 'Total number of matching books' })
+  total_matching_books: number;
+
+  @ApiProperty({ example: false })
+  is_viewed: boolean;
+
+  @ApiProperty({ type: ScoreBreakdownDto })
+  score_breakdown: ScoreBreakdownDto;
+
+  @ApiProperty()
+  created_at: Date | null;
+
+  @ApiProperty()
+  expired_at: Date | null;
+
+  @ApiPropertyOptional()
+  viewed_at?: Date | null;
+
+  @ApiProperty({ type: SuggestionMemberDto })
+  member: SuggestionMemberDto;
+
+  @ApiProperty({ type: MatchingBooksDto })
+  matching_books: MatchingBooksDto;
+}
+
+export class ExchangeSuggestionsResponseDto {
+  @ApiProperty({
+    type: [ExchangeSuggestionDto],
+    description: 'List of exchange suggestions ordered by match score',
+  })
+  suggestions: ExchangeSuggestionDto[];
+
+  @ApiProperty({ example: 5 })
+  total: number;
+}

@@ -20,7 +20,7 @@ async function bootstrap() {
 
   // CORS
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: true,
     credentials: true,
   });
 
@@ -46,7 +46,7 @@ async function bootstrap() {
         in: 'header',
         description: 'Enter JWT token (without "Bearer" prefix)'
       },
-      'access-token' // ← ĐÃ ĐÚNG TÊN
+      'access-token' // 
     )
     .addSecurityRequirements('access-token') // ← Global security (tùy chọn)
     .addTag('Authentication', 'User authentication endpoints')
