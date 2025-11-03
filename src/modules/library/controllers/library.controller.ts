@@ -36,7 +36,7 @@ import * as authUserType from '../../../modules/auth/types/auth-user.type';
 // Nếu muốn mở public cho 1 số route: import { Public } from '../../../common/decorators/public.decorator';
 
 @ApiTags('Personal Library')
-@ApiBearerAuth()
+@ApiBearerAuth('bearer')
 @UseGuards(JwtAuthGuard)
 @Controller('api/v1/library')
 export class LibraryController {

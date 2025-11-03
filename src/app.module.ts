@@ -11,6 +11,8 @@ import { MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { RequestAuthLogMiddleware } from './common/middlewares/request-auth-log.middleware';
 import { LibraryModule } from './modules/library/library.module';
 import { ExchangesModule } from './modules/exchanges/exchanges.module';
+import { MessagesModule } from './modules/messages/messages.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -34,6 +36,7 @@ import { ExchangesModule } from './modules/exchanges/exchanges.module';
     BooksModule,
     LibraryModule,
     ExchangesModule,
+    MessagesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

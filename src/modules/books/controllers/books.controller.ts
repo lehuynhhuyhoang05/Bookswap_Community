@@ -48,7 +48,7 @@ export class BooksController {
    *  ========================================================= */
   @Post()
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('access-token') // ← ĐÃ SỬA
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Add a new book to your library' })
   @ApiResponse({ status: 201, description: 'Book created successfully' })
   @ApiResponse({ status: 404, description: 'Member profile not found' })
@@ -86,7 +86,7 @@ export class BooksController {
 
   @Get('my-library')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('access-token') // ← ĐÃ SỬA
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Get your personal book collection' })
   @ApiResponse({ status: 200, description: 'Your books retrieved successfully' })
   async findMyBooks(@Request() req) {
@@ -129,7 +129,7 @@ export class BooksController {
 
   @Get('search/advanced')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('access-token') // ← ĐÃ SỬA
+  @ApiBearerAuth('bearer')
   @ApiOperation({ 
     summary: 'Advanced search with filters',
     description: 'Search books with multiple filters (category, region, condition, etc.)',
@@ -156,7 +156,7 @@ export class BooksController {
 
   @Get('wanted/search')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('access-token') // ← ĐÃ SỬA
+  @ApiBearerAuth('bearer')
   @ApiOperation({ 
     summary: 'Search wanted books',
     description: 'Search books that other members want. Useful to see what you can offer.',
@@ -342,7 +342,7 @@ export class BooksController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('access-token') // ← ĐÃ SỬA
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Update your book information' })
   @ApiParam({ name: 'id', description: 'Book UUID' })
   @ApiResponse({ status: 200, description: 'Book updated successfully' })
@@ -354,7 +354,7 @@ export class BooksController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('access-token') // ← ĐÃ SỬA
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Delete your book (soft delete)' })
   @ApiParam({ name: 'id', description: 'Book UUID' })
   @ApiResponse({ status: 200, description: 'Book deleted successfully' })
@@ -366,7 +366,7 @@ export class BooksController {
   // ============= DEBUG ENDPOINTS (XÓA SAU KHI DONE) =============
 @Post('test/auth')
 @UseGuards(JwtAuthGuard)
-@ApiBearerAuth('access-token')
+@ApiBearerAuth('bearer')
 @ApiOperation({ summary: '[DEBUG] Test authentication' })
 @ApiResponse({ status: 200, description: 'Auth working' })
 async testAuth(@Request() req) {
