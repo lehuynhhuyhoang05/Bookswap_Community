@@ -8,6 +8,7 @@ import { MessagesService } from './services/messages.service';
 import { MessagesGateway } from './gateways/messages/messages.gateway';
 import { Conversation } from '../../infrastructure/database/entities/conversation.entity';
 import { Message } from '../../infrastructure/database/entities/message.entity';
+import { MessageReaction } from '../../infrastructure/database/entities/message-reaction.entity';
 import { Member } from '../../infrastructure/database/entities/member.entity';
 import { ExchangeRequest } from '../../infrastructure/database/entities/exchange-request.entity';
 
@@ -16,6 +17,7 @@ import { ExchangeRequest } from '../../infrastructure/database/entities/exchange
     TypeOrmModule.forFeature([
       Conversation,
       Message,
+      MessageReaction,
       Member,
       ExchangeRequest,
     ]),

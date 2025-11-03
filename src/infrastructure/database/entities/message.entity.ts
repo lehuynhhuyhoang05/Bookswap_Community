@@ -4,11 +4,13 @@ import {
   Column,
   PrimaryColumn,
   ManyToOne,
+  OneToMany,
   JoinColumn,
   CreateDateColumn,
 } from 'typeorm';
 import { Conversation } from './conversation.entity';
 import { Member } from './member.entity';
+import { MessageReaction } from './message-reaction.entity';
 
 @Entity('messages')
 export class Message {
@@ -36,6 +38,9 @@ export class Message {
   @Column('timestamp', { default: () => 'CURRENT_TIMESTAMP' })
   sent_at: Date;
 
+  @Column('timestamp', { nullable: true })
+  deleted_at: Date | null;
+
   @CreateDateColumn()
   created_at: Date;
 
@@ -50,4 +55,7 @@ export class Message {
   @ManyToOne(() => Member)
   @JoinColumn({ name: 'receiver_id' })
   receiver: Member;
+
+  @OneToMany(() => MessageReaction, (reaction) => reaction.message, { cascade: true })
+  reactions: MessageReaction[];
 }
