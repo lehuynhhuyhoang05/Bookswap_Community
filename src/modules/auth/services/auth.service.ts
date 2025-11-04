@@ -31,7 +31,7 @@ import {
   ResetPasswordDto,
 } from '../dto/auth.dto';
 
-type JwtClaims = { sub: string; email: string; role: UserRole };
+type JwtClaims = { sub: string; email: string; role: UserRole; memberId?: string };
 
 // ------------------ helpers ------------------
 function durationToSeconds(v: string | number | undefined, fallbackSec: number): number {
@@ -172,6 +172,7 @@ export class AuthService {
       sub: savedUser.user_id,
       email: savedUser.email,
       role: savedUser.role,
+      memberId: member.member_id,
     };
 
     const { token: access_token,  expiresInSec: access_expires }  = this.signAccessToken(payload);
@@ -210,6 +211,11 @@ export class AuthService {
     await this.userRepository.save(user);
 
     const payload: JwtClaims = { sub: user.user_id, email: user.email, role: user.role };
+    // attach memberId when available to avoid a DB lookup in JwtStrategy
+    try {
+      const memId = await this.findMemberIdByUserId(user.user_id);
+      if (memId) (payload as any).memberId = memId;
+    } catch {}
     const { token: access_token, expiresInSec: access_expires } = this.signAccessToken(payload);
     const { token: refresh_token } = this.signRefreshToken(payload);
 
