@@ -12,7 +12,7 @@ import { RequestAuthLogMiddleware } from './common/middlewares/request-auth-log.
 import { LibraryModule } from './modules/library/library.module';
 import { ExchangesModule } from './modules/exchanges/exchanges.module';
 import { MessagesModule } from './modules/messages/messages.module';
-
+import { ReviewsModule } from './modules/reviews/reviews.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -37,6 +37,7 @@ import { MessagesModule } from './modules/messages/messages.module';
     LibraryModule,
     ExchangesModule,
     MessagesModule,
+    ReviewsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
