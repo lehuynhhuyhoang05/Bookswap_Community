@@ -38,6 +38,8 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
     ExchangesModule,
     MessagesModule,
     ReviewsModule,
+    // Notifications module provides in-app notifications and real-time emits
+    require('./modules/notifications/notifications.module').NotificationsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
