@@ -2,7 +2,8 @@
 // src/infrastructure/database/entities/audit-log.entity.ts
 // Entity lưu nhật ký mọi hành động của admin
 // ============================================================
-import { Entity, Column, PrimaryColumn, CreateDateColumn, Index } from 'typeorm';
+import { Entity, Column, PrimaryColumn, CreateDateColumn, Index, ManyToOne, JoinColumn } from 'typeorm';
+import { Admin } from './admin.entity';
 import { v4 as uuidv4 } from 'uuid';
 
 export enum AuditAction {
@@ -15,6 +16,7 @@ export enum AuditAction {
   REMOVE_REVIEW = 'REMOVE_REVIEW',
   RESOLVE_REPORT = 'RESOLVE_REPORT',
   DISMISS_REPORT = 'DISMISS_REPORT',
+  CANCEL_EXCHANGE = 'CANCEL_EXCHANGE',
 }
 
 @Entity('audit_logs')
@@ -52,6 +54,11 @@ export class AuditLog {
 
   @CreateDateColumn()
   created_at: Date;
+
+  // Relations
+  @ManyToOne(() => Admin, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'admin_id' })
+  admin: Admin;
 
   constructor() {
     this.log_id = uuidv4();
