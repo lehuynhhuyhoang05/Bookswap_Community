@@ -1,8 +1,10 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Member } from './member.entity';
 
 @Entity('notifications')
+@Index('idx_notifications_member_created', ['member_id', 'created_at'])
+@Index('idx_notifications_member_isread', ['member_id', 'is_read'])
 export class Notification {
   @PrimaryColumn('varchar', { length: 36 })
   notification_id: string;
@@ -14,20 +16,12 @@ export class Notification {
   @JoinColumn({ name: 'member_id' })
   member: Member;
 
-  @Column({ length: 50, nullable: true })
+  @Column({ length: 64, nullable: false })
   notification_type: string;
 
-  @Column({ length: 255, nullable: true })
-  title: string;
-
-  @Column({ type: 'text', nullable: true })
-  content: string;
-
-  @Column({ length: 50, nullable: true })
-  reference_type: string;
-
-  @Column({ length: 36, nullable: true })
-  reference_id: string;
+  // JSON payload for flexible content storage
+  @Column({ type: 'json', nullable: true })
+  payload: Record<string, any> | null;
 
   @Column({ default: false })
   is_read: boolean;
@@ -37,6 +31,13 @@ export class Notification {
 
   @CreateDateColumn()
   created_at: Date;
+
+  @UpdateDateColumn()
+  updated_at: Date;
+
+  // Soft delete support
+  @Column({ type: 'timestamp', nullable: true })
+  deleted_at: Date | null;
 
   constructor() {
     this.notification_id = uuidv4();
