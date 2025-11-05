@@ -27,6 +27,7 @@ import {
 } from '../dto/user-management.dto';
 import { QueryBooksDto, RemoveBookDto, QueryReviewsDto, RemoveReviewDto } from '../dto/content-moderation.dto';
 import { QueryReportsDto, ResolveReportDto, DismissReportDto } from '../dto/report-management.dto';
+import { QueryExchangesDto, CancelExchangeDto } from '../dto/exchange-management.dto';
 
 @Injectable()
 export class AdminService {
@@ -636,6 +637,189 @@ export class AdminService {
         resolved: resolvedReports,
         avg_resolution_time: parseFloat(avgResolutionTime.toFixed(2)),
       },
+    };
+  }
+
+  // ============================================================
+  // EXCHANGE MANAGEMENT
+  // ============================================================
+
+  /**
+   * Lấy danh sách exchanges với filter và pagination
+   */
+  async getExchanges(dto: QueryExchangesDto) {
+    const page = dto.page ?? 1;
+    const limit = dto.limit ?? 20;
+    
+    const qb = this.exchangeRepo
+      .createQueryBuilder('e')
+      .leftJoinAndSelect('e.member_a', 'member_a')
+      .leftJoinAndSelect('e.member_b', 'member_b')
+      .leftJoin('member_a.user', 'user_a')
+      .leftJoin('member_b.user', 'user_b')
+      .addSelect(['user_a.email', 'user_a.full_name'])
+      .addSelect(['user_b.email', 'user_b.full_name'])
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    // Filter theo status
+    if (dto.status) {
+      qb.andWhere('e.status = :status', { status: dto.status });
+    }
+
+    // Filter theo member_a_id
+    if (dto.memberAId) {
+      qb.andWhere('e.member_a_id = :memberAId', { memberAId: dto.memberAId });
+    }
+
+    // Filter theo member_b_id
+    if (dto.memberBId) {
+      qb.andWhere('e.member_b_id = :memberBId', { memberBId: dto.memberBId });
+    }
+
+    // Filter theo date range
+    if (dto.startDate) {
+      qb.andWhere('e.created_at >= :startDate', { startDate: dto.startDate });
+    }
+
+    if (dto.endDate) {
+      qb.andWhere('e.created_at <= :endDate', { endDate: dto.endDate });
+    }
+
+    // Sort
+    qb.orderBy(`e.${dto.sortBy}`, dto.sortOrder);
+
+    const [items, total] = await qb.getManyAndCount();
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Xem chi tiết 1 exchange
+   */
+  async getExchangeDetail(exchangeId: string) {
+    const exchange = await this.exchangeRepo.findOne({
+      where: { exchange_id: exchangeId },
+      relations: ['member_a', 'member_b', 'member_a.user', 'member_b.user', 'request', 'exchange_books', 'exchange_books.book'],
+    });
+
+    if (!exchange) {
+      throw new NotFoundException('Exchange not found');
+    }
+
+    return exchange;
+  }
+
+  /**
+   * Cancel exchange (admin force cancel)
+   */
+  async cancelExchange(exchangeId: string, dto: CancelExchangeDto, adminId: string, adminEmail: string) {
+    const exchange = await this.exchangeRepo.findOne({
+      where: { exchange_id: exchangeId },
+      relations: ['member_a', 'member_b'],
+    });
+
+    if (!exchange) {
+      throw new NotFoundException('Exchange not found');
+    }
+
+    if (exchange.status === ExchangeStatus.CANCELLED) {
+      throw new BadRequestException('Exchange is already cancelled');
+    }
+
+    if (exchange.status === ExchangeStatus.COMPLETED) {
+      throw new BadRequestException('Cannot cancel a completed exchange');
+    }
+
+    // Update status
+    const oldStatus = exchange.status;
+    exchange.status = ExchangeStatus.CANCELLED;
+    await this.exchangeRepo.save(exchange);
+
+    // Log audit
+    await this.createAuditLog({
+      admin_id: adminId,
+      admin_email: adminEmail,
+      action: AuditAction.CANCEL_EXCHANGE,
+      entity_type: 'EXCHANGE',
+      entity_id: exchangeId,
+      old_value: { status: oldStatus },
+      new_value: { status: ExchangeStatus.CANCELLED },
+      reason: dto.reason,
+    });
+
+    this.logger.warn(`Admin ${adminEmail} cancelled exchange ${exchangeId}: ${dto.reason}`);
+
+    return { success: true, message: 'Exchange cancelled successfully' };
+  }
+
+  /**
+   * Thống kê exchanges cho admin
+   */
+  async getExchangeStats() {
+    const totalExchanges = await this.exchangeRepo.count();
+    const completedExchanges = await this.exchangeRepo.count({ 
+      where: { status: ExchangeStatus.COMPLETED } 
+    });
+    const pendingExchanges = await this.exchangeRepo.count({ 
+      where: { status: ExchangeStatus.PENDING } 
+    });
+    const acceptedExchanges = await this.exchangeRepo.count({ 
+      where: { status: ExchangeStatus.ACCEPTED } 
+    });
+    const cancelledExchanges = await this.exchangeRepo.count({ 
+      where: { status: ExchangeStatus.CANCELLED } 
+    });
+
+    // Tính tỷ lệ thành công
+    const successRate = totalExchanges > 0 
+      ? (completedExchanges / totalExchanges) * 100 
+      : 0;
+
+    // Tính avg time to complete (giờ)
+    const avgTimeResult = await this.exchangeRepo
+      .createQueryBuilder('e')
+      .select('AVG(TIMESTAMPDIFF(HOUR, e.created_at, e.completed_at))', 'avg_hours')
+      .where('e.status = :status', { status: ExchangeStatus.COMPLETED })
+      .andWhere('e.completed_at IS NOT NULL')
+      .getRawOne();
+
+    const avgCompletionTime = parseFloat(avgTimeResult?.avg_hours || '0') || 0;
+
+    // Top 10 members theo số lượng exchanges hoàn thành
+    const topMembers = await this.exchangeRepo
+      .createQueryBuilder('e')
+      .select('m.member_id', 'member_id')
+      .addSelect('u.full_name', 'full_name')
+      .addSelect('u.email', 'email')
+      .addSelect('COUNT(*)', 'exchange_count')
+      .innerJoin('members', 'm', '(e.member_a_id = m.member_id OR e.member_b_id = m.member_id)')
+      .innerJoin('users', 'u', 'u.user_id = m.user_id')
+      .where('e.status = :status', { status: ExchangeStatus.COMPLETED })
+      .groupBy('m.member_id')
+      .addGroupBy('u.full_name')
+      .addGroupBy('u.email')
+      .orderBy('exchange_count', 'DESC')
+      .limit(10)
+      .getRawMany();
+
+    return {
+      overview: {
+        total: totalExchanges,
+        completed: completedExchanges,
+        pending: pendingExchanges,
+        accepted: acceptedExchanges,
+        cancelled: cancelledExchanges,
+        success_rate: parseFloat(successRate.toFixed(2)),
+        avg_completion_hours: parseFloat(avgCompletionTime.toFixed(2)),
+      },
+      top_members: topMembers,
     };
   }
 

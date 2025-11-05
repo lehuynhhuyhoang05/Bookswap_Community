@@ -29,6 +29,7 @@ import {
   UpdateUserRoleDto,
 } from '../dto/user-management.dto';
 import { QueryBooksDto, RemoveBookDto, QueryReviewsDto, RemoveReviewDto } from '../dto/content-moderation.dto';
+import { QueryExchangesDto, CancelExchangeDto } from '../dto/exchange-management.dto';
 
 @ApiTags('Admin - Management')
 @ApiBearerAuth()
@@ -155,5 +156,42 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Dashboard stats' })
   async getDashboardStats() {
     return this.adminService.getDashboardStats();
+  }
+
+  // ============================================================
+  // EXCHANGE MANAGEMENT
+  // ============================================================
+
+  @Get('exchanges')
+  @ApiOperation({ summary: 'Lấy danh sách exchanges (admin view all)' })
+  @ApiResponse({ status: 200, description: 'Danh sách exchanges' })
+  async getExchanges(@Query() dto: QueryExchangesDto) {
+    return this.adminService.getExchanges(dto);
+  }
+
+  @Get('exchanges/:exchangeId')
+  @ApiOperation({ summary: 'Xem chi tiết 1 exchange' })
+  @ApiResponse({ status: 200, description: 'Chi tiết exchange' })
+  async getExchangeDetail(@Param('exchangeId') exchangeId: string) {
+    return this.adminService.getExchangeDetail(exchangeId);
+  }
+
+  @Post('exchanges/:exchangeId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cancel exchange (admin force cancel)' })
+  @ApiResponse({ status: 200, description: 'Exchange bị hủy thành công' })
+  async cancelExchange(
+    @Param('exchangeId') exchangeId: string,
+    @Body() dto: CancelExchangeDto,
+    @CurrentAdmin() admin: any,
+  ) {
+    return this.adminService.cancelExchange(exchangeId, dto, admin.sub, admin.email);
+  }
+
+  @Get('exchanges/statistics/overview')
+  @ApiOperation({ summary: 'Thống kê exchanges (overview + top members)' })
+  @ApiResponse({ status: 200, description: 'Exchange statistics' })
+  async getExchangeStats() {
+    return this.adminService.getExchangeStats();
   }
 }
