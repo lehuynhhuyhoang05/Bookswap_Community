@@ -256,7 +256,7 @@ describe('ExchangesService', () => {
     it.skip('should accept exchange request and create exchange', async () => {
       // Arrange
       const acceptDto: RespondToRequestDto = {
-        accept: true,
+        accepted: true,
       };
 
       const mockReceiver = {
@@ -304,7 +304,7 @@ describe('ExchangesService', () => {
     it.skip('should reject exchange request', async () => {
       // Arrange
       const rejectDto: RespondToRequestDto = {
-        accept: false,
+        accepted: false,
         rejection_reason: 'Not interested',
       };
 
@@ -340,7 +340,7 @@ describe('ExchangesService', () => {
 
       // Act & Assert
       await expect(
-        service.respondToRequest(userId, requestId, { accept: true })
+        service.respondToRequest(userId, requestId, { accepted: true })
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -358,7 +358,7 @@ describe('ExchangesService', () => {
 
       // Act & Assert
       await expect(
-        service.respondToRequest(userId, requestId, { accept: true })
+        service.respondToRequest(userId, requestId, { accepted: true })
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -376,10 +376,10 @@ describe('ExchangesService', () => {
 
       // Act & Assert
       await expect(
-        service.respondToRequest(userId, requestId, { accept: true })
+        service.respondToRequest(userId, requestId, { accepted: true })
       ).rejects.toThrow(BadRequestException);
       await expect(
-        service.respondToRequest(userId, requestId, { accept: true })
+        service.respondToRequest(userId, requestId, { accepted: true })
       ).rejects.toThrow('Request already processed');
     });
   });
