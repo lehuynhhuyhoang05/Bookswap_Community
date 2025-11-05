@@ -21,7 +21,7 @@ import { CurrentAdmin } from '../../../common/decorators/current-admin.decorator
 import { AdminService } from '../services/admin.service';
 import { QueryReportsDto, ResolveReportDto, DismissReportDto } from '../dto/report-management.dto';
 
-@ApiTags('Admin - Reports')
+@ApiTags('🚨 ADMIN - Quản lý báo cáo vi phạm')
 @ApiBearerAuth()
 @Controller('admin/reports')
 @UseGuards(JwtAuthGuard, AdminGuard)
@@ -30,23 +30,34 @@ export class ReportsController {
   constructor(private readonly adminService: AdminService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Lấy danh sách reports' })
+  @ApiOperation({ 
+    summary: '🚨 Lấy danh sách báo cáo vi phạm',
+    description: 'Xem tất cả reports trong hệ thống. Filter theo status (PENDING/RESOLVED/DISMISSED), priority (HIGH/MEDIUM/LOW), entity type. Hỗ trợ phân trang.'
+  })
   @ApiResponse({ status: 200, description: 'Danh sách reports' })
   async getReports(@Query() dto: QueryReportsDto) {
     return this.adminService.getReports(dto);
   }
 
   @Get(':reportId')
-  @ApiOperation({ summary: 'Xem chi tiết 1 report' })
+  @ApiOperation({ 
+    summary: '🔍 Xem chi tiết báo cáo',
+    description: 'Xem thông tin đầy đủ của 1 report: reporter info, target entity, reason, evidence, status history.'
+  })
   @ApiResponse({ status: 200, description: 'Chi tiết report' })
+  @ApiResponse({ status: 404, description: 'Report không tồn tại' })
   async getReportDetail(@Param('reportId') reportId: string) {
     return this.adminService.getReportDetail(reportId);
   }
 
   @Post(':reportId/resolve')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Resolve report (đã xử lý)' })
-  @ApiResponse({ status: 200, description: 'Report đã được resolve' })
+  @ApiOperation({ 
+    summary: '✅ Xử lý báo cáo (đã giải quyết)',
+    description: 'Resolve report - xác nhận vi phạm và đã xử lý (khóa user, xóa content...). Cần có action_taken trong body.'
+  })
+  @ApiResponse({ status: 200, description: 'Resolve report thành công' })
+  @ApiResponse({ status: 404, description: 'Report không tồn tại' })
   async resolveReport(
     @Param('reportId') reportId: string,
     @Body() dto: ResolveReportDto,
@@ -57,8 +68,12 @@ export class ReportsController {
 
   @Post(':reportId/dismiss')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Dismiss report (không vi phạm)' })
-  @ApiResponse({ status: 200, description: 'Report đã được dismiss' })
+  @ApiOperation({ 
+    summary: '❌ Bác bỏ báo cáo (không vi phạm)',
+    description: 'Dismiss report - xác nhận không có vi phạm hoặc report sai. Cần có lý do trong body.'
+  })
+  @ApiResponse({ status: 200, description: 'Dismiss report thành công' })
+  @ApiResponse({ status: 404, description: 'Report không tồn tại' })
   async dismissReport(
     @Param('reportId') reportId: string,
     @Body() dto: DismissReportDto,

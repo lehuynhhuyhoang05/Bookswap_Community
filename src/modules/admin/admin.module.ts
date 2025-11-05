@@ -12,9 +12,13 @@ import { Exchange } from '../../infrastructure/database/entities/exchange.entity
 import { ViolationReport } from '../../infrastructure/database/entities/violation-report.entity';
 import { AuditLog } from '../../infrastructure/database/entities/audit-log.entity';
 import { Admin } from '../../infrastructure/database/entities/admin.entity';
+import { Message } from '../../infrastructure/database/entities/message.entity';
+import { Conversation } from '../../infrastructure/database/entities/conversation.entity';
+import { UserActivityLog } from '../../infrastructure/database/entities/user-activity-log.entity';
 import { AdminController } from './controllers/admin.controller';
 import { ReportsController } from './controllers/reports.controller';
 import { AdminService } from './services/admin.service';
+import { ActivityLogService } from '../../common/services/activity-log.service';
 
 @Module({
   imports: [
@@ -27,10 +31,13 @@ import { AdminService } from './services/admin.service';
       ViolationReport,
       AuditLog,
       Admin,
+      Message,
+      Conversation,
+      UserActivityLog,
     ]),
   ],
   controllers: [AdminController, ReportsController],
-  providers: [AdminService],
-  exports: [AdminService], // Export để các module khác có thể dùng nếu cần
+  providers: [AdminService, ActivityLogService],
+  exports: [AdminService, ActivityLogService], // Export ActivityLogService để các module khác có thể log user activities
 })
 export class AdminModule {}
