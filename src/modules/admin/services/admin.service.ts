@@ -18,6 +18,9 @@ import { Review } from '../../../infrastructure/database/entities/review.entity'
 import { Exchange, ExchangeStatus } from '../../../infrastructure/database/entities/exchange.entity';
 import { ViolationReport, ReportStatus, ReportPriority } from '../../../infrastructure/database/entities/violation-report.entity';
 import { AuditLog, AuditAction } from '../../../infrastructure/database/entities/audit-log.entity';
+import { Message } from '../../../infrastructure/database/entities/message.entity';
+import { Conversation } from '../../../infrastructure/database/entities/conversation.entity';
+import { ActivityLogService } from '../../../common/services/activity-log.service';
 import {
   QueryUsersDto,
   LockUserDto,
@@ -28,6 +31,7 @@ import {
 import { QueryBooksDto, RemoveBookDto, QueryReviewsDto, RemoveReviewDto } from '../dto/content-moderation.dto';
 import { QueryReportsDto, ResolveReportDto, DismissReportDto } from '../dto/report-management.dto';
 import { QueryExchangesDto, CancelExchangeDto } from '../dto/exchange-management.dto';
+import { QueryMessagesDto, RemoveMessageDto } from '../dto/messaging-moderation.dto';
 
 @Injectable()
 export class AdminService {
@@ -48,6 +52,11 @@ export class AdminService {
     private reportRepo: Repository<ViolationReport>,
     @InjectRepository(AuditLog)
     private auditRepo: Repository<AuditLog>,
+    @InjectRepository(Message)
+    private messageRepo: Repository<Message>,
+    @InjectRepository(Conversation)
+    private conversationRepo: Repository<Conversation>,
+    private activityLogService: ActivityLogService,
   ) {}
 
   // ============================================================
@@ -820,6 +829,191 @@ export class AdminService {
         avg_completion_hours: parseFloat(avgCompletionTime.toFixed(2)),
       },
       top_members: topMembers,
+    };
+  }
+
+  // ============================================================
+  // MESSAGING MODERATION
+  // ============================================================
+
+  /**
+   * Lấy danh sách messages (admin có thể xem tất cả)
+   */
+  async getMessages(dto: QueryMessagesDto) {
+    const page = dto.page ?? 1;
+    const limit = dto.limit ?? 20;
+    
+    const qb = this.messageRepo
+      .createQueryBuilder('m')
+      .leftJoinAndSelect('m.sender', 'sender')
+      .leftJoinAndSelect('m.receiver', 'receiver')
+      .leftJoinAndSelect('m.conversation', 'conv')
+      .leftJoin('sender.user', 'sender_user')
+      .leftJoin('receiver.user', 'receiver_user')
+      .addSelect(['sender_user.email', 'sender_user.full_name'])
+      .addSelect(['receiver_user.email', 'receiver_user.full_name'])
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    // Filter theo conversation
+    if (dto.conversationId) {
+      qb.andWhere('m.conversation_id = :conversationId', { conversationId: dto.conversationId });
+    }
+
+    // Filter theo sender
+    if (dto.senderId) {
+      qb.andWhere('m.sender_id = :senderId', { senderId: dto.senderId });
+    }
+
+    // Filter theo deleted status
+    if (dto.deletedOnly) {
+      qb.andWhere('m.deleted_at IS NOT NULL');
+    } else {
+      // Mặc định chỉ show messages chưa bị xóa
+      qb.andWhere('m.deleted_at IS NULL');
+    }
+
+    // Search trong content
+    if (dto.search) {
+      qb.andWhere('m.content LIKE :search', { search: `%${dto.search}%` });
+    }
+
+    qb.orderBy('m.sent_at', 'DESC');
+
+    const [items, total] = await qb.getManyAndCount();
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Xem chi tiết conversation (admin view)
+   */
+  async getConversationDetail(conversationId: string) {
+    const conversation = await this.conversationRepo.findOne({
+      where: { conversation_id: conversationId },
+      relations: ['member_a', 'member_b', 'member_a.user', 'member_b.user', 'exchange_request'],
+    });
+
+    if (!conversation) {
+      throw new NotFoundException('Conversation not found');
+    }
+
+    // Lấy messages trong conversation (bao gồm cả deleted)
+    const messages = await this.messageRepo.find({
+      where: { conversation_id: conversationId },
+      relations: ['sender', 'receiver'],
+      order: { sent_at: 'ASC' },
+    });
+
+    return {
+      ...conversation,
+      messages,
+      total_messages_including_deleted: messages.length,
+    };
+  }
+
+  /**
+   * Xóa message (soft delete)
+   */
+  async removeMessage(messageId: string, dto: RemoveMessageDto, adminId: string, adminEmail: string) {
+    const message = await this.messageRepo.findOne({ 
+      where: { message_id: messageId },
+      relations: ['sender', 'receiver'],
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    if (message.deleted_at) {
+      throw new BadRequestException('Message is already deleted');
+    }
+
+    // Soft delete: set deleted_at
+    message.deleted_at = new Date();
+    await this.messageRepo.save(message);
+
+    // Log audit
+    await this.createAuditLog({
+      admin_id: adminId,
+      admin_email: adminEmail,
+      action: AuditAction.REMOVE_MESSAGE,
+      entity_type: 'MESSAGE',
+      entity_id: messageId,
+      old_value: { content: message.content, deleted_at: null },
+      new_value: { deleted_at: message.deleted_at },
+      reason: dto.reason,
+    });
+
+    this.logger.warn(`Admin ${adminEmail} removed message ${messageId}: ${dto.reason}`);
+
+    return { success: true, message: 'Message removed successfully' };
+  }
+
+  // ============================================================
+  // USER ACTIVITY TRACKING (Admin View)
+  // ============================================================
+
+  /**
+   * Xem activities của 1 user (admin only)
+   */
+  async getUserActivities(userId: string, options?: {
+    page?: number;
+    limit?: number;
+    action?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    // Verify user exists
+    const user = await this.userRepo.findOne({ where: { user_id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Parse dates if provided
+    const parsedOptions = {
+      ...options,
+      startDate: options?.startDate ? new Date(options.startDate) : undefined,
+      endDate: options?.endDate ? new Date(options.endDate) : undefined,
+    };
+
+    const activities = await this.activityLogService.getUserActivities(userId, parsedOptions);
+    
+    return {
+      user: {
+        user_id: user.user_id,
+        email: user.email,
+        full_name: user.full_name,
+      },
+      ...activities,
+    };
+  }
+
+  /**
+   * Thống kê activities của user
+   */
+  async getUserActivityStats(userId: string, days: number = 30) {
+    // Verify user exists
+    const user = await this.userRepo.findOne({ where: { user_id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const stats = await this.activityLogService.getUserActivityStats(userId, days);
+    
+    return {
+      user: {
+        user_id: user.user_id,
+        email: user.email,
+        full_name: user.full_name,
+      },
+      ...stats,
     };
   }
 
