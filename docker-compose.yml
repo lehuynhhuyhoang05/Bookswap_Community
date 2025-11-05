@@ -66,39 +66,39 @@ services:
       DB_TYPE: mysql
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_USERNAME: bookswap_user
-      DB_PASSWORD: bookswap_pass
-      DB_DATABASE: bookswap_db
+      DB_USERNAME: ${DB_USERNAME:-bookswap_user}
+      DB_PASSWORD: ${DB_PASSWORD:-bookswap_pass}
+      DB_DATABASE: ${DB_DATABASE:-bookswap_db}
       DB_SYNCHRONIZE: "false"
       
       # JWT Configuration
-      JWT_SECRET: your-super-secret-jwt-key-change-in-production
-      JWT_EXPIRATION: 7d
-      JWT_REFRESH_SECRET: your-refresh-secret-key-different-from-access
-      JWT_REFRESH_EXPIRATION: 30d
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-7d}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-30d}
       
       # Google OAuth
-      GOOGLE_CLIENT_ID: your-google-client-id
-      GOOGLE_CLIENT_SECRET: your-google-client-secret
-      GOOGLE_CALLBACK_URL: http://localhost:3000/api/v1/auth/google/callback
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:3000/api/v1/auth/google/callback}
       
       # Google Books API
-      GOOGLE_BOOKS_API_KEY: AIzaSyDWxJoS4ODGgU7umfIPonYxBlA0cTxnX68
+      GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY}
       
       # Redis
       REDIS_HOST: redis
       REDIS_PORT: 6379
       
       # AWS S3 (for file uploads)
-      AWS_S3_BUCKET: bookswap-uploads
-      AWS_ACCESS_KEY_ID: your-aws-key
-      AWS_SECRET_ACCESS_KEY: your-aws-secret
-      AWS_REGION: ap-southeast-1
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-bookswap-uploads}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
       
       # SendGrid Email
-      SENDGRID_API_KEY: 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
-      SENDGRID_FROM_EMAIL: lehuynhhuyhoang2404@gmail.com
-      APP_URL: http://localhost:3000
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY}
+      SENDGRID_FROM_EMAIL: ${SENDGRID_FROM_EMAIL}
+      APP_URL: ${APP_URL:-http://localhost:3000}
       
       # Frontend URL for CORS
       FRONTEND_URL: http://localhost:5173

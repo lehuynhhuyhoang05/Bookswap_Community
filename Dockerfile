@@ -20,8 +20,8 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Remove devDependencies to reduce image size
-RUN npm prune --production
+# Don't prune - keep all dependencies including @nestjs/* packages
+# RUN npm prune --production
 
 # ================================
 # Stage 2: Production Stage
