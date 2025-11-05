@@ -14,6 +14,7 @@ import { ExchangesModule } from './modules/exchanges/exchanges.module';
 import { MessagesModule } from './modules/messages/messages.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { ReportsModule } from './modules/reports/reports.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -40,6 +41,7 @@ import { AdminModule } from './modules/admin/admin.module';
     MessagesModule,
     ReviewsModule,
     AdminModule,
+    ReportsModule,
     // Notifications module provides in-app notifications and real-time emits
     require('./modules/notifications/notifications.module').NotificationsModule,
   ],

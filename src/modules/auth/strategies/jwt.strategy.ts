@@ -55,7 +55,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     const user = await this.authService.validateUser(payload.sub);
     if (!user) throw new UnauthorizedException('User not found');
 
-    const status: AccountStatus = (user.account_status ?? user.status ?? 'ACTIVE') as AccountStatus;
+    const status: AccountStatus = (user.account_status ?? 'ACTIVE') as AccountStatus;
     if (status !== 'ACTIVE') throw new UnauthorizedException('Account is not active');
 
     // Lấy memberId (nếu có)

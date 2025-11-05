@@ -5,7 +5,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsEnum, IsOptional, IsInt, Min, Max, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ReportStatus, ReportPriority, ReportType } from '../../../infrastructure/database/entities/violation-report.entity';
+import { ReportStatus, ReportPriority } from '../../../infrastructure/database/entities/violation-report.entity';
 
 // DTO query reports
 export class QueryReportsDto {
@@ -34,10 +34,10 @@ export class QueryReportsDto {
   @IsEnum(ReportPriority)
   priority?: ReportPriority;
 
-  @ApiPropertyOptional({ example: 'SPAM', enum: ReportType, description: 'Lọc theo loại vi phạm' })
+  @ApiPropertyOptional({ example: 'SPAM', description: 'Lọc theo loại vi phạm (VARCHAR)' })
   @IsOptional()
-  @IsEnum(ReportType)
-  type?: ReportType;
+  @IsString()
+  type?: string; // Changed from enum to string
 
   @ApiPropertyOptional({ example: 'test-member-alice', description: 'Lọc theo người báo cáo' })
   @IsOptional()
@@ -47,13 +47,11 @@ export class QueryReportsDto {
 
 // DTO resolve report
 export class ResolveReportDto {
-  @ApiProperty({ example: 'Đã xử lý và xóa nội dung vi phạm', description: 'Cách giải quyết' })
+  @ApiProperty({ example: 'Đã xử lý và xóa nội dung vi phạm. Removed inappropriate book and warned user.', description: 'Kết luận và hành động đã thực hiện' })
   @IsString()
   resolution: string;
 
-  @ApiProperty({ example: 'Removed inappropriate book and warned user', description: 'Hành động đã thực hiện' })
-  @IsString()
-  action_taken: string;
+  // Removed action_taken vì DB schema không có column này
 }
 
 // DTO dismiss report
@@ -65,17 +63,21 @@ export class DismissReportDto {
 
 // DTO create report (từ member)
 export class CreateReportDto {
-  @ApiProperty({ example: 'SPAM', enum: ReportType, description: 'Loại vi phạm' })
-  @IsEnum(ReportType)
-  report_type: ReportType;
+  @ApiProperty({ example: 'SPAM', description: 'Loại vi phạm (VARCHAR)' })
+  @IsString()
+  report_type: string; // Changed to string to match DB schema
 
   @ApiProperty({ example: 'BOOK', description: 'Loại đối tượng bị báo cáo' })
   @IsString()
-  target_type: string;
+  reported_item_type: string; // Changed from target_type
 
   @ApiProperty({ example: 'book-uuid-123', description: 'ID của đối tượng bị báo cáo' })
   @IsUUID()
-  target_id: string;
+  reported_item_id: string; // Changed from target_id
+
+  @ApiProperty({ example: 'test-member-bob', description: 'Member ID của người bị report' })
+  @IsUUID()
+  reported_member_id: string; // Added to match DB schema
 
   @ApiProperty({ example: 'Sách này có nội dung spam và quảng cáo', description: 'Mô tả chi tiết' })
   @IsString()
@@ -90,14 +92,14 @@ export class ReportDetailResponseDto {
     email: string;
     full_name: string;
   };
-  report_type: ReportType;
-  target_type: string;
-  target_id: string;
+  report_type: string; // Changed from ReportType enum to string
+  reported_item_type: string; // Changed from target_type
+  reported_item_id: string; // Changed from target_id
   description: string;
   status: ReportStatus;
   priority: ReportPriority;
   resolution?: string;
-  action_taken?: string;
   created_at: Date;
   resolved_at?: Date;
+  resolved_by?: string; // Changed from action_taken
 }

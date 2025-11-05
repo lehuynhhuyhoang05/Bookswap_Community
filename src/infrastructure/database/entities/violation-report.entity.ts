@@ -31,7 +31,7 @@ export enum ReportPriority {
 
 @Entity('violation_reports')
 @Index('idx_report_status', ['status', 'priority', 'created_at'])
-@Index('idx_report_target', ['target_type', 'target_id'])
+@Index('idx_report_target', ['reported_item_type', 'reported_item_id'])
 export class ViolationReport {
   @PrimaryColumn('varchar', { length: 36 })
   report_id: string;
@@ -43,17 +43,19 @@ export class ViolationReport {
   @JoinColumn({ name: 'reporter_id' })
   reporter: Member;
 
-  @Column({
-    type: 'enum',
-    enum: ReportType,
-  })
-  report_type: ReportType;
-
-  @Column('varchar', { length: 50 })
-  target_type: string; // 'USER', 'BOOK', 'REVIEW', 'MESSAGE'
-
   @Column('varchar', { length: 36 })
-  target_id: string;
+  reported_member_id: string; // Member bị report
+
+  // DB schema dùng VARCHAR thay vì ENUM
+  @Column('varchar', { length: 100, nullable: true })
+  report_type: string;
+
+  // DB schema dùng reported_item_type/id chứ không phải target_type/id
+  @Column('varchar', { length: 50, nullable: true })
+  reported_item_type: string; // 'USER', 'BOOK', 'REVIEW', 'MESSAGE'
+
+  @Column('varchar', { length: 36, nullable: true })
+  reported_item_id: string;
 
   @Column('text')
   description: string;
@@ -68,27 +70,21 @@ export class ViolationReport {
   @Column({
     type: 'enum',
     enum: ReportPriority,
-    default: ReportPriority.LOW,
+    default: ReportPriority.MEDIUM,
   })
   priority: ReportPriority;
 
   @Column('varchar', { length: 36, nullable: true })
-  assigned_to: string; // admin_id
+  resolved_by: string; // admin_id (DB schema dùng resolved_by không phải assigned_to)
 
   @Column({ type: 'text', nullable: true })
   resolution: string;
-
-  @Column({ type: 'text', nullable: true })
-  action_taken: string;
 
   @Column({ type: 'timestamp', nullable: true })
   resolved_at: Date;
 
   @CreateDateColumn()
   created_at: Date;
-
-  @UpdateDateColumn()
-  updated_at: Date;
 
   constructor() {
     this.report_id = uuidv4();
