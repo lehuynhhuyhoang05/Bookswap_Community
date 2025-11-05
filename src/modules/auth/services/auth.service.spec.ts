@@ -16,6 +16,9 @@ import { TokenBlacklist } from '../../../infrastructure/database/entities/token-
 import { EmailService } from '../../../infrastructure/external-services/email/email.service';
 import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto } from '../dto/auth.dto';
 
+// Mock bcrypt
+jest.mock('bcrypt');
+
 describe('AuthService', () => {
   let service: AuthService;
   let userRepository: Repository<User>;
@@ -64,11 +67,13 @@ describe('AuthService', () => {
   const mockJwtService = {
     sign: jest.fn(),
     verify: jest.fn(),
+    decode: jest.fn(),
   };
 
   const mockEmailService = {
     sendVerificationEmail: jest.fn(),
     sendPasswordResetEmail: jest.fn(),
+    sendPasswordChangedNotification: jest.fn(),
   };
 
   const mockConfigService = {
@@ -112,6 +117,10 @@ describe('AuthService', () => {
 
     // Clear all mocks before each test
     jest.clearAllMocks();
+
+    // Setup default bcrypt mocks
+    (bcrypt.hash as jest.Mock).mockResolvedValue('hashedPassword');
+    (bcrypt.compare as jest.Mock).mockResolvedValue(true);
   });
 
   it('should be defined', () => {
@@ -278,6 +287,7 @@ describe('AuthService', () => {
       };
 
       mockUserRepository.findOne.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false); // Override: password doesn't match
 
       // Act & Assert
       await expect(service.login(loginDto)).rejects.toThrow(UnauthorizedException);
@@ -429,6 +439,309 @@ describe('AuthService', () => {
         message: 'If the email exists, a reset link will be sent' 
       });
       expect(mockEmailService.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================
+  // resetPassword
+  // =========================================================
+  describe('resetPassword', () => {
+    const resetPasswordDto: ResetPasswordDto = {
+      token: 'valid-reset-token-123',
+      new_password: 'NewSecurePass123!',
+    };
+
+    it('should reset password successfully with valid token', async () => {
+      // Arrange
+      const mockTokenRecord = {
+        user_id: 'user-123',
+        token: resetPasswordDto.token,
+        is_used: false,
+        expires_at: new Date(Date.now() + 3600000), // 1 hour from now
+        user: {
+          email: 'test@example.com',
+          full_name: 'Test User',
+        },
+      };
+
+      mockResetTokenRepository.findOne.mockResolvedValue(mockTokenRecord);
+      (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-new-password');
+      mockUserRepository.update.mockResolvedValue({ affected: 1 });
+      mockResetTokenRepository.save.mockResolvedValue({ ...mockTokenRecord, is_used: true });
+      mockEmailService.sendPasswordChangedNotification = jest.fn().mockResolvedValue(undefined);
+
+      // Act
+      const result = await service.resetPassword(resetPasswordDto);
+
+      // Assert
+      expect(mockResetTokenRepository.findOne).toHaveBeenCalled();
+      expect(bcrypt.hash).toHaveBeenCalledWith(resetPasswordDto.new_password, 10);
+      expect(mockUserRepository.update).toHaveBeenCalledWith(
+        { user_id: mockTokenRecord.user_id },
+        { password_hash: 'hashed-new-password' }
+      );
+      expect(mockResetTokenRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ is_used: true })
+      );
+      expect(mockEmailService.sendPasswordChangedNotification).toHaveBeenCalledWith(
+        mockTokenRecord.user.email,
+        mockTokenRecord.user.full_name
+      );
+      expect(result).toEqual({ message: 'Password reset successfully' });
+    });
+
+    it('should throw BadRequestException if token is invalid', async () => {
+      // Arrange
+      mockResetTokenRepository.findOne.mockResolvedValue(null);
+
+      // Act & Assert
+      await expect(service.resetPassword(resetPasswordDto)).rejects.toThrow(
+        BadRequestException
+      );
+      await expect(service.resetPassword(resetPasswordDto)).rejects.toThrow(
+        'Invalid or expired token'
+      );
+    });
+
+    it('should throw BadRequestException if token is expired', async () => {
+      // Arrange
+      const expiredTokenRecord = {
+        token: resetPasswordDto.token,
+        is_used: false,
+        expires_at: new Date(Date.now() - 3600000), // 1 hour ago
+      };
+
+      mockResetTokenRepository.findOne.mockResolvedValue(null); // MoreThan filter will exclude expired
+
+      // Act & Assert
+      await expect(service.resetPassword(resetPasswordDto)).rejects.toThrow(
+        BadRequestException
+      );
+    });
+
+    it('should throw BadRequestException if token is already used', async () => {
+      // Arrange
+      mockResetTokenRepository.findOne.mockResolvedValue(null); // is_used: false filter will exclude
+
+      // Act & Assert
+      await expect(service.resetPassword(resetPasswordDto)).rejects.toThrow(
+        BadRequestException
+      );
+    });
+  });
+
+  // =========================================================
+  // verifyEmail
+  // =========================================================
+  describe('verifyEmail', () => {
+    const verifyToken = 'valid-verify-token-abc123';
+
+    it('should verify email successfully with valid token', async () => {
+      // Arrange
+      const mockVerifyRecord = {
+        user_id: 'user-456',
+        token: verifyToken,
+        is_used: false,
+        expires_at: new Date(Date.now() + 86400000), // 24 hours from now
+        user: {
+          email: 'newuser@example.com',
+          full_name: 'New User',
+        },
+      };
+
+      mockEmailVerifyRepo.findOne.mockResolvedValue(mockVerifyRecord);
+      mockUserRepository.update.mockResolvedValue({ affected: 1 });
+      mockEmailVerifyRepo.save.mockResolvedValue({ ...mockVerifyRecord, is_used: true });
+
+      // Act
+      const result = await service.verifyEmail(verifyToken);
+
+      // Assert
+      expect(mockEmailVerifyRepo.findOne).toHaveBeenCalled();
+      expect(mockUserRepository.update).toHaveBeenCalledWith(
+        { user_id: mockVerifyRecord.user_id },
+        expect.objectContaining({ 
+          is_email_verified: true,
+          email_verified_at: expect.any(Date) 
+        })
+      );
+      expect(mockEmailVerifyRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ is_used: true })
+      );
+      expect(result).toEqual({ message: 'Email verified successfully' });
+    });
+
+    it('should throw BadRequestException if token is invalid or expired', async () => {
+      // Arrange
+      mockEmailVerifyRepo.findOne.mockResolvedValue(null);
+
+      // Act & Assert
+      await expect(service.verifyEmail(verifyToken)).rejects.toThrow(
+        BadRequestException
+      );
+      await expect(service.verifyEmail(verifyToken)).rejects.toThrow(
+        'Invalid or expired token'
+      );
+    });
+  });
+
+  // =========================================================
+  // refreshAccessToken
+  // =========================================================
+  describe('refreshAccessToken', () => {
+    const refreshToken = 'valid-refresh-token-xyz';
+
+    it('should return new access token with valid refresh token', async () => {
+      // Arrange
+      const mockPayload = { sub: 'user-789', email: 'user@test.com' };
+      const mockUser = {
+        user_id: 'user-789',
+        email: 'user@test.com',
+        role: UserRole.MEMBER,
+        account_status: AccountStatus.ACTIVE,
+      };
+
+      mockJwtService.verify.mockReturnValue(mockPayload);
+      mockTokenBlacklistRepo.findOne.mockResolvedValue(null); // Not blacklisted
+      mockUserRepository.findOne.mockResolvedValue(mockUser);
+      mockJwtService.sign.mockReturnValue('new-access-token-123');
+
+      // Act
+      const result = await service.refreshAccessToken(refreshToken);
+
+      // Assert
+      expect(mockJwtService.verify).toHaveBeenCalledWith(
+        refreshToken,
+        expect.objectContaining({ secret: 'test-refresh-secret' })
+      );
+      expect(mockTokenBlacklistRepo.findOne).toHaveBeenCalled();
+      expect(mockUserRepository.findOne).toHaveBeenCalledWith({ 
+        where: { user_id: mockPayload.sub } 
+      });
+      expect(mockJwtService.sign).toHaveBeenCalled();
+      expect(result).toHaveProperty('access_token');
+      expect(result).toHaveProperty('token_type', 'Bearer');
+      expect(result).toHaveProperty('expires_in');
+    });
+
+    it('should throw UnauthorizedException if refresh token is blacklisted', async () => {
+      // Arrange
+      const mockPayload = { sub: 'user-789' };
+      mockJwtService.verify.mockReturnValue(mockPayload);
+      mockTokenBlacklistRepo.findOne.mockResolvedValue({ token: refreshToken }); // Blacklisted
+
+      // Act & Assert
+      await expect(service.refreshAccessToken(refreshToken)).rejects.toThrow(
+        UnauthorizedException
+      );
+      await expect(service.refreshAccessToken(refreshToken)).rejects.toThrow(
+        'Token has been revoked'
+      );
+    });
+
+    it('should throw UnauthorizedException if user not found', async () => {
+      // Arrange
+      const mockPayload = { sub: 'user-999' };
+      mockJwtService.verify.mockReturnValue(mockPayload);
+      mockTokenBlacklistRepo.findOne.mockResolvedValue(null);
+      mockUserRepository.findOne.mockResolvedValue(null);
+
+      // Act & Assert
+      await expect(service.refreshAccessToken(refreshToken)).rejects.toThrow(
+        UnauthorizedException
+      );
+      await expect(service.refreshAccessToken(refreshToken)).rejects.toThrow(
+        'User not found or inactive'
+      );
+    });
+
+    it('should throw UnauthorizedException if refresh token is expired', async () => {
+      // Arrange
+      mockJwtService.verify.mockImplementation(() => {
+        const error: any = new Error('jwt expired');
+        error.name = 'TokenExpiredError';
+        throw error;
+      });
+
+      // Act & Assert
+      await expect(service.refreshAccessToken(refreshToken)).rejects.toThrow(
+        UnauthorizedException
+      );
+      await expect(service.refreshAccessToken(refreshToken)).rejects.toThrow(
+        'Refresh token expired'
+      );
+    });
+  });
+
+  // =========================================================
+  // logout
+  // =========================================================
+  describe('logout', () => {
+    const userId = 'user-logout-123';
+    const accessToken = 'valid-access-token';
+
+    it('should logout successfully and blacklist token', async () => {
+      // Arrange
+      const mockDecoded = {
+        sub: userId,
+        exp: Math.floor(Date.now() / 1000) + 3600, // Expires in 1 hour
+      };
+
+      mockJwtService.decode.mockReturnValue(mockDecoded);
+      mockTokenBlacklistRepo.create.mockReturnValue({
+        token: accessToken,
+        user_id: userId,
+        expires_at: new Date(mockDecoded.exp * 1000),
+      });
+      mockTokenBlacklistRepo.save.mockResolvedValue({});
+
+      // Act
+      const result = await service.logout(userId, accessToken);
+
+      // Assert
+      expect(mockJwtService.decode).toHaveBeenCalledWith(accessToken);
+      expect(mockTokenBlacklistRepo.create).toHaveBeenCalled();
+      expect(mockTokenBlacklistRepo.save).toHaveBeenCalled();
+      expect(result).toEqual({ message: 'Logout successful', success: true });
+    });
+
+    it('should throw BadRequestException if token is invalid', async () => {
+      // Arrange
+      mockJwtService.decode.mockReturnValue(null);
+
+      // Act & Assert
+      await expect(service.logout(userId, accessToken)).rejects.toThrow(
+        BadRequestException
+      );
+    });
+  });
+
+  // =========================================================
+  // isTokenBlacklisted
+  // =========================================================
+  describe('isTokenBlacklisted', () => {
+    const token = 'test-token-123';
+
+    it('should return true if token is blacklisted', async () => {
+      // Arrange
+      mockTokenBlacklistRepo.findOne.mockResolvedValue({ token });
+
+      // Act
+      const result = await service.isTokenBlacklisted(token);
+
+      // Assert
+      expect(result).toBe(true);
+    });
+
+    it('should return false if token is not blacklisted', async () => {
+      // Arrange
+      mockTokenBlacklistRepo.findOne.mockResolvedValue(null);
+
+      // Act
+      const result = await service.isTokenBlacklisted(token);
+
+      // Assert
+      expect(result).toBe(false);
     });
   });
 });
