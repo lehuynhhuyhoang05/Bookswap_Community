@@ -509,9 +509,9 @@ export class AdminService {
 
     report.status = ReportStatus.RESOLVED;
     report.resolution = dto.resolution;
-    report.action_taken = dto.action_taken;
+    // DB schema không có action_taken column
     report.resolved_at = new Date();
-    report.assigned_to = adminId;
+    report.resolved_by = adminId; // DB dùng resolved_by không phải assigned_to
 
     await this.reportRepo.save(report);
 
@@ -524,7 +524,7 @@ export class AdminService {
       entity_id: reportId,
       old_value: { status: ReportStatus.PENDING },
       new_value: { status: ReportStatus.RESOLVED, resolution: dto.resolution },
-      reason: dto.action_taken,
+      reason: dto.resolution, // DB không có action_taken, dùng resolution làm reason
     });
 
     this.logger.log(`Admin ${adminEmail} resolved report ${reportId}`);
@@ -544,7 +544,7 @@ export class AdminService {
     report.status = ReportStatus.DISMISSED;
     report.resolution = dto.reason;
     report.resolved_at = new Date();
-    report.assigned_to = adminId;
+    report.resolved_by = adminId; // DB dùng resolved_by không phải assigned_to
 
     await this.reportRepo.save(report);
 
@@ -644,18 +644,35 @@ export class AdminService {
   // ============================================================
   private async createAuditLog(data: {
     admin_id: string;
-    admin_email: string;
+    admin_email: string; // Giữ param để không phá vỡ call sites, nhưng không lưu vào DB
     action: AuditAction;
     entity_type: string;
     entity_id: string;
     old_value?: any;
     new_value?: any;
-    reason?: string;
+    reason?: string; // Giữ param nhưng không lưu vào DB
   }) {
     const log = this.auditRepo.create({
-      ...data,
+      admin_id: data.admin_id,
+      action: data.action,
+      entity_type: data.entity_type,
+      entity_id: data.entity_id,
+      old_value: data.old_value,
+      new_value: data.new_value,
       ip_address: 'N/A', // TODO: Lấy từ request
+      user_agent: undefined,
     });
-    await this.auditRepo.save(log);
+
+    // Ghi audit nhưng không làm fail toàn bộ request nếu bảng chưa tồn tại.
+    // Nếu migration chưa chạy, bắt lỗi và log cảnh báo để admin vẫn có thể thao tác.
+    try {
+      await this.auditRepo.save(log);
+    } catch (err) {
+      // Lưu lỗi nhưng không ném ra cao hơn (tránh 500 khi audit table chưa có)
+      this.logger.warn(
+        `Failed to write audit log (action=${data.action}, entity=${data.entity_type}/${data.entity_id}): ${err?.message || err}`,
+      );
+      this.logger.warn('If this is unexpected run the DB migrations to create audit_logs table.');
+    }
   }
 }

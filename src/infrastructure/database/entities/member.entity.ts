@@ -12,7 +12,7 @@ export class Member {
   @Column('varchar', { length: 36 })
   user_id: string;
 
-  @OneToOne(() => User)
+  @OneToOne(() => User, user => user.member)
   @JoinColumn({ name: 'user_id' })
   user: User;
 

@@ -1,5 +1,6 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, OneToOne } from 'typeorm';
+import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn, OneToOne, JoinColumn } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
+import { Member } from './member.entity';
 
 export enum UserRole {
   GUEST = 'GUEST',
@@ -77,8 +78,10 @@ export class User {
 
   @UpdateDateColumn()
   updated_at: Date;
-  status: AccountStatus;
-  member: any;
+
+  // Relationship với Member (1-to-1)
+  @OneToOne(() => Member, member => member.user)
+  member: Member;
 
   constructor() {
     this.user_id = uuidv4();

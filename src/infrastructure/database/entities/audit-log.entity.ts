@@ -27,32 +27,28 @@ export class AuditLog {
   @Column('varchar', { length: 36 })
   admin_id: string;
 
-  @Column('varchar', { length: 100 })
-  admin_email: string;
+  // Sử dụng VARCHAR thay vì ENUM để match với DB schema hiện tại
+  @Column('varchar', { length: 100, nullable: true })
+  action: string;
 
-  @Column({
-    type: 'enum',
-    enum: AuditAction,
-  })
-  action: AuditAction;
-
-  @Column('varchar', { length: 50 })
+  @Column('varchar', { length: 50, nullable: true })
   entity_type: string; // 'USER', 'BOOK', 'REVIEW', 'REPORT'
 
-  @Column('varchar', { length: 36 })
+  @Column('varchar', { length: 36, nullable: true })
   entity_id: string;
 
-  @Column({ type: 'json', nullable: true })
+  // DB schema dùng old_values/new_values (plural), không phải old_value/new_value
+  @Column({ type: 'json', nullable: true, name: 'old_values' })
   old_value: any;
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ type: 'json', nullable: true, name: 'new_values' })
   new_value: any;
 
-  @Column('varchar', { length: 100, nullable: true })
+  @Column('varchar', { length: 45, nullable: true })
   ip_address: string;
 
   @Column({ type: 'text', nullable: true })
-  reason: string;
+  user_agent: string;
 
   @CreateDateColumn()
   created_at: Date;
