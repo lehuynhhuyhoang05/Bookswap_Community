@@ -15,21 +15,90 @@ import {
   MessageCircle,
   Shield,
   CheckCircle,
-  Clock,
   RefreshCw,
   Eye,
   Bookmark,
-  Flag
+  Flag,
+  Edit3
 } from 'lucide-react';
+
+// Real authentication hook - reads from localStorage
+const useAuth = () => {
+  const [authState, setAuthState] = useState({
+    user: null,
+    isAuthenticated: false
+  });
+
+  useEffect(() => {
+    // Check localStorage for authentication
+    const token = localStorage.getItem('token');
+    const userStr = localStorage.getItem('user');
+    
+    if (token && userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        setAuthState({
+          user,
+          isAuthenticated: true
+        });
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+        // Clear invalid data
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
+    }
+  }, []);
+
+  // Listen for storage changes (for login/logout from other tabs)
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const token = localStorage.getItem('token');
+      const userStr = localStorage.getItem('user');
+      
+      if (token && userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          setAuthState({
+            user,
+            isAuthenticated: true
+          });
+        } catch (error) {
+          setAuthState({
+            user: null,
+            isAuthenticated: false
+          });
+        }
+      } else {
+        setAuthState({
+          user: null,
+          isAuthenticated: false
+        });
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  return authState;
+};
 
 const BookDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
   const [book, setBook] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('details');
   const [isLiked, setIsLiked] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
+
+  // Determine user type and navigation
+  const isGuest = !isAuthenticated;
+  const isMember = isAuthenticated;
+  const backLink = isGuest ? '/books' : '/my-library';
+  const isOwner = isMember && user && book && book.owner.id === user.id;
 
   // Mock data - replace with actual API call
   useEffect(() => {
@@ -54,7 +123,7 @@ const BookDetail = () => {
           book_condition: "EXCELLENT",
           location: "Quận 1, TP.HCM",
           owner: {
-            id: "user1",
+            id: 1, // Changed to number to match login user id
             name: "Nguyễn Văn A",
             avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face",
             rating: 4.8,
@@ -106,14 +175,14 @@ const BookDetail = () => {
         setBook(mockBook);
       } catch (error) {
         console.error('Error fetching book details:', error);
-        navigate('/books');
+        navigate(backLink);
       } finally {
         setLoading(false);
       }
     };
 
     fetchBookDetail();
-  }, [id, navigate]);
+  }, [id, navigate, backLink]);
 
   const conditionColors = {
     'NEW': 'from-green-500 to-emerald-500',
@@ -136,6 +205,41 @@ const BookDetail = () => {
     'en': 'English'
   };
 
+  const handleExchangeRequest = () => {
+    if (isGuest) {
+      navigate('/login', { state: { from: `/books/${id}` } });
+      return;
+    }
+
+    if (isOwner) {
+      alert('Bạn không thể trao đổi sách của chính mình!');
+      return;
+    }
+
+    // Proceed with exchange request for member (non-owner)
+    console.log('Requesting exchange for book:', book.id);
+    alert('Đã gửi yêu cầu trao đổi thành công!');
+  };
+
+  const handleLike = () => {
+    if (isGuest) {
+      navigate('/login', { state: { from: `/books/${id}` } });
+      return;
+    }
+    setIsLiked(!isLiked);
+  };
+
+  const handleBookmark = () => {
+    if (isGuest) {
+      navigate('/login', { state: { from: `/books/${id}` } });
+      return;
+    }
+    setIsBookmarked(!isBookmarked);
+  };
+
+  // Debug info (remove in production)
+  const debugInfo = isMember ? `Đã đăng nhập: ${user?.name} (ID: ${user?.id})` : 'Chưa đăng nhập';
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50">
@@ -155,11 +259,11 @@ const BookDetail = () => {
           <h3 className="text-xl font-bold text-gray-900 mb-2">Không tìm thấy sách</h3>
           <p className="text-gray-600 mb-6">Cuốn sách bạn tìm kiếm không tồn tại hoặc đã bị xóa.</p>
           <Link
-            to="/books"
-            className="inline-flex items-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition-all"
+            to={backLink}
+            className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-cyan-700 transition-all font-semibold"
           >
             <ArrowLeft className="w-5 h-5" />
-            <span>Quay lại danh sách</span>
+            <span>Quay lại {isGuest ? 'danh sách' : 'thư viện'}</span>
           </Link>
         </div>
       </div>
@@ -168,37 +272,72 @@ const BookDetail = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50">
+      {/* Debug info - remove in production */}
+      <div className="fixed top-4 left-4 z-50 bg-black/80 text-white px-3 py-2 rounded-lg text-xs">
+        {debugInfo}
+      </div>
+
       {/* Header Navigation */}
       <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <Link 
-              to="/books"
-              className="inline-flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors"
+              to={backLink}
+              className="inline-flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors bg-white/80 backdrop-blur-sm rounded-2xl px-4 py-2 border border-gray-200"
             >
               <ArrowLeft className="w-5 h-5" />
-              <span>Quay lại danh sách</span>
+              <span>Quay lại {isGuest ? 'danh sách' : 'thư viện'}</span>
             </Link>
             
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={() => setIsBookmarked(!isBookmarked)}
-                className={`p-3 rounded-2xl transition-all ${
-                  isBookmarked 
-                    ? 'bg-amber-100 text-amber-600' 
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                <Bookmark className={`w-5 h-5 ${isBookmarked ? 'fill-current' : ''}`} />
-              </button>
+            <div className="flex items-center space-x-4">
+              {/* User status badge */}
+              {isGuest ? (
+                <div className="flex items-center space-x-2 bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-sm font-medium">
+                  <User className="w-4 h-4" />
+                  <span>Khách</span>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-2 bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
+                  <User className="w-4 h-4" />
+                  <span>Thành viên</span>
+                  {isOwner && (
+                    <span className="bg-blue-500 text-white px-2 py-0.5 rounded-full text-xs">Chủ sách</span>
+                  )}
+                </div>
+              )}
               
-              <button className="p-3 bg-gray-100 text-gray-600 rounded-2xl hover:bg-gray-200 transition-all">
-                <Share2 className="w-5 h-5" />
-              </button>
-              
-              <button className="p-3 bg-gray-100 text-gray-600 rounded-2xl hover:bg-gray-200 transition-all">
-                <Flag className="w-5 h-5" />
-              </button>
+              <div className="flex items-center space-x-3">
+                {/* Edit button for owner */}
+                {isOwner && (
+                  <Link
+                    to={`/books/${id}/edit`}
+                    className="p-3 bg-blue-100 text-blue-600 rounded-2xl hover:bg-blue-200 transition-all"
+                    title="Chỉnh sửa sách"
+                  >
+                    <Edit3 className="w-5 h-5" />
+                  </Link>
+                )}
+                
+                <button
+                  onClick={handleBookmark}
+                  className={`p-3 rounded-2xl transition-all ${
+                    isBookmarked 
+                      ? 'bg-amber-100 text-amber-600' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  } ${isGuest ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  title={isGuest ? 'Đăng nhập để bookmark' : 'Bookmark'}
+                >
+                  <Bookmark className={`w-5 h-5 ${isBookmarked ? 'fill-current' : ''}`} />
+                </button>
+                
+                <button className="p-3 bg-gray-100 text-gray-600 rounded-2xl hover:bg-gray-200 transition-all" title="Chia sẻ">
+                  <Share2 className="w-5 h-5" />
+                </button>
+                
+                <button className="p-3 bg-gray-100 text-gray-600 rounded-2xl hover:bg-gray-200 transition-all" title="Báo cáo">
+                  <Flag className="w-5 h-5" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -227,6 +366,15 @@ const BookDetail = () => {
                       {conditionLabels[book.book_condition]}
                     </span>
                   </div>
+                  
+                  {/* Owner badge */}
+                  {isOwner && (
+                    <div className="absolute top-4 right-4">
+                      <span className="px-3 py-2 bg-green-500 text-white text-sm font-semibold rounded-full shadow-lg">
+                        Sách của bạn
+                      </span>
+                    </div>
+                  )}
                 </div>
                 
                 {/* Quick Stats */}
@@ -259,23 +407,63 @@ const BookDetail = () => {
 
               {/* Action Buttons */}
               <div className="space-y-4">
-                <button className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white py-4 rounded-2xl hover:from-blue-700 hover:to-cyan-700 transition-all duration-300 font-semibold shadow-lg hover:shadow-xl text-lg flex items-center justify-center space-x-3">
-                  <MessageCircle className="w-6 h-6" />
-                  <span>Yêu cầu trao đổi</span>
-                </button>
-                
-                <button
-                  onClick={() => setIsLiked(!isLiked)}
-                  className={`w-full py-4 rounded-2xl border-2 transition-all duration-300 font-semibold flex items-center justify-center space-x-3 ${
-                    isLiked
-                      ? 'bg-red-50 border-red-200 text-red-600'
-                      : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  <Heart className={`w-6 h-6 ${isLiked ? 'fill-current' : ''}`} />
-                  <span>{isLiked ? 'Đã thích' : 'Thích'} ({book.likes})</span>
-                </button>
+                {isOwner ? (
+                  <Link
+                    to={`/books/${id}/edit`}
+                    className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white py-4 rounded-2xl hover:from-blue-700 hover:to-cyan-700 transition-all duration-300 font-semibold shadow-lg hover:shadow-xl text-lg flex items-center justify-center space-x-3"
+                  >
+                    <Edit3 className="w-6 h-6" />
+                    <span>Chỉnh sửa sách</span>
+                  </Link>
+                ) : (
+                  <>
+                    <button 
+                      onClick={handleExchangeRequest}
+                      className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white py-4 rounded-2xl hover:from-blue-700 hover:to-cyan-700 transition-all duration-300 font-semibold shadow-lg hover:shadow-xl text-lg flex items-center justify-center space-x-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={isGuest}
+                    >
+                      <MessageCircle className="w-6 h-6" />
+                      <span>
+                        {isGuest ? 'Đăng nhập để trao đổi' : 'Yêu cầu trao đổi'}
+                      </span>
+                    </button>
+                    
+                    <button
+                      onClick={handleLike}
+                      className={`w-full py-4 rounded-2xl border-2 transition-all duration-300 font-semibold flex items-center justify-center space-x-3 ${
+                        isLiked
+                          ? 'bg-red-50 border-red-200 text-red-600'
+                          : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
+                      } ${isGuest ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      disabled={isGuest}
+                    >
+                      <Heart className={`w-6 h-6 ${isLiked ? 'fill-current' : ''}`} />
+                      <span>
+                        {isLiked ? 'Đã thích' : 'Thích'} ({book.likes + (isLiked ? 1 : 0)})
+                      </span>
+                    </button>
+                  </>
+                )}
               </div>
+
+              {/* Guest Notice */}
+              {isGuest && (
+                <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                  <p className="text-amber-800 text-sm text-center">
+                    <strong>Đăng nhập</strong> để trao đổi sách và sử dụng tất cả tính năng
+                  </p>
+                  <div className="mt-3 flex justify-center">
+                    <Link
+                      to="/login"
+                      state={{ from: `/books/${id}` }}
+                      className="inline-flex items-center space-x-2 bg-amber-500 text-white px-4 py-2 rounded-xl hover:bg-amber-600 transition-all text-sm font-medium"
+                    >
+                      <User className="w-4 h-4" />
+                      <span>Đăng nhập ngay</span>
+                    </Link>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </div>
 
@@ -429,6 +617,14 @@ const BookDetail = () => {
                               <span>Đã xác minh</span>
                             </div>
                           )}
+                          
+                          {/* Show if viewing own profile */}
+                          {isOwner && (
+                            <div className="flex items-center space-x-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
+                              <User className="w-4 h-4" />
+                              <span>Đây là bạn</span>
+                            </div>
+                          )}
                         </div>
                         
                         <div className="grid grid-cols-3 gap-6 mb-6">
@@ -459,9 +655,11 @@ const BookDetail = () => {
                           </div>
                         </div>
                         
-                        <button className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-medium">
-                          Xem trang cá nhân
-                        </button>
+                        {!isOwner && (
+                          <button className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all font-medium">
+                            Xem trang cá nhân
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}

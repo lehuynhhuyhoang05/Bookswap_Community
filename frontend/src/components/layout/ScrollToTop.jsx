@@ -5,23 +5,22 @@ export default function ScrollToTop() {
   const { pathname } = useLocation();
 
   useEffect(() => {
-    // Chỉ cuộn mượt ở 2 trang login và register
-    if (pathname === "/login" || pathname === "/register") {
-      const scrollDuration = 600;
-      const start = window.scrollY;
-      const startTime = performance.now();
+    const scrollDuration = 500;
+    const start = window.scrollY;
+    const startTime = performance.now();
 
-      const animateScroll = (currentTime) => {
-        const elapsed = currentTime - startTime;
-        const progress = Math.min(elapsed / scrollDuration, 1);
-        const ease = 1 - Math.pow(1 - progress, 3);
-        window.scrollTo(0, start * (1 - ease));
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 
-        if (progress < 1) requestAnimationFrame(animateScroll);
-      };
+    const animateScroll = (currentTime) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / scrollDuration, 1);
+      const eased = easeOutCubic(progress);
+      window.scrollTo(0, start * (1 - eased));
 
-      requestAnimationFrame(animateScroll);
-    }
+      if (progress < 1) requestAnimationFrame(animateScroll);
+    };
+
+    requestAnimationFrame(animateScroll);
   }, [pathname]);
 
   return null;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search,
@@ -25,9 +25,28 @@ import {
 
 const SearchBooks = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  useEffect(() => {
+    const scrollDuration = 600;
+    const start = window.scrollY;
+    const startTime = performance.now();
+
+    const animateScroll = (currentTime) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / scrollDuration, 1);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      window.scrollTo(0, start * (1 - ease));
+
+      if (progress < 1) requestAnimationFrame(animateScroll);
+    };
+
+    requestAnimationFrame(animateScroll);
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchType, setSearchType] = useState('internal'); // 'internal' or 'google'
-  const [activeTab, setActiveTab] = useState('internal'); // 'internal' or 'google'
+  const [searchType, setSearchType] = useState('internal');
+  const [activeTab, setActiveTab] = useState('internal');
   const [loading, setLoading] = useState(false);
   const [internalBooks, setInternalBooks] = useState([]);
   const [googleBooks, setGoogleBooks] = useState([]);
@@ -38,6 +57,48 @@ const SearchBooks = () => {
     language: 'all'
   });
   const [showFilters, setShowFilters] = useState(false);
+
+  // Hàm phân biệt user type
+  const getUserType = () => {
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
+    return token && user ? 'member' : 'guest';
+  };
+
+  // Lấy trang trước đó từ state hoặc dựa vào user type
+  const getBackLink = () => {
+    // Ưu tiên lấy từ state nếu có (khi navigate từ header)
+    if (location.state?.from) {
+      return location.state.from;
+    }
+    
+    // Nếu không có state, dựa vào user type
+    const userType = getUserType();
+    return userType === 'member' ? '/my-library' : '/books';
+  };
+
+  const getBackLinkText = () => {
+    const backLink = getBackLink();
+    
+    // Dựa vào đường dẫn để hiển thị text phù hợp
+    if (backLink === '/my-library') {
+      return 'Quay lại thư viện của tôi';
+    } else if (backLink === '/books') {
+      return 'Quay lại danh sách sách';
+    } else if (backLink === '/dashboard') {
+      return 'Quay lại dashboard';
+    } else if (backLink === '/') {
+      return 'Quay lại trang chủ';
+    } else if (backLink === '/how-it-works') {
+      return 'Quay lại cách hoạt động';
+    } else if (backLink === '/exchanges') {
+      return 'Quay lại trao đổi';
+    } else if (backLink === '/messages') {
+      return 'Quay lại chat';
+    } else {
+      return 'Quay lại trang trước';
+    }
+  };
 
   // Mock categories
   const categories = [
@@ -84,7 +145,6 @@ const SearchBooks = () => {
   };
 
   const searchInternalBooks = async () => {
-    // Simulate API call to internal books
     await new Promise(resolve => setTimeout(resolve, 800));
     
     const mockInternalBooks = Array.from({ length: 8 }, (_, index) => {
@@ -117,7 +177,6 @@ const SearchBooks = () => {
   };
 
   const searchGoogleBooks = async () => {
-    // Simulate API call to Google Books
     await new Promise(resolve => setTimeout(resolve, 600));
     
     const mockGoogleBooks = Array.from({ length: 12 }, (_, index) => {
@@ -148,7 +207,18 @@ const SearchBooks = () => {
   };
 
   const handleQuickAdd = (googleBook) => {
-    // Navigate to AddBook with pre-filled data
+    const userType = getUserType();
+    if (userType === 'guest') {
+      navigate('/login', { 
+        state: { 
+          message: 'Vui lòng đăng nhập để thêm sách vào thư viện',
+          returnUrl: '/books/search',
+          from: getBackLink() // Giữ lại trang trước đó
+        }
+      });
+      return;
+    }
+
     navigate('/books/add', {
       state: {
         prefillData: {
@@ -163,7 +233,8 @@ const SearchBooks = () => {
           language: googleBook.language,
           page_count: googleBook.pageCount,
           cover_image_url: googleBook.cover_image_url
-        }
+        },
+        from: getBackLink() // Giữ lại trang trước đó
       }
     });
   };
@@ -175,7 +246,6 @@ const SearchBooks = () => {
     
     setLoading(true);
     try {
-      // Simulate ISBN search
       await new Promise(resolve => setTimeout(resolve, 500));
       
       const mockBook = {
@@ -240,11 +310,11 @@ const SearchBooks = () => {
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <Link 
-              to="/books"
+              to={getBackLink()}
               className="inline-flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors"
             >
               <ArrowRight className="w-5 h-5 rotate-180" />
-              <span>Quay lại danh sách</span>
+              <span>{getBackLinkText()}</span>
             </Link>
             
             <div className="flex items-center space-x-3">
@@ -690,11 +760,11 @@ const SearchBooks = () => {
                 Xóa tìm kiếm
               </button>
               <Link
-                to="/books/add"
+                to={getUserType() === 'member' ? '/books/add' : '/login'}
                 className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition-all flex items-center space-x-2"
               >
                 <Plus className="w-5 h-5" />
-                <span>Thêm sách mới</span>
+                <span>{getUserType() === 'member' ? 'Thêm sách mới' : 'Đăng nhập để thêm sách'}</span>
               </Link>
             </div>
           </motion.div>

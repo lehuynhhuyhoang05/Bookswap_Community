@@ -13,7 +13,7 @@ import {
   Shield
 } from "lucide-react";
 
-const Login = () => {
+const Login = (props) => {
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -103,7 +103,14 @@ const Login = () => {
       localStorage.setItem("token", response.token);
       localStorage.setItem("user", JSON.stringify(response.user));
 
-      navigate("/");
+      // Gọi callback để thông báo cho component cha (nếu có)
+      if (props.onLoginSuccess) {
+        props.onLoginSuccess(response.user);
+      }
+
+      // Điều hướng đến dashboard của member
+      navigate("/dashboard");
+
     } catch (error) {
       console.error("Login error:", error);
 
