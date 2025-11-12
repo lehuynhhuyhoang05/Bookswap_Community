@@ -5,6 +5,7 @@ import {
   ConflictException,
   BadRequestException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -52,6 +53,8 @@ function durationToSeconds(v: string | number | undefined, fallbackSec: number):
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Member) private memberRepository: Repository<Member>,
@@ -137,11 +140,17 @@ export class AuthService {
     });
     await this.emailVerifyRepo.save(rec);
 
-    await this.emailService.sendVerificationEmail(
-      user.email,
-      token,
-      user.full_name,
-    );
+    // Try to send email, but don't fail registration if email fails
+    try {
+      await this.emailService.sendVerificationEmail(
+        user.email,
+        token,
+        user.full_name,
+      );
+    } catch (error) {
+      this.logger.warn(`Failed to send verification email to ${user.email}: ${error.message}`);
+      // Continue with registration even if email fails
+    }
   }
 
   // =========================================================

@@ -15,7 +15,8 @@ services:
       - "3308:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # Mount the migrations directory if you have init scripts
+      # - ./sql/migrations:/docker-entrypoint-initdb.d
     networks:
       - bookswap_network
 
