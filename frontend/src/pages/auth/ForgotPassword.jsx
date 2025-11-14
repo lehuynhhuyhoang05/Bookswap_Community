@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { 
   Mail, 
   BookOpen, 
@@ -8,7 +8,6 @@ import {
   CheckCircle, 
   ArrowLeft, 
   ArrowRight,
-  Sparkles,
   Shield
 } from 'lucide-react';
 
@@ -17,26 +16,36 @@ const ForgotPassword = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const navigate = useNavigate();
 
+  // Xu ly input
   const handleChange = (e) => {
     setEmail(e.target.value);
     if (error) setError('');
     if (success) setSuccess('');
   };
 
-  const mockForgotPasswordAPI = async (email) => {
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    return {
-      status: 200,
-      message: 'Reset email sent if user exists'
-    };
+  // Goi API that den backend
+  const forgotPasswordAPI = async (email) => {
+    const response = await fetch('http://localhost:3000/auth/forgot-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Gửi email thất bại');
+    }
+
+    return await response.json();
   };
 
+  // Xu ly submit form
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!email) {
       setError('Vui lòng nhập email');
       return;
@@ -52,30 +61,18 @@ const ForgotPassword = () => {
     setSuccess('');
 
     try {
-      const response = await mockForgotPasswordAPI(email);
-      
-      setSuccess('Nếu email tồn tại trong hệ thống, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu. Vui lòng kiểm tra hộp thư của bạn.');
-      
-      setTimeout(() => {
-        navigate('/verifyemail', { 
-          state: { 
-            message: 'Vui lòng kiểm tra email để xác minh liên kết đặt lại mật khẩu',
-            email: email
-          }
-        });
-      }, 2000);
-      
-    } catch (error) {
-      setError('Có lỗi xảy ra, vui lòng thử lại sau');
+      const response = await forgotPasswordAPI(email);
+      console.log('API Response:', response);
+
+      setSuccess(
+        'Nếu email tồn tại trong hệ thống, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu. Vui lòng kiểm tra hộp thư của bạn.'
+      );
+    } catch (err) {
+      console.error('ForgotPassword API Error:', err);
+      setError(err.message || 'Có lỗi xảy ra, vui lòng thử lại sau');
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleDemoFill = () => {
-    setEmail('user@example.com');
-    setError('');
-    setSuccess('');
   };
 
   return (
@@ -96,21 +93,7 @@ const ForgotPassword = () => {
             </p>
           </div>
 
-          {/* Demo Fill Button */}
-          <div className="mb-8">
-            <button
-              type="button"
-              onClick={handleDemoFill}
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-amber-50 to-orange-50 text-amber-700 px-4 py-3 rounded-2xl text-sm font-semibold hover:from-amber-100 hover:to-orange-100 transition-all duration-300 disabled:opacity-50 border border-amber-200 hover:border-amber-300 shadow-sm hover:shadow-md"
-            >
-              <div className="flex items-center justify-center space-x-2">
-                <Sparkles className="w-4 h-4" />
-                <span>Click để điền email demo</span>
-              </div>
-            </button>
-          </div>
-
+          {/* Form */}
           <div className="bg-gradient-to-br from-white to-gray-50/50 py-8 px-8 rounded-3xl shadow-xl border border-gray-100">
             <form className="space-y-6" onSubmit={handleSubmit}>
               {/* Success Message */}
@@ -132,7 +115,7 @@ const ForgotPassword = () => {
                 </div>
               )}
 
-              {/* Form chỉ hiển thị khi chưa success */}
+              {/* Form input email chi hien khi chua success */}
               {!success && (
                 <>
                   <div className="space-y-2">
@@ -207,17 +190,14 @@ const ForgotPassword = () => {
 
       {/* Right Side - Illustration */}
       <div className="hidden lg:flex flex-1 bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 relative overflow-hidden">
-        {/* Animated Background */}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-200 rounded-full blur-3xl opacity-30 animate-pulse"></div>
           <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-cyan-200 rounded-full blur-3xl opacity-30 animate-pulse delay-1000"></div>
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-sky-100 rounded-full blur-3xl opacity-20"></div>
         </div>
 
-        {/* Content */}
         <div className="relative z-10 flex flex-col justify-center items-center px-12 text-center">
           <div className="max-w-md space-y-8">
-            {/* Security Illustration */}
             <div className="relative">
               <div className="w-64 h-64 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-3xl border border-blue-200/50 backdrop-blur-sm transform rotate-3 shadow-2xl flex items-center justify-center">
                 <div className="text-center">
@@ -227,8 +207,7 @@ const ForgotPassword = () => {
                   <div className="text-2xl font-bold text-gray-900">Bảo mật</div>
                 </div>
               </div>
-              
-              {/* Floating Icons */}
+
               <div className="absolute -top-4 -left-4 w-16 h-16 bg-white rounded-2xl shadow-2xl border border-gray-100 flex items-center justify-center">
                 <Mail className="h-8 w-8 text-blue-600" />
               </div>
@@ -237,7 +216,6 @@ const ForgotPassword = () => {
               </div>
             </div>
 
-            {/* Text Content */}
             <div className="space-y-6">
               <h3 className="text-3xl font-bold text-gray-900">
                 An toàn và bảo mật
@@ -248,7 +226,6 @@ const ForgotPassword = () => {
               </p>
             </div>
 
-            {/* Stats */}
             <div className="grid grid-cols-3 gap-6 pt-8 border-t border-gray-200/50">
               <div className="text-center">
                 <div className="text-2xl font-bold text-gray-900">99.9%</div>
@@ -270,4 +247,4 @@ const ForgotPassword = () => {
   );
 };
 
-export default ForgotPassword;
+export default ForgotPassword; // ok nha
