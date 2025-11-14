@@ -25,12 +25,13 @@ const CategoryBooks = () => {
   const navigate = useNavigate();
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
+  const [viewMode, setViewMode] = useState('grid'); 
   const [sortBy, setSortBy] = useState('newest');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [conditionFilter, setConditionFilter] = useState('all');
+  const [totalBooks, setTotalBooks] = useState(0);
   const limit = 12;
 
   // Mock categories for demonstration
@@ -69,86 +70,126 @@ const CategoryBooks = () => {
     { value: 'exchanges', label: 'Nhiều trao đổi nhất' }
   ];
 
-  // Fetch books by category
+  // Fetch books by category from API
   useEffect(() => {
     const fetchCategoryBooks = async () => {
       try {
         setLoading(true);
         
-        // Simulate API call with query params
+        // Build query parameters according to API spec
         const queryParams = new URLSearchParams({
           page: currentPage.toString(),
           limit: limit.toString()
         });
 
-        await new Promise(resolve => setTimeout(resolve, 600));
+        // Add search query if provided (client-side filtering for search)
+        // Note: If API supports search, you can move this to server-side
+        // by adding: queryParams.append('search', searchQuery);
+
+        console.log(`Fetching books for category: ${category}, page: ${currentPage}`);
         
-        // Mock data based on category
-        const mockBooks = Array.from({ length: limit }, (_, index) => {
-          const conditions = ['NEW', 'EXCELLENT', 'GOOD', 'FAIR', 'POOR'];
-          const randomCondition = conditions[Math.floor(Math.random() * conditions.length)];
-          
-          return {
-            id: `book-${category}-${index}`,
-            title: `Sách ${categories[category] || category} ${index + 1}`,
-            author: `Tác giả ${String.fromCharCode(65 + (index % 26))}`,
-            category: category,
-            book_condition: randomCondition,
-            cover_image_url: `https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400&h=600&fit=crop&ix=${index}`,
-            rating: (4 + Math.random() * 1).toFixed(1),
-            total_ratings: Math.floor(Math.random() * 100),
-            exchanges: Math.floor(Math.random() * 20),
-            views: Math.floor(Math.random() * 500),
-            location: `Quận ${(index % 12) + 1}, TP.HCM`,
-            owner: {
-              name: `Người dùng ${index + 1}`,
-              verified: Math.random() > 0.3
-            },
-            created_at: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString()
-          };
+        // Replace with your actual API endpoint
+        const apiUrl = `/api/books/category/${category}?${queryParams}`;
+        
+        const response = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            // Add authorization header if needed
+            // 'Authorization': `Bearer ${yourToken}`
+          }
         });
 
-        // Filter based on search and condition
-        let filteredBooks = mockBooks;
-        
-        if (searchQuery) {
-          filteredBooks = filteredBooks.filter(book => 
-            book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            book.author.toLowerCase().includes(searchQuery.toLowerCase())
-          );
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
+
+        const data = await response.json();
         
+        // Assuming the API returns an object with books array and pagination info
+        // Adjust according to your actual API response structure
+        let booksData = data.books || data.items || data || [];
+        const totalCount = data.totalCount || data.total || booksData.length;
+        
+        // Client-side filtering for condition and search
+        let filteredBooks = booksData;
+        
+        // Filter by condition
         if (conditionFilter !== 'all') {
           filteredBooks = filteredBooks.filter(book => 
             book.book_condition === conditionFilter
           );
         }
         
-        // Sort books
+        // Filter by search query
+        if (searchQuery) {
+          filteredBooks = filteredBooks.filter(book => 
+            book.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            book.author?.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+        }
+        
+        // Sort books (client-side sorting)
         filteredBooks.sort((a, b) => {
           switch (sortBy) {
             case 'newest':
-              return new Date(b.created_at) - new Date(a.created_at);
+              return new Date(b.created_at || b.dateAdded || 0) - new Date(a.created_at || a.dateAdded || 0);
             case 'oldest':
-              return new Date(a.created_at) - new Date(b.created_at);
+              return new Date(a.created_at || a.dateAdded || 0) - new Date(b.created_at || b.dateAdded || 0);
             case 'rating':
-              return parseFloat(b.rating) - parseFloat(a.rating);
+              return parseFloat(b.rating || 0) - parseFloat(a.rating || 0);
             case 'popular':
-              return b.views - a.views;
+              return (b.views || 0) - (a.views || 0);
             case 'exchanges':
-              return b.exchanges - a.exchanges;
+              return (b.exchanges || 0) - (a.exchanges || 0);
             default:
               return 0;
           }
         });
 
         setBooks(filteredBooks);
-        setTotalPages(Math.ceil(filteredBooks.length / limit));
+        setTotalBooks(totalCount);
+        setTotalPages(Math.ceil(totalCount / limit));
+        
       } catch (error) {
         console.error('Error fetching category books:', error);
+        
+        // Fallback to mock data if API fails (for development)
+        console.log('Using mock data as fallback...');
+        const mockBooks = generateMockBooks();
+        setBooks(mockBooks);
+        setTotalBooks(mockBooks.length);
+        setTotalPages(Math.ceil(mockBooks.length / limit));
       } finally {
         setLoading(false);
       }
+    };
+
+    // Helper function to generate mock data as fallback
+    const generateMockBooks = () => {
+      return Array.from({ length: 24 }, (_, index) => {
+        const conditions = ['NEW', 'EXCELLENT', 'GOOD', 'FAIR', 'POOR'];
+        const randomCondition = conditions[Math.floor(Math.random() * conditions.length)];
+        
+        return {
+          id: `book-${category}-${index}`,
+          title: `Sách ${categories[category] || category} ${index + 1}`,
+          author: `Tác giả ${String.fromCharCode(65 + (index % 26))}`,
+          category: category,
+          book_condition: randomCondition,
+          cover_image_url: `https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400&h=600&fit=crop&ix=${index}`,
+          rating: (4 + Math.random() * 1).toFixed(1),
+          total_ratings: Math.floor(Math.random() * 100),
+          exchanges: Math.floor(Math.random() * 20),
+          views: Math.floor(Math.random() * 500),
+          location: `Quận ${(index % 12) + 1}, TP.HCM`,
+          owner: {
+            name: `Người dùng ${index + 1}`,
+            verified: Math.random() > 0.3
+          },
+          created_at: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString()
+        };
+      });
     };
 
     fetchCategoryBooks();
@@ -157,7 +198,7 @@ const CategoryBooks = () => {
   const handleSearch = (e) => {
     e.preventDefault();
     setCurrentPage(1);
-    // Search is handled in the useEffect
+    // Search is handled in the useEffect through state change
   };
 
   const handleConditionFilter = (condition) => {
@@ -192,6 +233,7 @@ const CategoryBooks = () => {
     return labelMap[condition] || condition;
   };
 
+  // Rest of the component remains the same...
   if (loading && books.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50">
@@ -261,14 +303,14 @@ const CategoryBooks = () => {
                   {categories[category] || category}
                 </h1>
                 <p className="text-gray-600 text-lg">
-                  Khám phá {books.length} quyển sách {categories[category] ? `về ${categories[category].toLowerCase()}` : `trong danh mục ${category}`}
+                  Khám phá {totalBooks} quyển sách {categories[category] ? `về ${categories[category].toLowerCase()}` : `trong danh mục ${category}`}
                 </p>
               </div>
             </div>
             
             <div className="text-right">
               <div className="text-2xl font-bold text-blue-600">{books.length}</div>
-              <div className="text-gray-600">sách có sẵn</div>
+              <div className="text-gray-600">sách hiển thị</div>
             </div>
           </div>
         </motion.div>
@@ -398,9 +440,12 @@ const CategoryBooks = () => {
                   >
                     <div className="relative mb-4">
                       <img
-                        src={book.cover_image_url}
+                        src={book.cover_image_url || book.coverImage || '/default-book-cover.jpg'}
                         alt={book.title}
                         className="w-full h-48 object-cover rounded-2xl group-hover:scale-105 transition-transform"
+                        onError={(e) => {
+                          e.target.src = '/default-book-cover.jpg';
+                        }}
                       />
                       <div className="absolute top-3 left-3">
                         <span className={`px-2 py-1 text-xs text-white font-semibold rounded-full bg-gradient-to-r ${getConditionColor(book.book_condition)}`}>
@@ -422,8 +467,8 @@ const CategoryBooks = () => {
                       <div className="flex items-center space-x-1">
                         <User className="w-4 h-4" />
                         <span className="flex items-center">
-                          {book.owner.name}
-                          {book.owner.verified && <Shield className="w-3 h-3 text-green-500 ml-1" />}
+                          {book.owner?.name || 'Unknown'}
+                          {book.owner?.verified && <Shield className="w-3 h-3 text-green-500 ml-1" />}
                         </span>
                       </div>
                     </div>
@@ -436,11 +481,11 @@ const CategoryBooks = () => {
                       <div className="flex items-center space-x-3 text-xs text-gray-500">
                         <div className="flex items-center space-x-1">
                           <RefreshCw className="w-3 h-3" />
-                          <span>{book.exchanges}</span>
+                          <span>{book.exchanges || 0}</span>
                         </div>
                         <div className="flex items-center space-x-1">
                           <Eye className="w-3 h-3" />
-                          <span>{book.views}</span>
+                          <span>{book.views || 0}</span>
                         </div>
                       </div>
                     </div>
@@ -463,9 +508,12 @@ const CategoryBooks = () => {
                   >
                     <div className="flex items-start space-x-4">
                       <img
-                        src={book.cover_image_url}
+                        src={book.cover_image_url || book.coverImage || '/default-book-cover.jpg'}
                         alt={book.title}
                         className="w-24 h-32 object-cover rounded-xl group-hover:scale-105 transition-transform"
+                        onError={(e) => {
+                          e.target.src = '/default-book-cover.jpg';
+                        }}
                       />
                       <div className="flex-1">
                         <div className="flex items-start justify-between mb-2">
@@ -493,13 +541,13 @@ const CategoryBooks = () => {
                             <div className="flex items-center space-x-1">
                               <User className="w-4 h-4" />
                               <span className="flex items-center">
-                                {book.owner.name}
-                                {book.owner.verified && <Shield className="w-3 h-3 text-green-500 ml-1" />}
+                                {book.owner?.name || 'Unknown'}
+                                {book.owner?.verified && <Shield className="w-3 h-3 text-green-500 ml-1" />}
                               </span>
                             </div>
                             <div className="flex items-center space-x-1">
                               <Calendar className="w-4 h-4" />
-                              <span>{new Date(book.created_at).toLocaleDateString('vi-VN')}</span>
+                              <span>{new Date(book.created_at || book.dateAdded).toLocaleDateString('vi-VN')}</span>
                             </div>
                           </div>
                           
@@ -510,11 +558,11 @@ const CategoryBooks = () => {
                             </div>
                             <div className="flex items-center space-x-1">
                               <RefreshCw className="w-4 h-4" />
-                              <span>{book.exchanges} trao đổi</span>
+                              <span>{book.exchanges || 0} trao đổi</span>
                             </div>
                             <div className="flex items-center space-x-1">
                               <Eye className="w-4 h-4" />
-                              <span>{book.views} lượt xem</span>
+                              <span>{book.views || 0} lượt xem</span>
                             </div>
                           </div>
                         </div>

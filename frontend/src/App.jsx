@@ -1,28 +1,26 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { useState, useEffect } from "react";
-import ScrollToTop from "./components/layout/ScrollToTop";
-import Home from "./pages/Home";
-import Header from "./components/layout/Header";
-import Footer from "./components/layout/Footer";
+import { useEffect, useState } from 'react';
+import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import Footer from './components/layout/Footer';
+import Header from './components/layout/Header';
+import ScrollToTop from './components/layout/ScrollToTop';
+import Home from './pages/Home';
 
 // Auth pages
-import Login from "./pages/auth/Login";
-import Register from "./pages/auth/Register";
-import ForgotPassword from "./pages/auth/ForgotPassword";
-import ResetPassword from "./pages/auth/ResetPassword";
-import VerifyEmail from "./pages/auth/VerifyEmail";
+import ForgotPassword from './pages/auth/ForgotPassword';
+import Login from './pages/auth/Login';
+import Register from './pages/auth/Register';
 
 // Books pages
-import BookList from "./pages/books/BookList";
-import BookDetail from "./pages/books/BookDetail";
-import MyLibrary from "./pages/books/MyLibrary";
-import AddBook from "./pages/books/AddBook";
-import EditBook from "./pages/books/EditBook";
-import CategoryBooks from "./pages/books/CategoryBooks";
-import SearchBooks from "./pages/books/SearchBooks";
+import AddBook from './pages/books/AddBook';
+import BookDetail from './pages/books/BookDetail';
+import BookList from './pages/books/BookList';
+import CategoryBooks from './pages/books/CategoryBooks';
+import EditBook from './pages/books/EditBook';
+import MyLibrary from './pages/books/MyLibrary';
+import SearchBooks from './pages/books/SearchBooks';
 
 // Member pages
-import MemberDashboard from "./pages/member/MemberDashboard";
+import MemberDashboard from './pages/member/MemberDashboard';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -56,23 +54,21 @@ function App() {
         <Route path="/" element={<Home />} />
 
         {/* Auth routes */}
-        <Route 
-          path="/login" 
-          element={<Login onLoginSuccess={handleLoginSuccess} />} 
+        <Route
+          path="/login"
+          element={<Login onLoginSuccess={handleLoginSuccess} />}
         />
         <Route path="/register" element={<Register />} />
         <Route path="/forgotpassword" element={<ForgotPassword />} />
-        <Route path="/resetpassword" element={<ResetPassword />} />
-        <Route path="/verifyemail" element={<VerifyEmail />} />
 
         {/* Books routes */}
         <Route path="/books" element={<BookList />} />
-        <Route path="/books/:id" element={<BookDetail />} />
-        <Route path="/my-library" element={<MyLibrary />} />
         <Route path="/books/add" element={<AddBook />} />
         <Route path="/books/edit/:id" element={<EditBook />} />
         <Route path="/books/category/:category" element={<CategoryBooks />} />
         <Route path="/books/search" element={<SearchBooks />} />
+        <Route path="/books/:id" element={<BookDetail />} />
+        <Route path="/my-library" element={<MyLibrary />} />
 
         {/* 👤 Member routes */}
         <Route path="/dashboard" element={<MemberDashboard />} />

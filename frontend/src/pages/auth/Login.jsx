@@ -10,7 +10,7 @@ import {
   ArrowRight,
   Sparkles,
   Users,
-  Shield
+  Shield,
 } from "lucide-react";
 
 const Login = (props) => {
@@ -31,53 +31,34 @@ const Login = (props) => {
     if (error) setError("");
   };
 
-  // Mock API dựa trên spec
-  const mockLoginAPI = async (email, password) => {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    const demoAccounts = {
-      "user@example.com": {
-        password: "Password123",
-        user: {
-          id: 1,
-          name: "Nguyễn Văn A",
-          email: "user@example.com",
-          role: "member",
-          avatar: null,
+  // ✅ Endpoint NestJS
+  const loginAPI = async (email, password) => {
+    try {
+      const response = await fetch("http://localhost:3000/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-        token: "demo_token_user_123",
-      },
-      "admin@bookswap.com": {
-        password: "Admin123",
-        user: {
-          id: 2,
-          name: "Quản trị viên",
-          email: "admin@bookswap.com",
-          role: "admin",
-          avatar: null,
-        },
-        token: "demo_token_admin_123",
-      },
-    };
+        body: JSON.stringify({ email, password }),
+      });
 
-    const account = demoAccounts[email];
+      if (!response.ok) {
+        let errorMessage = "Đăng nhập thất bại";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
 
-    if (!account) {
-      const error = new Error("Invalid credentials");
-      error.status = 401;
-      throw error;
+      const data = await response.json();
+      return data;
+    } catch (err) {
+      console.error("❌ API Error:", err);
+      throw err;
     }
-
-    if (account.password !== password) {
-      const error = new Error("Invalid credentials");
-      error.status = 401;
-      throw error;
-    }
-
-    return {
-      token: account.token,
-      user: account.user,
-    };
   };
 
   const handleSubmit = async (e) => {
@@ -97,27 +78,33 @@ const Login = (props) => {
     setError("");
 
     try {
-      const response = await mockLoginAPI(formData.email, formData.password);
-      console.log("Login successful:", response);
+      const data = await loginAPI(formData.email, formData.password);
 
-      localStorage.setItem("token", response.token);
-      localStorage.setItem("user", JSON.stringify(response.user));
-
-      // Gọi callback để thông báo cho component cha (nếu có)
-      if (props.onLoginSuccess) {
-        props.onLoginSuccess(response.user);
+      // 🔹 Lưu token và thông tin người dùng
+      let token = data.access_token || data.token;
+      if (token) {
+        localStorage.setItem("token", token);
       }
 
-      // Điều hướng đến dashboard của member
+      if (data.user) {
+        localStorage.setItem("user", JSON.stringify(data.user));
+      }
+
+      if (props.onLoginSuccess) {
+        props.onLoginSuccess(data.user || data);
+      }
+
       navigate("/dashboard");
-
-    } catch (error) {
-      console.error("Login error:", error);
-
-      if (error.status === 401) {
+    } catch (err) {
+      console.error("❌ Lỗi đăng nhập:", err);
+      if (err.message.includes("401") || err.message.includes("credentials")) {
         setError("Email hoặc mật khẩu không chính xác");
+      } else if (err.message.includes("404")) {
+        setError("Endpoint API không tồn tại. Vui lòng kiểm tra cấu hình server.");
+      } else if (err.message.includes("500")) {
+        setError("Lỗi server. Vui lòng thử lại sau.");
       } else {
-        setError("Đăng nhập thất bại, vui lòng thử lại");
+        setError(err.message || "Đăng nhập thất bại, vui lòng thử lại");
       }
     } finally {
       setIsLoading(false);
@@ -129,7 +116,6 @@ const Login = (props) => {
       user: { email: "user@example.com", password: "Password123" },
       admin: { email: "admin@bookswap.com", password: "Admin123" },
     };
-
     setFormData(demoAccounts[type]);
     setError("");
   };
@@ -145,7 +131,7 @@ const Login = (props) => {
               Chào mừng trở lại!
             </h2>
             <p className="text-lg text-gray-600">
-              Đăng nhập để tiếp tục hành trình đọc sách
+              Đăng nhập để tiếp tục hành trình đọc sách 📚
             </p>
           </div>
 
@@ -180,22 +166,21 @@ const Login = (props) => {
             </div>
           </div>
 
+          {/* Form */}
           <div className="bg-gradient-to-br from-white to-gray-50/50 py-8 px-8 rounded-3xl shadow-xl border border-gray-100">
             <form className="space-y-6" onSubmit={handleSubmit}>
-              {/* Error Message */}
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center space-x-3">
                   <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
-                  <span className="text-red-700 text-sm font-medium">{error}</span>
+                  <span className="text-red-700 text-sm font-medium">
+                    {error}
+                  </span>
                 </div>
               )}
 
-              {/* Email Field */}
+              {/* Email */}
               <div className="space-y-2">
-                <label
-                  htmlFor="email"
-                  className="block text-sm font-semibold text-gray-700"
-                >
+                <label htmlFor="email" className="block text-sm font-semibold text-gray-700">
                   Email
                 </label>
                 <div className="relative">
@@ -206,23 +191,18 @@ const Login = (props) => {
                     id="email"
                     name="email"
                     type="email"
-                    autoComplete="email"
-                    required
-                    className="bg-white border border-gray-300 text-gray-900 placeholder-gray-400 appearance-none block w-full pl-12 pr-4 py-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all duration-300 hover:border-gray-400"
-                    placeholder="you@example.com"
                     value={formData.email}
                     onChange={handleChange}
                     disabled={isLoading}
+                    className="bg-white border border-gray-300 text-gray-900 placeholder-gray-400 block w-full pl-12 pr-4 py-4 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300"
+                    placeholder="you@example.com"
                   />
                 </div>
               </div>
 
-              {/* Password Field */}
+              {/* Password */}
               <div className="space-y-2">
-                <label
-                  htmlFor="password"
-                  className="block text-sm font-semibold text-gray-700"
-                >
+                <label htmlFor="password" className="block text-sm font-semibold text-gray-700">
                   Mật khẩu
                 </label>
                 <div className="relative">
@@ -233,13 +213,11 @@ const Login = (props) => {
                     id="password"
                     name="password"
                     type={showPassword ? "text" : "password"}
-                    autoComplete="current-password"
-                    required
-                    className="bg-white border border-gray-300 text-gray-900 placeholder-gray-400 appearance-none block w-full pl-12 pr-12 py-4 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-all duration-300 hover:border-gray-400"
-                    placeholder="••••••••"
                     value={formData.password}
                     onChange={handleChange}
                     disabled={isLoading}
+                    className="bg-white border border-gray-300 text-gray-900 placeholder-gray-400 block w-full pl-12 pr-12 py-4 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300"
+                    placeholder="••••••••"
                   />
                   <button
                     type="button"
@@ -247,49 +225,32 @@ const Login = (props) => {
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={isLoading}
                   >
-                    {showPassword ? (
-                      <EyeOff className="h-5 w-5 text-gray-400" />
-                    ) : (
-                      <Eye className="h-5 w-5 text-gray-400" />
-                    )}
+                    {showPassword ? <EyeOff className="h-5 w-5 text-gray-400" /> : <Eye className="h-5 w-5 text-gray-400" />}
                   </button>
                 </div>
               </div>
 
-              {/* Remember & Forgot */}
+              {/* Remember me + Forgot */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
-                  <input
-                    id="remember-me"
-                    name="remember-me"
-                    type="checkbox"
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded transition duration-200"
-                    disabled={isLoading}
-                  />
-                  <label
-                    htmlFor="remember-me"
-                    className="ml-3 block text-sm text-gray-700 font-medium"
-                  >
+                  <input id="remember-me" name="remember-me" type="checkbox" className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" disabled={isLoading}/>
+                  <label htmlFor="remember-me" className="ml-3 block text-sm text-gray-700 font-medium">
                     Ghi nhớ đăng nhập
                   </label>
                 </div>
-
                 <div className="text-sm">
-                  <Link
-                    to="/forgotpassword"
-                    className="font-semibold text-blue-600 hover:text-blue-500 transition-colors duration-200"
-                  >
+                  <Link to="/forgotpassword" className="font-semibold text-blue-600 hover:text-blue-500 transition-colors duration-200">
                     Quên mật khẩu?
                   </Link>
                 </div>
               </div>
 
-              {/* Submit Button */}
+              {/* Submit */}
               <div>
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="group w-full flex justify-center items-center space-x-3 py-4 px-4 border border-transparent rounded-2xl shadow-lg text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-xl hover:scale-105 active:scale-95"
+                  className="group w-full flex justify-center items-center space-x-3 py-4 px-4 rounded-2xl shadow-lg text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300 disabled:opacity-50"
                 >
                   {isLoading ? (
                     <>
@@ -306,14 +267,11 @@ const Login = (props) => {
               </div>
             </form>
 
-            {/* Register Link */}
+            {/* Footer */}
             <div className="mt-8 text-center">
               <p className="text-sm text-gray-600">
                 Chưa có tài khoản?{" "}
-                <Link
-                  to="/register"
-                  className="font-semibold text-blue-600 hover:text-blue-500 transition-colors duration-200 inline-flex items-center space-x-1 group"
-                >
+                <Link to="/register" className="font-semibold text-blue-600 hover:text-blue-500 inline-flex items-center space-x-1 group">
                   <span>Đăng ký ngay</span>
                   <Sparkles className="h-4 w-4 group-hover:scale-110 transition-transform" />
                 </Link>
@@ -323,63 +281,16 @@ const Login = (props) => {
         </div>
       </div>
 
-      {/* Right Side - Illustration */}
+      {/* Right Side */}
       <div className="hidden lg:flex flex-1 bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 relative overflow-hidden">
-        {/* Animated Background */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-200 rounded-full blur-3xl opacity-30 animate-pulse"></div>
-          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-cyan-200 rounded-full blur-3xl opacity-30 animate-pulse delay-1000"></div>
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-sky-100 rounded-full blur-3xl opacity-20"></div>
-        </div>
-
-        {/* Content */}
-        <div className="relative z-10 flex flex-col justify-center items-center px-12 text-center">
-          <div className="max-w-md space-y-8">
-            {/* Floating Book Cards */}
-            <div className="grid grid-cols-2 gap-6 mb-12">
-              {[
-                "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=300&h=400&fit=crop",
-                "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=300&h=400&fit=crop"
-              ].map((src, index) => (
-                <div
-                  key={index}
-                  className={`bg-white rounded-2xl p-4 shadow-2xl border border-gray-100 transform transition-all duration-500 hover:shadow-2xl ${
-                    index === 0 ? 'rotate-3 hover:rotate-0' : '-rotate-3 hover:rotate-0'
-                  } hover:scale-105`}
-                >
-                  <img
-                    src={src}
-                    alt="Book"
-                    className="w-full h-48 object-cover rounded-xl"
-                  />
-                </div>
-              ))}
-            </div>
-
-            <h3 className="text-3xl font-bold text-gray-900">
-              Khám phá thế giới sách
-            </h3>
-            <p className="text-lg text-gray-600 leading-relaxed">
-              Tham gia cộng đồng yêu sách lớn nhất Việt Nam. 
-              Trao đổi, kết nối và mở rộng tủ sách của bạn.
-            </p>
-
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-6 pt-8 border-t border-gray-200/50">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-gray-900">15K+</div>
-                <div className="text-sm text-gray-600">Thành viên</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-gray-900">28K+</div>
-                <div className="text-sm text-gray-600">Sách</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-gray-900">9K+</div>
-                <div className="text-sm text-gray-600">Giao dịch</div>
-              </div>
-            </div>
-          </div>
+        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1524995997946-a1c2e315a42f')] bg-cover bg-center opacity-10" />
+        <div className="m-auto text-center relative z-10 max-w-lg">
+          <h1 className="text-5xl font-extrabold text-gray-800 mb-6 leading-tight">
+            BookSwap <span className="text-blue-600">Community</span>
+          </h1>
+          <p className="text-gray-600 text-lg">
+            Nơi những cuốn sách tìm thấy chủ nhân mới 💫
+          </p>
         </div>
       </div>
     </div>

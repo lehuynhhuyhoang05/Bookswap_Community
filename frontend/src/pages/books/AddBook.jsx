@@ -1,28 +1,25 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { 
+import {
+  AlertCircle,
   ArrowLeft,
   BookOpen,
-  User,
+  Calendar,
   Camera,
+  CheckCircle,
   Hash,
   Languages,
-  Calendar,
   MapPin,
-  Star,
-  Upload,
   X,
-  CheckCircle,
-  AlertCircle
 } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { createBook } from '../../services/booksApi';
 
 const AddBook = () => {
-  
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [previewImage, setPreviewImage] = useState('');
-  
+
   // Form state
   const [formData, setFormData] = useState({
     google_books_id: '',
@@ -37,18 +34,17 @@ const AddBook = () => {
     page_count: '',
     cover_image_url: '',
     book_condition: 'GOOD',
-    location: ''
+    location: '',
   });
 
   const [errors, setErrors] = useState({});
 
   // Book condition options
   const conditionOptions = [
-    { value: 'NEW', label: 'Mới', color: 'from-green-500 to-emerald-500' },
-    { value: 'EXCELLENT', label: 'Rất tốt', color: 'from-blue-500 to-cyan-500' },
+    { value: 'LIKE_NEW', label: 'Mới', color: 'from-green-500 to-emerald-500' },
     { value: 'GOOD', label: 'Tốt', color: 'from-amber-500 to-orange-500' },
     { value: 'FAIR', label: 'Khá', color: 'from-orange-500 to-red-500' },
-    { value: 'POOR', label: 'Cũ', color: 'from-red-500 to-pink-500' }
+    { value: 'POOR', label: 'Cũ', color: 'from-red-500 to-pink-500' },
   ];
 
   const languageOptions = [
@@ -56,27 +52,39 @@ const AddBook = () => {
     { value: 'en', label: 'English' },
     { value: 'fr', label: 'French' },
     { value: 'ja', label: 'Japanese' },
-    { value: 'ko', label: 'Korean' }
+    { value: 'ko', label: 'Korean' },
   ];
 
   const categoryOptions = [
-    'Programming', 'Fiction', 'Non-Fiction', 'Science', 'Technology',
-    'Business', 'Art', 'History', 'Philosophy', 'Self-Help',
-    'Education', 'Travel', 'Cooking', 'Health', 'Sports'
+    'Programming',
+    'Fiction',
+    'Non-Fiction',
+    'Science',
+    'Technology',
+    'Business',
+    'Art',
+    'History',
+    'Philosophy',
+    'Self-Help',
+    'Education',
+    'Travel',
+    'Cooking',
+    'Health',
+    'Sports',
   ];
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
-    
+
     // Clear error when user starts typing
     if (errors[name]) {
-      setErrors(prev => ({
+      setErrors((prev) => ({
         ...prev,
-        [name]: ''
+        [name]: '',
       }));
     }
   };
@@ -87,31 +95,34 @@ const AddBook = () => {
       // In real app, you would upload to cloud storage and get URL
       const imageUrl = URL.createObjectURL(file);
       setPreviewImage(imageUrl);
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        cover_image_url: imageUrl
+        cover_image_url: imageUrl,
       }));
     }
   };
 
   const removeImage = () => {
     setPreviewImage('');
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      cover_image_url: ''
+      cover_image_url: '',
     }));
   };
 
   const validateForm = () => {
     const newErrors = {};
-    
+
     if (!formData.title.trim()) newErrors.title = 'Tiêu đề sách là bắt buộc';
     if (!formData.author.trim()) newErrors.author = 'Tác giả là bắt buộc';
     if (!formData.isbn.trim()) newErrors.isbn = 'ISBN là bắt buộc';
-    if (!formData.description.trim()) newErrors.description = 'Mô tả là bắt buộc';
+    if (!formData.description.trim())
+      newErrors.description = 'Mô tả là bắt buộc';
     if (!formData.category) newErrors.category = 'Thể loại là bắt buộc';
-    if (!formData.page_count || formData.page_count < 1) newErrors.page_count = 'Số trang phải hợp lệ';
-    if (!formData.cover_image_url) newErrors.cover_image_url = 'Ảnh bìa là bắt buộc';
+    if (!formData.page_count || formData.page_count < 1)
+      newErrors.page_count = 'Số trang phải hợp lệ';
+    if (!formData.cover_image_url)
+      newErrors.cover_image_url = 'Ảnh bìa là bắt buộc';
     if (!formData.location.trim()) newErrors.location = 'Vị trí là bắt buộc';
 
     setErrors(newErrors);
@@ -120,38 +131,71 @@ const AddBook = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
 
     setLoading(true);
-    
-    try {
-      const response = await fetch('/books', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...formData,
-          page_count: parseInt(formData.page_count),
-          // Add current user info from auth context in real app
-          owner_id: 'current_user_id'
-        })
-      });
 
-      if (response.status === 201) {
-        // Success - redirect to book list or new book detail
-        navigate('/books');
-      } else if (response.status === 404) {
-        setErrors({ submit: 'Không tìm thấy hồ sơ người dùng. Vui lòng đăng nhập lại.' });
-      } else {
-        const errorData = await response.json();
-        setErrors({ submit: errorData.message || 'Có lỗi xảy ra khi thêm sách' });
-      }
+    try {
+      // Prepare book data for API
+      // Map condition to correct enum value (LIKE_NEW instead of NEW)
+      const conditionMap = {
+        LIKE_NEW: 'LIKE_NEW',
+        GOOD: 'GOOD',
+        FAIR: 'FAIR',
+        POOR: 'POOR',
+      };
+
+      const bookData = {
+        title: formData.title,
+        author: formData.author,
+        isbn: formData.isbn,
+        publisher: formData.publisher,
+        publish_date: formData.publish_date ? formData.publish_date : undefined,
+        description: formData.description,
+        category: formData.category,
+        language: formData.language,
+        page_count: formData.page_count
+          ? parseInt(formData.page_count)
+          : undefined,
+        cover_image_url: formData.cover_image_url,
+        book_condition: formData.book_condition
+          ? conditionMap[formData.book_condition]
+          : undefined,
+        google_books_id: formData.google_books_id || undefined,
+      };
+
+      // Remove undefined fields
+      Object.keys(bookData).forEach(
+        (key) => bookData[key] === undefined && delete bookData[key],
+      );
+
+      console.log('📚 Submitting book data:', bookData);
+
+      // Call the API to create the book
+      const createdBook = await createBook(bookData);
+
+      console.log('✅ Book created successfully:', createdBook);
+
+      // Navigate to My Library after adding book
+      navigate('/my-library');
     } catch (error) {
-      setErrors({ submit: 'Lỗi kết nối. Vui lòng thử lại.' });
+      console.error('❌ Error creating book:', error);
+
+      // Set appropriate error message
+      if (error.message.includes('đăng nhập')) {
+        setErrors({ submit: 'Vui lòng đăng nhập để thêm sách' });
+        // Redirect to login
+        setTimeout(() => navigate('/login'), 2000);
+      } else if (error.message.includes('không hợp lệ')) {
+        setErrors({
+          submit: 'Dữ liệu sách không hợp lệ. Vui lòng kiểm tra lại.',
+        });
+      } else {
+        setErrors({ submit: error.message || 'Có lỗi xảy ra khi thêm sách' });
+      }
     } finally {
       setLoading(false);
     }
@@ -169,7 +213,7 @@ const AddBook = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 py-8">
       {/* Header Navigation */}
       <div className="max-w-4xl mx-auto px-6 mb-8">
-        <Link 
+        <Link
           to="/my-library"
           className="inline-flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors bg-white/80 backdrop-blur-sm rounded-2xl px-4 py-3 shadow-lg border border-gray-100"
         >
@@ -192,8 +236,12 @@ const AddBook = () => {
                 <BookOpen className="w-8 h-8 text-white" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-white mb-2">Thêm Sách Mới</h1>
-                <p className="text-blue-100">Chia sẻ sách của bạn với cộng đồng</p>
+                <h1 className="text-3xl font-bold text-white mb-2">
+                  Thêm Sách Mới
+                </h1>
+                <p className="text-blue-100">
+                  Chia sẻ sách của bạn với cộng đồng
+                </p>
               </div>
             </div>
           </div>
@@ -215,7 +263,7 @@ const AddBook = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-3">
                     <RequiredLabel>Ảnh bìa sách</RequiredLabel>
                   </label>
-                  
+
                   {previewImage ? (
                     <div className="relative">
                       <img
@@ -236,9 +284,13 @@ const AddBook = () => {
                       <div className="flex flex-col items-center justify-center pt-5 pb-6">
                         <Camera className="w-12 h-12 text-gray-400 mb-4" />
                         <p className="mb-2 text-sm text-gray-500">
-                          <span className="font-semibold">Click để tải ảnh lên</span>
+                          <span className="font-semibold">
+                            Click để tải ảnh lên
+                          </span>
                         </p>
-                        <p className="text-xs text-gray-500">PNG, JPG, WEBP (Max. 5MB)</p>
+                        <p className="text-xs text-gray-500">
+                          PNG, JPG, WEBP (Max. 5MB)
+                        </p>
                       </div>
                       <input
                         type="file"
@@ -249,7 +301,9 @@ const AddBook = () => {
                     </label>
                   )}
                   {errors.cover_image_url && (
-                    <p className="mt-2 text-sm text-red-600">{errors.cover_image_url}</p>
+                    <p className="mt-2 text-sm text-red-600">
+                      {errors.cover_image_url}
+                    </p>
                   )}
                 </div>
 
@@ -284,7 +338,9 @@ const AddBook = () => {
                               </span>
                             </div>
                           </div>
-                          <div className={`shrink-0 w-3 h-3 rounded-full bg-gradient-to-r ${condition.color}`} />
+                          <div
+                            className={`shrink-0 w-3 h-3 rounded-full bg-gradient-to-r ${condition.color}`}
+                          />
                         </div>
                       </label>
                     ))}
@@ -296,7 +352,10 @@ const AddBook = () => {
               <div className="space-y-6">
                 {/* Title */}
                 <div>
-                  <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label
+                    htmlFor="title"
+                    className="block text-sm font-medium text-gray-700 mb-2"
+                  >
                     <RequiredLabel>Tiêu đề sách</RequiredLabel>
                   </label>
                   <input
@@ -317,7 +376,10 @@ const AddBook = () => {
 
                 {/* Author */}
                 <div>
-                  <label htmlFor="author" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label
+                    htmlFor="author"
+                    className="block text-sm font-medium text-gray-700 mb-2"
+                  >
                     <RequiredLabel>Tác giả</RequiredLabel>
                   </label>
                   <input
@@ -338,7 +400,10 @@ const AddBook = () => {
 
                 {/* ISBN */}
                 <div>
-                  <label htmlFor="isbn" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label
+                    htmlFor="isbn"
+                    className="block text-sm font-medium text-gray-700 mb-2"
+                  >
                     <RequiredLabel>ISBN</RequiredLabel>
                   </label>
                   <div className="relative">
@@ -365,7 +430,10 @@ const AddBook = () => {
                 {/* Publisher & Publish Date */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="publisher" className="block text-sm font-medium text-gray-700 mb-2">
+                    <label
+                      htmlFor="publisher"
+                      className="block text-sm font-medium text-gray-700 mb-2"
+                    >
                       Nhà xuất bản
                     </label>
                     <input
@@ -378,9 +446,12 @@ const AddBook = () => {
                       placeholder="Prentice Hall"
                     />
                   </div>
-                  
+
                   <div>
-                    <label htmlFor="publish_date" className="block text-sm font-medium text-gray-700 mb-2">
+                    <label
+                      htmlFor="publish_date"
+                      className="block text-sm font-medium text-gray-700 mb-2"
+                    >
                       Ngày xuất bản
                     </label>
                     <div className="relative">
@@ -402,7 +473,10 @@ const AddBook = () => {
                 {/* Category & Language */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">
+                    <label
+                      htmlFor="category"
+                      className="block text-sm font-medium text-gray-700 mb-2"
+                    >
                       <RequiredLabel>Thể loại</RequiredLabel>
                     </label>
                     <select
@@ -422,12 +496,17 @@ const AddBook = () => {
                       ))}
                     </select>
                     {errors.category && (
-                      <p className="mt-2 text-sm text-red-600">{errors.category}</p>
+                      <p className="mt-2 text-sm text-red-600">
+                        {errors.category}
+                      </p>
                     )}
                   </div>
-                  
+
                   <div>
-                    <label htmlFor="language" className="block text-sm font-medium text-gray-700 mb-2">
+                    <label
+                      htmlFor="language"
+                      className="block text-sm font-medium text-gray-700 mb-2"
+                    >
                       Ngôn ngữ
                     </label>
                     <div className="relative">
@@ -454,7 +533,10 @@ const AddBook = () => {
                 {/* Page Count & Location */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="page_count" className="block text-sm font-medium text-gray-700 mb-2">
+                    <label
+                      htmlFor="page_count"
+                      className="block text-sm font-medium text-gray-700 mb-2"
+                    >
                       <RequiredLabel>Số trang</RequiredLabel>
                     </label>
                     <input
@@ -470,12 +552,17 @@ const AddBook = () => {
                       placeholder="464"
                     />
                     {errors.page_count && (
-                      <p className="mt-2 text-sm text-red-600">{errors.page_count}</p>
+                      <p className="mt-2 text-sm text-red-600">
+                        {errors.page_count}
+                      </p>
                     )}
                   </div>
-                  
+
                   <div>
-                    <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-2">
+                    <label
+                      htmlFor="location"
+                      className="block text-sm font-medium text-gray-700 mb-2"
+                    >
                       <RequiredLabel>Vị trí</RequiredLabel>
                     </label>
                     <div className="relative">
@@ -495,14 +582,19 @@ const AddBook = () => {
                       />
                     </div>
                     {errors.location && (
-                      <p className="mt-2 text-sm text-red-600">{errors.location}</p>
+                      <p className="mt-2 text-sm text-red-600">
+                        {errors.location}
+                      </p>
                     )}
                   </div>
                 </div>
 
                 {/* Description */}
                 <div>
-                  <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label
+                    htmlFor="description"
+                    className="block text-sm font-medium text-gray-700 mb-2"
+                  >
                     <RequiredLabel>Mô tả sách</RequiredLabel>
                   </label>
                   <textarea
@@ -517,7 +609,9 @@ const AddBook = () => {
                     placeholder="Mô tả về nội dung và tình trạng sách..."
                   />
                   {errors.description && (
-                    <p className="mt-2 text-sm text-red-600">{errors.description}</p>
+                    <p className="mt-2 text-sm text-red-600">
+                      {errors.description}
+                    </p>
                   )}
                 </div>
               </div>
