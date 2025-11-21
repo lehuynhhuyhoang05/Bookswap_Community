@@ -56,7 +56,7 @@ services:
     container_name: bookswap_backend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3003:3000"
     environment:
       # Application
       NODE_ENV: production
