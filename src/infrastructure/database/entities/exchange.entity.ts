@@ -19,6 +19,16 @@ export enum ExchangeStatus {
   ACCEPTED = 'ACCEPTED',
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
+  EXPIRED = 'EXPIRED',
+}
+
+export enum CancellationReason {
+  USER_CANCELLED = 'USER_CANCELLED',
+  AUTO_EXPIRED = 'AUTO_EXPIRED',
+  DISPUTE = 'DISPUTE',
+  NO_SHOW = 'NO_SHOW',
+  BOTH_NO_SHOW = 'BOTH_NO_SHOW',
+  ADMIN_CANCELLED = 'ADMIN_CANCELLED',
 }
 
 @Entity('exchanges')
@@ -56,6 +66,40 @@ export class Exchange {
 
   @Column('timestamp', { nullable: true })
   completed_at: Date;
+
+  @Column('timestamp', { nullable: true })
+  cancelled_at: Date;
+
+  @Column('varchar', { length: 100, nullable: true })
+  cancelled_by: string; // member_id who cancelled
+
+  @Column({
+    type: 'enum',
+    enum: CancellationReason,
+    nullable: true,
+  })
+  cancellation_reason: CancellationReason;
+
+  @Column('text', { nullable: true })
+  cancellation_note: string;
+
+  @Column('timestamp', { nullable: true })
+  expires_at: Date; // Auto-cancel if not confirmed by this date
+
+  @Column('varchar', { length: 500, nullable: true })
+  meeting_location: string;
+
+  @Column('timestamp', { nullable: true })
+  meeting_time: Date;
+
+  @Column('text', { nullable: true })
+  meeting_notes: string;
+
+  @Column('varchar', { length: 36, nullable: true })
+  meeting_updated_by: string; // member_id who last updated meeting info
+
+  @Column('timestamp', { nullable: true })
+  meeting_updated_at: Date;
 
   @CreateDateColumn()
   created_at: Date;
