@@ -73,7 +73,7 @@ export class Exchange {
   })
   cancellation_reason: string;
 
-  @Column('text', { nullable: true })
+  @Column('text', { name: 'cancellation_note', nullable: true })
   cancellation_details: string;
 
   @CreateDateColumn()
