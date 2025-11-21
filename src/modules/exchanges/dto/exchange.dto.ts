@@ -102,6 +102,60 @@ export class ConfirmExchangeDto {
   confirm: boolean;
 }
 
+// ==================== UPDATE MEETING INFO ====================
+export class UpdateMeetingInfoDto {
+  @ApiPropertyOptional({
+    description: 'Meeting location',
+    example: 'Central Library, District 1',
+    maxLength: 255,
+  })
+  @IsString({ message: 'meeting_location must be a string' })
+  @IsOptional()
+  @MaxLength(255, { message: 'meeting_location must not exceed 255 characters' })
+  meeting_location?: string;
+
+  @ApiPropertyOptional({
+    description: 'Meeting time (ISO 8601 format)',
+    example: '2024-12-25T14:00:00Z',
+  })
+  @IsOptional()
+  @IsString()
+  meeting_time?: string;
+
+  @ApiPropertyOptional({
+    description: 'Meeting notes',
+    example: 'Please bring both books in good condition',
+    maxLength: 500,
+  })
+  @IsString({ message: 'meeting_notes must be a string' })
+  @IsOptional()
+  @MaxLength(500, { message: 'meeting_notes must not exceed 500 characters' })
+  meeting_notes?: string;
+}
+
+// ==================== CANCEL EXCHANGE ====================
+export class CancelExchangeDto {
+  @ApiProperty({
+    description: 'Reason for cancellation',
+    enum: ['USER_CANCELLED', 'NO_SHOW', 'BOTH_NO_SHOW', 'DISPUTE', 'ADMIN_CANCELLED'],
+    example: 'USER_CANCELLED',
+  })
+  @IsEnum(['USER_CANCELLED', 'NO_SHOW', 'BOTH_NO_SHOW', 'DISPUTE', 'ADMIN_CANCELLED'], {
+    message: 'cancellation_reason must be a valid enum value',
+  })
+  cancellation_reason: 'USER_CANCELLED' | 'NO_SHOW' | 'BOTH_NO_SHOW' | 'DISPUTE' | 'ADMIN_CANCELLED';
+
+  @ApiPropertyOptional({
+    description: 'Additional details about cancellation',
+    example: 'I am no longer interested in this exchange',
+    maxLength: 500,
+  })
+  @IsString({ message: 'cancellation_details must be a string' })
+  @IsOptional()
+  @MaxLength(500, { message: 'cancellation_details must not exceed 500 characters' })
+  cancellation_details?: string;
+}
+
 // ==================== QUERY EXCHANGE REQUESTS ====================
 export class QueryExchangeRequestsDto {
   @ApiPropertyOptional({

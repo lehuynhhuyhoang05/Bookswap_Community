@@ -57,6 +57,25 @@ export class Exchange {
   @Column('timestamp', { nullable: true })
   completed_at: Date;
 
+  @Column('varchar', { length: 500, nullable: true })
+  meeting_location: string;
+
+  @Column('timestamp', { nullable: true })
+  meeting_time: Date;
+
+  @Column('text', { nullable: true })
+  meeting_notes: string;
+
+  @Column({
+    type: 'enum',
+    enum: ['USER_CANCELLED', 'NO_SHOW', 'BOTH_NO_SHOW', 'DISPUTE', 'ADMIN_CANCELLED'],
+    nullable: true,
+  })
+  cancellation_reason: string;
+
+  @Column('text', { nullable: true })
+  cancellation_details: string;
+
   @CreateDateColumn()
   created_at: Date;
 
