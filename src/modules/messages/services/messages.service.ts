@@ -276,67 +276,9 @@ export class MessagesService {
 
         conversation = savedConversation;
       }
-    }
-    // Case 3: Create new direct conversation with receiver_member_id
-    else if (dto.receiver_member_id) {
-      // Check if sender is trying to message themselves
-      if (dto.receiver_member_id === member.member_id) {
-        throw new BadRequestException('Cannot send message to yourself');
-      }
-
-      // Check if receiver exists
-      const receiver = await this.memberRepo.findOne({
-        where: { member_id: dto.receiver_member_id },
-        relations: ['user'],
-      });
-
-      if (!receiver) {
-        throw new NotFoundException('Receiver member not found');
-      }
-
-      // Check if conversation already exists between these two members
-      const existingConversation = await this.conversationRepo
-        .createQueryBuilder('conv')
-        .where(
-          '((conv.member_a_id = :senderId AND conv.member_b_id = :receiverId) OR ' +
-          '(conv.member_a_id = :receiverId AND conv.member_b_id = :senderId)) AND ' +
-          'conv.exchange_request_id IS NULL',
-          { senderId: member.member_id, receiverId: dto.receiver_member_id }
-        )
-        .leftJoinAndSelect('conv.member_a', 'member_a')
-        .leftJoinAndSelect('member_a.user', 'user_a')
-        .leftJoinAndSelect('conv.member_b', 'member_b')
-        .leftJoinAndSelect('member_b.user', 'user_b')
-        .getOne();
-
-      if (existingConversation) {
-        conversation = existingConversation;
-      } else {
-        // Create new direct conversation (no exchange_request_id)
-        const newConversation = this.conversationRepo.create({
-          conversation_id: uuidv4(),
-          member_a_id: member.member_id,
-          member_b_id: dto.receiver_member_id,
-          exchange_request_id: null, // Direct conversation
-        });
-
-        conversation = await this.conversationRepo.save(newConversation);
-
-        // Load relations for response
-        const savedConversation = await this.conversationRepo.findOne({
-          where: { conversation_id: conversation.conversation_id },
-          relations: ['member_a', 'member_a.user', 'member_b', 'member_b.user'],
-        });
-
-        if (!savedConversation) {
-          throw new NotFoundException('Failed to load saved conversation');
-        }
-
-        conversation = savedConversation;
-      }
     } else {
       throw new BadRequestException(
-        'Must provide either conversation_id, exchange_request_id, or receiver_member_id'
+        'Must provide either conversation_id or exchange_request_id'
       );
     }
 
