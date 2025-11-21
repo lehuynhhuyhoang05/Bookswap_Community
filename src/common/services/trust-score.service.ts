@@ -3,7 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Member } from '../../infrastructure/database/entities/member.entity';
-import { Exchange, ExchangeStatus, CancellationReason } from '../../infrastructure/database/entities/exchange.entity';
+import { Exchange, ExchangeStatus } from '../../infrastructure/database/entities/exchange.entity';
 import { Review } from '../../infrastructure/database/entities/review.entity';
 import { User } from '../../infrastructure/database/entities/user.entity';
 
@@ -85,40 +85,27 @@ export class TrustScoreService {
       this.logger.debug('+5 for having avatar');
     }
 
-    // PENALTIES - Only count violations by THIS member (cancelled_by field)
+    // PENALTIES - Count exchanges cancelled
     // 1. User cancelled exchanges (-10 each)
     const userCancelled = await this.exchangeRepo.count({
-      where: {
-        cancelled_by: memberId,
-        status: ExchangeStatus.CANCELLED,
-        cancellation_reason: CancellationReason.USER_CANCELLED,
-      },
+      where: [
+        { member_a_id: memberId, status: ExchangeStatus.CANCELLED, cancellation_reason: 'USER_CANCELLED' },
+        { member_b_id: memberId, status: ExchangeStatus.CANCELLED, cancellation_reason: 'USER_CANCELLED' },
+      ],
     });
     score -= userCancelled * 10;
     this.logger.debug(`-${userCancelled * 10} from ${userCancelled} user cancellations`);
 
     // 2. NO_SHOW cancellations (-20 each) - HARSH PENALTY
     // Member gets penalized when THEY are the one who didn't show up
-    // This means: member is in the exchange BUT is NOT the canceller
-    const noShowAsA = await this.exchangeRepo
-      .createQueryBuilder('exchange')
-      .where('exchange.member_a_id = :memberIdA', { memberIdA: memberId })
-      .andWhere('exchange.status = :statusA', { statusA: ExchangeStatus.CANCELLED })
-      .andWhere('exchange.cancellation_reason = :reasonA', { reasonA: CancellationReason.NO_SHOW })
-      .andWhere('exchange.cancelled_by != :memberIdA2', { memberIdA2: memberId }) // Other person reported
-      .getCount();
-      
-    const noShowAsB = await this.exchangeRepo
-      .createQueryBuilder('exchange')
-      .where('exchange.member_b_id = :memberIdB', { memberIdB: memberId })
-      .andWhere('exchange.status = :statusB', { statusB: ExchangeStatus.CANCELLED })
-      .andWhere('exchange.cancellation_reason = :reasonB', { reasonB: CancellationReason.NO_SHOW })
-      .andWhere('exchange.cancelled_by != :memberIdB2', { memberIdB2: memberId }) // Other person reported
-      .getCount();
-      
-    const noShowCount = noShowAsA + noShowAsB;
+    const noShowCount = await this.exchangeRepo.count({
+      where: [
+        { member_a_id: memberId, status: ExchangeStatus.CANCELLED, cancellation_reason: 'NO_SHOW' },
+        { member_b_id: memberId, status: ExchangeStatus.CANCELLED, cancellation_reason: 'NO_SHOW' },
+      ],
+    });
     score -= noShowCount * 20;
-    this.logger.debug(`-${noShowCount * 20} from ${noShowCount} NO_SHOW incidents (was reported by others)`);
+    this.logger.debug(`-${noShowCount * 20} from ${noShowCount} NO_SHOW incidents`);
 
     // 3. BOTH_NO_SHOW - both parties are at fault (-20 each)
     const bothNoShowCount = await this.exchangeRepo.count({
@@ -126,12 +113,12 @@ export class TrustScoreService {
         { 
           member_a_id: memberId, 
           status: ExchangeStatus.CANCELLED,
-          cancellation_reason: CancellationReason.BOTH_NO_SHOW,
+          cancellation_reason: 'BOTH_NO_SHOW',
         },
         { 
           member_b_id: memberId, 
           status: ExchangeStatus.CANCELLED,
-          cancellation_reason: CancellationReason.BOTH_NO_SHOW,
+          cancellation_reason: 'BOTH_NO_SHOW',
         },
       ],
     });
@@ -144,38 +131,17 @@ export class TrustScoreService {
         { 
           member_a_id: memberId, 
           status: ExchangeStatus.CANCELLED,
-          cancellation_reason: CancellationReason.DISPUTE,
+          cancellation_reason: 'DISPUTE',
         },
         { 
           member_b_id: memberId, 
           status: ExchangeStatus.CANCELLED,
-          cancellation_reason: CancellationReason.DISPUTE,
+          cancellation_reason: 'DISPUTE',
         },
       ],
     });
     score -= disputeCount * 5;
     this.logger.debug(`-${disputeCount * 5} from ${disputeCount} DISPUTE incidents`);
-
-    // 5. Expired exchanges (-5 each, but only if user didn't confirm) but only if user didn't confirm)
-    const expiredAsA = await this.exchangeRepo.count({
-      where: {
-        member_a_id: memberId,
-        status: ExchangeStatus.EXPIRED,
-        member_a_confirmed: false, // Only count if user A didn't confirm
-      },
-    });
-    const expiredAsB = await this.exchangeRepo.count({
-      where: {
-        member_b_id: memberId,
-        status: ExchangeStatus.EXPIRED,
-        member_b_confirmed: false, // Only count if user B didn't confirm
-      },
-    });
-    const expiredCount = expiredAsA + expiredAsB;
-    score -= expiredCount * 5;
-    this.logger.debug(
-      `-${expiredCount * 5} from ${expiredCount} expired exchanges (didn't confirm)`
-    );
 
     // 6. Bad reviews (1-2 stars, -15 each)
     const badReviews = await this.reviewRepo

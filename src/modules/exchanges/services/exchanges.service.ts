@@ -682,6 +682,176 @@ export class ExchangesService {
     };
   }
 
+  // ==================== UPDATE MEETING INFO ====================
+  async updateMeetingInfo(
+    userId: string,
+    exchangeId: string,
+    dto: any, // UpdateMeetingInfoDto
+  ) {
+    this.logger.log(`[updateMeetingInfo] exchangeId=${exchangeId}`);
+
+    // Get ALL member records for user
+    const members = await this.memberRepo.find({
+      where: { user_id: userId },
+    });
+
+    if (!members || members.length === 0) {
+      throw new NotFoundException('Member profile not found');
+    }
+
+    const memberIds = members.map((m) => m.member_id);
+
+    const exchange = await this.exchangeRepo.findOne({
+      where: { exchange_id: exchangeId },
+    });
+
+    if (!exchange) {
+      throw new NotFoundException('Exchange not found');
+    }
+
+    // Verify user is part of exchange
+    let isPartOfExchange = false;
+    for (const memberId of memberIds) {
+      if (exchange.member_a_id === memberId || exchange.member_b_id === memberId) {
+        isPartOfExchange = true;
+        break;
+      }
+    }
+
+    if (!isPartOfExchange) {
+      throw new ForbiddenException('You are not part of this exchange');
+    }
+
+    // Can only update meeting info for PENDING or ACCEPTED exchanges
+    if (![ExchangeStatus.PENDING, 'ACCEPTED'].includes(exchange.status as any)) {
+      throw new BadRequestException('Cannot update meeting info for this exchange status');
+    }
+
+    // Update meeting info
+    if (dto.meeting_location !== undefined) {
+      exchange.meeting_location = dto.meeting_location;
+    }
+    if (dto.meeting_time !== undefined) {
+      if (dto.meeting_time) {
+        exchange.meeting_time = new Date(dto.meeting_time);
+      } else {
+        exchange.meeting_time = null as any;
+      }
+    }
+    if (dto.meeting_notes !== undefined) {
+      exchange.meeting_notes = dto.meeting_notes;
+    }
+
+    await this.exchangeRepo.save(exchange);
+
+    return this.getExchangeById(exchangeId);
+  }
+
+  // ==================== CANCEL EXCHANGE ====================
+  async cancelExchange(
+    userId: string,
+    exchangeId: string,
+    dto: any, // CancelExchangeDto
+  ) {
+    this.logger.log(`[cancelExchange] exchangeId=${exchangeId} reason=${dto.cancellation_reason}`);
+
+    // Get ALL member records for user
+    const members = await this.memberRepo.find({
+      where: { user_id: userId },
+    });
+
+    if (!members || members.length === 0) {
+      throw new NotFoundException('Member profile not found');
+    }
+
+    const memberIds = members.map((m) => m.member_id);
+
+    const exchange = await this.exchangeRepo.findOne({
+      where: { exchange_id: exchangeId },
+      relations: ['exchange_books', 'exchange_books.book'],
+    });
+
+    if (!exchange) {
+      throw new NotFoundException('Exchange not found');
+    }
+
+    // Verify user is part of exchange
+    let isPartOfExchange = false;
+    for (const memberId of memberIds) {
+      if (exchange.member_a_id === memberId || exchange.member_b_id === memberId) {
+        isPartOfExchange = true;
+        break;
+      }
+    }
+
+    if (!isPartOfExchange) {
+      throw new ForbiddenException('You are not part of this exchange');
+    }
+
+    // Cannot cancel completed exchanges
+    if (exchange.status === ExchangeStatus.COMPLETED) {
+      throw new BadRequestException('Cannot cancel a completed exchange');
+    }
+
+    // Update exchange status
+    exchange.status = ExchangeStatus.CANCELLED;
+    exchange.cancellation_reason = dto.cancellation_reason;
+    exchange.cancellation_details = dto.cancellation_details || null;
+
+    await this.exchangeRepo.save(exchange);
+
+    // Release books back to AVAILABLE
+    const bookIds = exchange.exchange_books.map((eb) => eb.book_id);
+    await this.bookRepo.update(
+      { book_id: In(bookIds) },
+      { status: BookStatus.AVAILABLE },
+    );
+
+    // Update member stats for cancellations (trust score impact)
+    await this.memberRepo.increment(
+      { member_id: exchange.member_a_id },
+      'cancelled_exchanges',
+      1,
+    );
+    await this.memberRepo.increment(
+      { member_id: exchange.member_b_id },
+      'cancelled_exchanges',
+      1,
+    );
+
+    // Decrease trust score for cancellations (except ADMIN_CANCELLED)
+    if (dto.cancellation_reason !== 'ADMIN_CANCELLED') {
+      const penaltyPoints = this.getCancellationPenalty(dto.cancellation_reason);
+      
+      await this.memberRepo.decrement(
+        { member_id: exchange.member_a_id },
+        'trust_score',
+        penaltyPoints,
+      );
+      await this.memberRepo.decrement(
+        { member_id: exchange.member_b_id },
+        'trust_score',
+        penaltyPoints,
+      );
+    }
+
+    this.logger.log(`Exchange cancelled: ${exchange.exchange_id}`);
+
+    return this.getExchangeById(exchangeId);
+  }
+
+  // ==================== GET CANCELLATION PENALTY ====================
+  private getCancellationPenalty(reason: string): number {
+    const penalties = {
+      USER_CANCELLED: 2,
+      NO_SHOW: 5,
+      BOTH_NO_SHOW: 5,
+      DISPUTE: 3,
+      ADMIN_CANCELLED: 0,
+    };
+    return penalties[reason] || 2;
+  }
+
   private formatExchangeResponse(exchange: Exchange) {
     return {
       exchange_id: exchange.exchange_id,
@@ -704,6 +874,11 @@ export class ExchangesService {
       })),
       member_a_confirmed: exchange.member_a_confirmed,
       member_b_confirmed: exchange.member_b_confirmed,
+      meeting_location: exchange.meeting_location,
+      meeting_time: exchange.meeting_time,
+      meeting_notes: exchange.meeting_notes,
+      cancellation_reason: exchange.cancellation_reason,
+      cancellation_details: exchange.cancellation_details,
       completed_at: exchange.completed_at,
       created_at: exchange.created_at,
     };
