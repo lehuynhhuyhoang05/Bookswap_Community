@@ -13,7 +13,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
-import { v4 as uuidv4 } from 'uuid';
 
 import {
   User,
@@ -365,61 +364,6 @@ export class AuthService {
       account_status: user.account_status,
       member: memberProfile,
     };
-  }
-
-  // =========================================================
-  // PATCH /auth/profile - Update user profile
-  // =========================================================
-  async updateProfile(userId: string, updateData: any) {
-    const user = await this.userRepository.findOne({ 
-      where: { user_id: userId },
-      relations: ['member']
-    });
-    
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    // Update user table fields
-    if (updateData.full_name !== undefined) {
-      user.full_name = updateData.full_name;
-    }
-    if (updateData.avatar_url !== undefined) {
-      user.avatar_url = updateData.avatar_url;
-    }
-
-    await this.userRepository.save(user);
-
-    // Update member table fields if user is a MEMBER
-    if (user.role === UserRole.MEMBER) {
-      let member = user.member;
-      
-      if (!member) {
-        // Create member profile if doesn't exist
-        member = this.memberRepository.create({
-          member_id: uuidv4(),
-          user_id: userId,
-        });
-      }
-
-      if (updateData.phone !== undefined) {
-        member.phone = updateData.phone;
-      }
-      if (updateData.address !== undefined) {
-        member.address = updateData.address;
-      }
-      if (updateData.bio !== undefined) {
-        member.bio = updateData.bio;
-      }
-      if (updateData.region !== undefined) {
-        member.region = updateData.region;
-      }
-
-      await this.memberRepository.save(member);
-    }
-
-    // Return updated profile
-    return this.getProfile(userId);
   }
 
   // =========================================================
