@@ -102,62 +102,58 @@ export class ConfirmExchangeDto {
   confirm: boolean;
 }
 
+// ==================== UPDATE MEETING INFO ====================
+export class UpdateMeetingInfoDto {
+  @ApiPropertyOptional({
+    description: 'Meeting location',
+    example: 'Central Library, District 1',
+    maxLength: 255,
+  })
+  @IsString({ message: 'meeting_location must be a string' })
+  @IsOptional()
+  @MaxLength(255, { message: 'meeting_location must not exceed 255 characters' })
+  meeting_location?: string;
+
+  @ApiPropertyOptional({
+    description: 'Meeting time (ISO 8601 format)',
+    example: '2024-12-25T14:00:00Z',
+  })
+  @IsOptional()
+  @IsString()
+  meeting_time?: string;
+
+  @ApiPropertyOptional({
+    description: 'Meeting notes',
+    example: 'Please bring both books in good condition',
+    maxLength: 500,
+  })
+  @IsString({ message: 'meeting_notes must be a string' })
+  @IsOptional()
+  @MaxLength(500, { message: 'meeting_notes must not exceed 500 characters' })
+  meeting_notes?: string;
+}
+
 // ==================== CANCEL EXCHANGE ====================
 export class CancelExchangeDto {
   @ApiProperty({
     description: 'Reason for cancellation',
-    enum: ['USER_CANCELLED', 'DISPUTE', 'NO_SHOW', 'BOTH_NO_SHOW', 'ADMIN_CANCELLED'],
+    enum: ['USER_CANCELLED', 'NO_SHOW', 'BOTH_NO_SHOW', 'DISPUTE', 'ADMIN_CANCELLED'],
     example: 'USER_CANCELLED',
   })
-  @IsEnum(['USER_CANCELLED', 'DISPUTE', 'NO_SHOW', 'BOTH_NO_SHOW', 'ADMIN_CANCELLED'], {
-    message: 'reason must be one of: USER_CANCELLED, DISPUTE, NO_SHOW, BOTH_NO_SHOW, ADMIN_CANCELLED',
+  @IsEnum(['USER_CANCELLED', 'NO_SHOW', 'BOTH_NO_SHOW', 'DISPUTE', 'ADMIN_CANCELLED'], {
+    message: 'cancellation_reason must be a valid enum value',
   })
-  reason: 'USER_CANCELLED' | 'DISPUTE' | 'NO_SHOW' | 'BOTH_NO_SHOW' | 'ADMIN_CANCELLED';
+  cancellation_reason: 'USER_CANCELLED' | 'NO_SHOW' | 'BOTH_NO_SHOW' | 'DISPUTE' | 'ADMIN_CANCELLED';
 
   @ApiPropertyOptional({
-    description: 'Additional note about cancellation (max 500 characters)',
-    example: 'Something came up, cannot meet today. Sorry!',
+    description: 'Additional details about cancellation',
+    example: 'I am no longer interested in this exchange',
     maxLength: 500,
   })
-  @IsString({ message: 'note must be a string' })
+  @IsString({ message: 'cancellation_details must be a string' })
   @IsOptional()
-  @MaxLength(500, { message: 'note must not exceed 500 characters' })
-  note?: string;
-}
-
-// ==================== UPDATE MEETING ARRANGEMENT ====================
-export class UpdateMeetingDto {
-  @ApiPropertyOptional({
-    description: 'Meeting location (max 500 characters)',
-    example: 'Starbucks Nguyễn Huệ, Quận 1, TPHCM',
-    maxLength: 500,
-  })
-  @IsString({ message: 'location must be a string' })
-  @IsOptional()
-  @MaxLength(500, { message: 'location must not exceed 500 characters' })
-  location?: string;
-
-  @ApiPropertyOptional({
-    description: 'Meeting time (ISO 8601 format)',
-    example: '2025-11-25T14:00:00Z',
-    type: String,
-  })
-  @IsOptional()
-  @IsString({ message: 'time must be a valid ISO 8601 date string' })
-  @Matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/, {
-    message: 'time must be in ISO 8601 format (YYYY-MM-DDTHH:mm:ss)',
-  })
-  time?: string;
-
-  @ApiPropertyOptional({
-    description: 'Meeting notes (max 1000 characters)',
-    example: 'Mang CMND để xác minh. Liên hệ: 0912345678',
-    maxLength: 1000,
-  })
-  @IsString({ message: 'notes must be a string' })
-  @IsOptional()
-  @MaxLength(1000, { message: 'notes must not exceed 1000 characters' })
-  notes?: string;
+  @MaxLength(500, { message: 'cancellation_details must not exceed 500 characters' })
+  cancellation_details?: string;
 }
 
 // ==================== QUERY EXCHANGE REQUESTS ====================

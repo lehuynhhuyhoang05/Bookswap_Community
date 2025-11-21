@@ -39,8 +39,8 @@ import {
   PaginatedExchangesDto,
   PaginatedExchangeRequestsDto,
   ExchangeSuggestionsResponseDto,
+  UpdateMeetingInfoDto,
   CancelExchangeDto,
-  UpdateMeetingDto,
 } from '../dto/exchange.dto';
 
 @ApiTags('Exchanges')
@@ -248,43 +248,34 @@ export class ExchangesController {
     return this.exchangesService.confirmExchange(req.user.userId, id);
   }
 
-  @Patch(':id/cancel')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ 
-    summary: 'Cancel an exchange',
-    description: 'Cancel a PENDING or ACCEPTED exchange. Books will be returned to AVAILABLE status.',
-  })
+  @Patch(':id/meeting')
+  @ApiOperation({ summary: 'Update meeting information for exchange' })
   @ApiParam({ name: 'id', description: 'Exchange ID (UUID)', schema: { type: 'string', format: 'uuid' } })
-  @ApiResponse({ status: 200, description: 'Exchange cancelled successfully' })
-  @ApiResponse({ status: 400, description: 'Cannot cancel (already completed/cancelled)' })
+  @ApiResponse({ status: 200, description: 'Meeting info updated successfully', type: ExchangeResponseDto })
+  @ApiResponse({ status: 403, description: 'Not part of this exchange' })
+  @ApiResponse({ status: 404, description: 'Exchange not found' })
+  async updateMeetingInfo(
+    @Request() req,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: UpdateMeetingInfoDto,
+  ): Promise<ExchangeResponseDto> {
+    this.logger.log(`[updateMeetingInfo] id=${id} userId=${req.user?.userId}`);
+    return this.exchangesService.updateMeetingInfo(req.user.userId, id, dto);
+  }
+
+  @Patch(':id/cancel')
+  @ApiOperation({ summary: 'Cancel an exchange' })
+  @ApiParam({ name: 'id', description: 'Exchange ID (UUID)', schema: { type: 'string', format: 'uuid' } })
+  @ApiResponse({ status: 200, description: 'Exchange cancelled successfully', type: ExchangeResponseDto })
+  @ApiResponse({ status: 400, description: 'Cannot cancel completed exchange' })
   @ApiResponse({ status: 403, description: 'Not part of this exchange' })
   @ApiResponse({ status: 404, description: 'Exchange not found' })
   async cancelExchange(
     @Request() req,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() dto: CancelExchangeDto,
-  ): Promise<{ message: string; exchange_id: string; cancelled_by: string; reason: string }> {
-    this.logger.log(`[cancelExchange] id=${id} userId=${req.user?.userId}`);
-    return this.exchangesService.cancelExchange(req.user.userId, id, dto);
-  }
-
-  @Patch(':id/meeting')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ 
-    summary: 'Update meeting information',
-    description: 'Both exchange participants can update meeting location, time, and notes for PENDING or ACCEPTED exchanges.',
-  })
-  @ApiParam({ name: 'id', description: 'Exchange ID (UUID)', schema: { type: 'string', format: 'uuid' } })
-  @ApiResponse({ status: 200, description: 'Meeting info updated successfully', type: ExchangeResponseDto })
-  @ApiResponse({ status: 400, description: 'Cannot update meeting info (completed/cancelled/expired)' })
-  @ApiResponse({ status: 403, description: 'Not part of this exchange' })
-  @ApiResponse({ status: 404, description: 'Exchange not found' })
-  async updateMeeting(
-    @Request() req,
-    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Body() dto: UpdateMeetingDto,
   ): Promise<ExchangeResponseDto> {
-    this.logger.log(`[updateMeeting] id=${id} userId=${req.user?.userId}`);
-    return this.exchangesService.updateMeetingInfo(req.user.userId, id, dto);
+    this.logger.log(`[cancelExchange] id=${id} userId=${req.user?.userId} reason=${dto.cancellation_reason}`);
+    return this.exchangesService.cancelExchange(req.user.userId, id, dto);
   }
 }
