@@ -1,194 +1,295 @@
 import React, { useState, useEffect } from 'react';
-import Layout from '../../components/layout/Layout'; // ✅ Thêm Layout
-import { Tabs, Card, Button, Badge, Avatar } from '../../components/ui';
+import { useNavigate } from 'react-router-dom';
+import Layout from '../../components/layout/Layout';
+import { Card, Button, LoadingSpinner, Badge, Avatar, Tabs } from '../../components/ui';
 import { useExchanges } from '../../hooks/useExchanges';
+import { useAuth } from '../../hooks/useAuth';
+import { ArrowLeft, Send, Inbox, AlertCircle, Check, X, Eye } from 'lucide-react';
 
+/**
+ * Exchange Requests Page
+ * Backend API: GET /exchanges/requests?type=sent|received&status=PENDING|ACCEPTED|REJECTED&page=1&limit=20
+ * Response: PaginatedExchangeRequestsDto
+ */
 const ExchangeRequestsPage = () => {
-  const [requests, setRequests] = useState([]);
-  const [activeTab, setActiveTab] = useState('sent');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(false);
-
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const { getExchangeRequests, cancelExchangeRequest, respondToExchangeRequest } = useExchanges();
+
+  const [type, setType] = useState('received'); // 'sent' | 'received'
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     loadRequests();
-  }, [activeTab, currentPage]);
+  }, [type, page]);
 
-  // Load danh sách yêu cầu trao đổi
   const loadRequests = async () => {
     setLoading(true);
     try {
       const result = await getExchangeRequests({
-        type: activeTab,
-        page: currentPage,
+        type,
+        page,
         limit: 10
       });
       setRequests(result.items || []);
+      setTotal(result.total || 0);
       setTotalPages(result.pages || 1);
     } catch (error) {
-      console.error('Không tải được danh sách yêu cầu:', error);
+      console.error('[Requests] Failed to load:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Hủy yêu cầu trao đổi
-  const handleCancelRequest = async (requestId) => {
+  const handleCancel = async (requestId) => {
+    if (!confirm('Bạn có chắc muốn hủy yêu cầu này?')) return;
+    
     try {
       await cancelExchangeRequest(requestId);
+      alert('Đã hủy yêu cầu');
       loadRequests();
     } catch (error) {
-      console.error('Hủy yêu cầu thất bại:', error);
+      alert('Hủy thất bại: ' + (error.message || 'Vui lòng thử lại'));
     }
   };
 
-  // Phản hồi yêu cầu trao đổi
-  const handleRespondToRequest = async (requestId, action, reason = '') => {
+  const handleAccept = async (requestId) => {
+    if (!confirm('Chấp nhận yêu cầu này?')) return;
+    
     try {
-      await respondToExchangeRequest(requestId, action, reason);
+      await respondToExchangeRequest(requestId, 'accept');
+      alert('Đã chấp nhận yêu cầu!');
       loadRequests();
     } catch (error) {
-      console.error('Phản hồi yêu cầu thất bại:', error);
+      alert('Thất bại: ' + (error.message || 'Vui lòng thử lại'));
     }
   };
 
-  const getStatusVariant = (status) => {
-    const variants = {
-      PENDING: 'warning',
-      ACCEPTED: 'success',
-      REJECTED: 'error',
-      CANCELLED: 'error',
-      COMPLETED: 'info'
+  const handleReject = async (requestId) => {
+    const reason = prompt('Nhập lý do từ chối:');
+    if (!reason?.trim()) return;
+    
+    try {
+      await respondToExchangeRequest(requestId, 'reject', reason);
+      alert('Đã từ chối yêu cầu');
+      loadRequests();
+    } catch (error) {
+      alert('Thất bại: ' + (error.message || 'Vui lòng thử lại'));
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    const map = {
+      PENDING: { variant: 'warning', label: 'Đang chờ' },
+      ACCEPTED: { variant: 'success', label: 'Đã chấp nhận' },
+      REJECTED: { variant: 'error', label: 'Bị từ chối' },
+      CANCELLED: { variant: 'default', label: 'Đã hủy' }
     };
-    return variants[status] || 'default';
+    const config = map[status] || map.PENDING;
+    return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
   return (
     <Layout>
-      <div className="exchange-requests-page">
-        <h1>Yêu cầu trao đổi</h1>
-        
-        <Tabs 
-          activeTab={activeTab} 
-          onTabChange={setActiveTab}
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="mb-6">
+          <Button variant="text" onClick={() => navigate('/exchange')} className="mb-4 text-blue-600">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Quay lại
+          </Button>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Yêu cầu trao đổi</h1>
+              <p className="text-gray-600">Quản lý các yêu cầu gửi và nhận</p>
+            </div>
+            <Badge variant="info" className="text-lg px-4 py-2">
+              {total} yêu cầu
+            </Badge>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <Tabs
           tabs={[
-            { id: 'sent', label: 'Yêu cầu đã gửi' },
-            { id: 'received', label: 'Yêu cầu nhận được' }
+            { id: 'received', name: `📥 Nhận được` },
+            { id: 'sent', name: `📤 Đã gửi` }
           ]}
+          activeTab={type}
+          onTabChange={(newType) => {
+            setType(newType);
+            setPage(1);
+          }}
         />
 
+        {/* Content */}
         {loading ? (
-          <div className="loading">Đang tải yêu cầu...</div>
-        ) : requests.length === 0 ? (
-          <div className="empty-state">
-            <p>Không có yêu cầu {activeTab === 'sent' ? 'đã gửi' : 'nhận được'}.</p>
+          <div className="flex justify-center py-16">
+            <LoadingSpinner size="lg" />
           </div>
+        ) : requests.length === 0 ? (
+          <Card className="p-12 text-center">
+            <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              Không có yêu cầu {type === 'sent' ? 'đã gửi' : 'nhận được'}
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {type === 'sent' 
+                ? 'Bạn chưa gửi yêu cầu nào' 
+                : 'Bạn chưa nhận được yêu cầu nào'}
+            </p>
+            <Button variant="primary" onClick={() => navigate('/exchange/suggestions')}>
+              Tìm gợi ý trao đổi
+            </Button>
+          </Card>
         ) : (
-          <div className="requests-list">
-            {requests.map(request => (
-              <Card key={request.request_id} className="request-card">
-                <div className="request-header">
-                  <div className="user-info">
-                    <Avatar 
-                      src={activeTab === 'sent' ? 
-                        request.receiver.avatar_url : 
-                        request.requester.avatar_url
-                      }
-                      alt={activeTab === 'sent' ? 
-                        request.receiver.full_name : 
-                        request.requester.full_name
-                      }
-                    />
-                    <div>
-                      <h4>
-                        {activeTab === 'sent' ? 
-                          `Gửi tới: ${request.receiver.full_name}` : 
-                          `Nhận từ: ${request.requester.full_name}`
-                        }
-                      </h4>
-                      <p>{new Date(request.created_at).toLocaleDateString()}</p>
+          <div className="space-y-4">
+            {requests.map(req => {
+              const isSentByMe = type === 'sent';
+              const other = isSentByMe ? req.receiver : req.requester;
+              
+              return (
+                <Card key={req.request_id} className="p-6">
+                  {/* Header */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <Avatar src={other.avatar_url} alt={other.full_name} size="md" />
+                      <div>
+                        <h4 className="font-semibold text-gray-900">{other.full_name}</h4>
+                        <p className="text-sm text-gray-600">{other.region}</p>
+                        <Badge variant="outline" size="sm">⭐ {other.trust_score}</Badge>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      {getStatusBadge(req.status)}
+                      <p className="text-xs text-gray-500 mt-1">
+                        {new Date(req.created_at).toLocaleDateString('vi-VN')}
+                      </p>
                     </div>
                   </div>
-                  <Badge variant={getStatusVariant(request.status)}>
-                    {request.status === 'PENDING' ? 'Đang chờ' :
-                     request.status === 'ACCEPTED' ? 'Đã chấp nhận' :
-                     request.status === 'REJECTED' ? 'Bị từ chối' :
-                     request.status === 'CANCELLED' ? 'Đã hủy' :
-                     request.status === 'COMPLETED' ? 'Hoàn tất' :
-                     request.status}
-                  </Badge>
-                </div>
 
-                <div className="request-books">
-                  <div className="books-section">
-                    <h5>Sách đề nghị:</h5>
-                    <div className="books-list">
-                      {request.offered_books.map(bookId => (
-                        <span key={bookId} className="book-id">{bookId}</span>
-                      ))}
+                  {/* Books */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    {/* Offered */}
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                      <h5 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
+                        <Send className="w-4 h-4" />
+                        Sách đề nghị ({req.offered_books?.length || 0})
+                      </h5>
+                      <div className="space-y-2">
+                        {req.offered_books?.map(book => (
+                          <div key={book.book_id} className="flex items-center justify-between text-sm bg-white p-2 rounded">
+                            <span className="font-medium">{book.title}</span>
+                            <Badge variant="outline" size="sm">{book.condition}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Requested */}
+                    <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                      <h5 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
+                        <Inbox className="w-4 h-4" />
+                        Sách yêu cầu ({req.requested_books?.length || 0})
+                      </h5>
+                      <div className="space-y-2">
+                        {req.requested_books?.map(book => (
+                          <div key={book.book_id} className="flex items-center justify-between text-sm bg-white p-2 rounded">
+                            <span className="font-medium">{book.title}</span>
+                            <Badge variant="outline" size="sm">{book.condition}</Badge>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                  <div className="books-section">
-                    <h5>Sách yêu cầu:</h5>
-                    <div className="books-list">
-                      {request.requested_books.map(bookId => (
-                        <span key={bookId} className="book-id">{bookId}</span>
-                      ))}
+
+                  {/* Message */}
+                  {req.message && (
+                    <div className="bg-gray-50 p-3 rounded-lg mb-4">
+                      <p className="text-sm text-gray-700">💬 {req.message}</p>
                     </div>
-                  </div>
-                </div>
-
-                {request.message && (
-                  <div className="request-message">
-                    <p>{request.message}</p>
-                  </div>
-                )}
-
-                {request.rejection_reason && (
-                  <div className="rejection-reason">
-                    <strong>Lý do từ chối:</strong> {request.rejection_reason}
-                  </div>
-                )}
-
-                <div className="request-actions">
-                  {activeTab === 'sent' && request.status === 'PENDING' && (
-                    <Button 
-                      variant="error" 
-                      size="sm"
-                      onClick={() => handleCancelRequest(request.request_id)}
-                    >
-                      Hủy yêu cầu
-                    </Button>
                   )}
-                  
-                  {activeTab === 'received' && request.status === 'PENDING' && (
-                    <>
-                      <Button 
-                        variant="success" 
-                        size="sm"
-                        onClick={() => handleRespondToRequest(request.request_id, 'accept')}
-                      >
-                        Chấp nhận
-                      </Button>
+
+                  {/* Rejection Reason */}
+                  {req.rejection_reason && (
+                    <div className="bg-red-50 p-3 rounded-lg mb-4 border border-red-200">
+                      <p className="text-sm text-red-700">❌ {req.rejection_reason}</p>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-2 justify-end">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => navigate(`/exchange/request/${req.request_id}`)}
+                    >
+                      <Eye className="w-4 h-4 mr-1" />
+                      Chi tiết
+                    </Button>
+                    
+                    {isSentByMe && req.status === 'PENDING' && (
                       <Button 
                         variant="error" 
                         size="sm"
-                        onClick={() => {
-                          const reason = prompt('Vui lòng nhập lý do từ chối:');
-                          if (reason) {
-                            handleRespondToRequest(request.request_id, 'reject', reason);
-                          }
-                        }}
+                        onClick={() => handleCancel(req.request_id)}
                       >
-                        Từ chối
+                        <X className="w-4 h-4 mr-1" />
+                        Hủy
                       </Button>
-                    </>
-                  )}
-                </div>
-              </Card>
-            ))}
+                    )}
+                    
+                    {!isSentByMe && req.status === 'PENDING' && (
+                      <>
+                        <Button 
+                          variant="error" 
+                          size="sm"
+                          onClick={() => handleReject(req.request_id)}
+                        >
+                          <X className="w-4 h-4 mr-1" />
+                          Từ chối
+                        </Button>
+                        <Button 
+                          variant="success" 
+                          size="sm"
+                          onClick={() => handleAccept(req.request_id)}
+                        >
+                          <Check className="w-4 h-4 mr-1" />
+                          Chấp nhận
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex justify-center gap-2 mt-6">
+            <Button
+              variant="outline"
+              disabled={page === 1}
+              onClick={() => setPage(p => p - 1)}
+            >
+              Trước
+            </Button>
+            <span className="py-2 px-4 text-gray-700">
+              Trang {page} / {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              disabled={page === totalPages}
+              onClick={() => setPage(p => p + 1)}
+            >
+              Sau
+            </Button>
           </div>
         )}
       </div>

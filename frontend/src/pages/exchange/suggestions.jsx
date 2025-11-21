@@ -1,24 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, RefreshCw, BookOpen, Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/layout/Layout';
-import { ExchangeSuggestions, ExchangeRequestForm } from '../../components/exchanges';
-import { Button, LoadingSpinner } from '../../components/ui';
+import { Card, Button, LoadingSpinner, Badge, Avatar } from '../../components/ui';
 import { useExchanges } from '../../hooks/useExchanges';
+import { ArrowLeft, AlertCircle, Send, RefreshCw, Eye } from 'lucide-react';
 
+/**
+ * Exchange Suggestions Page
+ * Backend API: 
+ * - POST /exchanges/suggestions/generate (tạo suggestions mới)
+ * - GET /exchanges/suggestions?limit=20 (lấy suggestions)
+ * Response: Array<ExchangeSuggestionDto>
+ */
 const ExchangeSuggestionsPage = () => {
+  const navigate = useNavigate();
+  const { getExchangeSuggestions, generateExchangeSuggestions } = useExchanges();
+
   const [suggestions, setSuggestions] = useState([]);
-  const [selectedSuggestion, setSelectedSuggestion] = useState(null);
-  const [showRequestForm, setShowRequestForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState(null);
-
-  const { 
-    getExchangeSuggestions, 
-    generateExchangeSuggestions, 
-    markSuggestionAsViewed,
-    createExchangeRequest 
-  } = useExchanges();
 
   useEffect(() => {
     loadSuggestions();
@@ -26,214 +26,217 @@ const ExchangeSuggestionsPage = () => {
 
   const loadSuggestions = async () => {
     setLoading(true);
-    setError(null);
     try {
       const result = await getExchangeSuggestions(20);
-      setSuggestions(result.suggestions || []);
-    } catch (err) {
-      console.error('Failed to load suggestions:', err);
-      setError(err.message || 'Không thể tải gợi ý trao đổi');
+      // Backend returns object with 'suggestions' array
+      setSuggestions(result?.suggestions || []);
+    } catch (error) {
+      console.error('[Suggestions] Failed to load:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGenerateSuggestions = async () => {
+  const handleGenerate = async () => {
+    if (!confirm('Tạo gợi ý trao đổi mới? Quá trình này có thể mất vài giây.')) return;
+    
     setGenerating(true);
-    setError(null);
     try {
       const result = await generateExchangeSuggestions();
-      if (result.total > 0) {
-        await loadSuggestions();
-      } else {
-        setError('Không tìm thấy gợi ý phù hợp. Hãy thêm sách vào thư viện và danh sách mong muốn.');
-      }
-    } catch (err) {
-      console.error('Failed to generate suggestions:', err);
-      setError(err.message || 'Không thể tạo gợi ý mới');
+      // Backend returns 'total' not 'generated_count'
+      alert(`Đã tạo ${result.total || 0} gợi ý mới!`);
+      loadSuggestions();
+    } catch (error) {
+      alert('Thất bại: ' + (error.message || 'Vui lòng thử lại'));
     } finally {
       setGenerating(false);
     }
   };
 
-  const handleMarkAsViewed = async (suggestionId) => {
-    try {
-      await markSuggestionAsViewed(suggestionId);
-      setSuggestions(prev => prev.filter(s => s.suggestion_id !== suggestionId));
-    } catch (error) {
-      console.error('Không đánh dấu gợi ý đã xem:', error);
-    }
+  const handleCreateRequest = (suggestion) => {
+    // Navigate to create request với pre-filled data
+    const data = {
+      receiver_info: {
+        member_id: suggestion.member?.member_id,
+        full_name: suggestion.member?.full_name,
+        region: suggestion.member?.region,
+        trust_score: suggestion.member?.trust_score
+      },
+      offered_books: suggestion.matching_books?.they_want_from_me?.map(item => item.my_book).filter(Boolean) || [],
+      requested_books: suggestion.matching_books?.i_want_from_them?.map(item => item.their_book).filter(Boolean) || []
+    };
+    
+    // Store in sessionStorage để form có thể lấy
+    sessionStorage.setItem('exchange_request_draft', JSON.stringify(data));
+    
+    // Navigate to create request page
+    navigate('/exchange/create-request');
   };
-
-  const handleCreateExchange = (suggestion) => {
-    setSelectedSuggestion(suggestion);
-    setShowRequestForm(true);
-  };
-
-  const handleSubmitRequest = async (requestData) => {
-    try {
-      await createExchangeRequest(requestData);
-      setShowRequestForm(false);
-      setSelectedSuggestion(null);
-      alert('Yêu cầu trao đổi gửi thành công!');
-    } catch (error) {
-      console.error('Không tạo được yêu cầu trao đổi:', error);
-      alert('Gửi yêu cầu thất bại, kiểm tra console');
-    }
-  };
-
-  const renderEmptyState = () => (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-      <div className="flex justify-center mb-4">
-        <Search className="w-16 h-16 text-gray-400" />
-      </div>
-      <h3 className="text-xl font-semibold text-gray-900 mb-2">
-        Chưa có gợi ý trao đổi
-      </h3>
-      <p className="text-gray-600 mb-6 max-w-md mx-auto">
-        Để nhận gợi ý trao đổi, bạn cần:
-      </p>
-      <div className="space-y-3 mb-8 max-w-md mx-auto text-left">
-        <div className="flex items-start gap-3">
-          <BookOpen className="w-5 h-5 text-blue-600 mt-0.5" />
-          <div>
-            <p className="font-medium text-gray-900">Có sách trong thư viện</p>
-            <p className="text-sm text-gray-600">Thêm sách bạn sẵn sàng trao đổi</p>
-          </div>
-        </div>
-        <div className="flex items-start gap-3">
-          <BookOpen className="w-5 h-5 text-green-600 mt-0.5" />
-          <div>
-            <p className="font-medium text-gray-900">Có sách mong muốn</p>
-            <p className="text-sm text-gray-600">Thêm sách bạn đang tìm kiếm</p>
-          </div>
-        </div>
-      </div>
-      <div className="flex gap-3 justify-center">
-        <Button
-          onClick={() => window.location.href = '/books/my-library'}
-          variant="outline"
-        >
-          Thư viện của tôi
-        </Button>
-        <Button
-          onClick={() => window.location.href = '/library/wanted-books'}
-          variant="outline"
-        >
-          Sách mong muốn
-        </Button>
-        <Button
-          onClick={handleGenerateSuggestions}
-          disabled={generating}
-          variant="primary"
-        >
-          {generating ? (
-            <>
-              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-              Đang tạo...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Thử tạo gợi ý
-            </>
-          )}
-        </Button>
-      </div>
-    </div>
-  );
 
   return (
     <Layout>
-      <div className="exchange-suggestions-page max-w-5xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Gợi ý trao đổi</h1>
-            <p className="text-gray-600 mt-1">
-              Tìm kiếm các cơ hội trao đổi sách phù hợp với bạn
-            </p>
+        <div className="mb-6">
+          <Button variant="text" onClick={() => navigate('/exchange')} className="mb-4 text-blue-600">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Quay lại
+          </Button>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Gợi ý trao đổi</h1>
+              <p className="text-gray-600">Tìm người phù hợp để trao đổi sách</p>
+            </div>
+            <Button 
+              variant="primary" 
+              onClick={handleGenerate}
+              disabled={generating}
+            >
+              {generating ? (
+                <>
+                  <LoadingSpinner size="sm" className="mr-2" />
+                  Đang tạo...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Tạo gợi ý mới
+                </>
+              )}
+            </Button>
           </div>
-          <button
-            onClick={handleGenerateSuggestions}
-            disabled={generating || loading}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-              generating || loading
-                ? 'bg-gray-400 text-white cursor-not-allowed' 
-                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
-            }`}
-          >
-            <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
-            {generating ? 'Đang tạo...' : 'Tạo gợi ý mới'}
-          </button>
         </div>
 
-        {/* Error Alert */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="font-medium text-red-900">Không thể tải gợi ý</p>
-              <p className="text-sm text-red-700 mt-1">{error}</p>
-            </div>
-            <button
-              onClick={() => setError(null)}
-              className="text-red-600 hover:text-red-800"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Loading State */}
+        {/* Content */}
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-16">
+          <div className="flex justify-center py-16">
             <LoadingSpinner size="lg" />
-            <p className="mt-4 text-gray-600 font-medium">Đang tải gợi ý trao đổi...</p>
-            <p className="text-sm text-gray-500 mt-1">Vui lòng đợi trong giây lát</p>
           </div>
         ) : suggestions.length === 0 ? (
-          renderEmptyState()
+          <Card className="p-12 text-center">
+            <AlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Chưa có gợi ý</h3>
+            <p className="text-gray-600 mb-6">
+              Hệ thống chưa tìm thấy người phù hợp để trao đổi
+            </p>
+            <Button variant="primary" onClick={handleGenerate} disabled={generating}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Tạo gợi ý ngay
+            </Button>
+          </Card>
         ) : (
-          <>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-medium text-blue-900">
-                    Tìm thấy {suggestions.length} gợi ý phù hợp
-                  </p>
-                  <p className="text-sm text-blue-700 mt-1">
-                    Các gợi ý được xếp hạng dựa trên mức độ phù hợp, vị trí địa lý và uy tín người dùng
-                  </p>
-                </div>
-              </div>
-            </div>
+          <div className="space-y-6">
+            {suggestions.map((suggestion) => {
+              const otherUser = suggestion.member; // Backend returns 'member' not 'other_user'
+              const matchScore = suggestion.match_score || 0;
+              const matchPercentage = Math.round(matchScore * 100);
 
-            <ExchangeSuggestions 
-              suggestions={suggestions}
-              onViewSuggestion={(suggestion) => console.log('View:', suggestion)}
-              onMarkAsViewed={handleMarkAsViewed}
-              onCreateExchange={handleCreateExchange}
-            />
-          </>
-        )}
+              return (
+                <Card key={suggestion.suggestion_id} className="p-6">
+                  {/* Header */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <Avatar src={otherUser?.avatar_url} alt={otherUser?.full_name} size="lg" />
+                      <div>
+                        <h4 className="font-semibold text-gray-900 text-lg">{otherUser?.full_name}</h4>
+                        <p className="text-sm text-gray-600">{otherUser?.region}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="outline" size="sm">⭐ {otherUser?.trust_score}</Badge>
+                          <Badge variant={matchPercentage >= 70 ? 'success' : 'warning'} size="sm">
+                            {matchPercentage}% phù hợp
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant={suggestion.is_viewed ? 'default' : 'info'}>
+                        {suggestion.is_viewed ? '👁️ Đã xem' : '🆕 Mới'}
+                      </Badge>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {new Date(suggestion.created_at).toLocaleDateString('vi-VN')}
+                      </p>
+                    </div>
+                  </div>
 
-        {showRequestForm && selectedSuggestion && (
-          <ExchangeRequestForm
-            isOpen={showRequestForm}
-            onClose={() => {
-              setShowRequestForm(false);
-              setSelectedSuggestion(null);
-            }}
-            onSubmit={handleSubmitRequest}
-            receiver={selectedSuggestion.member}
-            initialData={{
-              offeredBooks: selectedSuggestion.matching_books.they_want_from_me.map(m => m.my_book),
-              requestedBooks: selectedSuggestion.matching_books.i_want_from_them.map(m => m.their_book),
-              message: `Xin chào ${selectedSuggestion.member.full_name}! Mình thấy chúng ta có một số sách có thể trao đổi. Bạn có muốn không?`
-            }}
-          />
+                  {/* Books Exchange Info */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    {/* I Can Offer */}
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                      <h5 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                        <Send className="w-4 h-4 text-blue-600" />
+                        Tôi có thể đưa ({suggestion.matching_books?.they_want_from_me?.length || 0})
+                      </h5>
+                      <div className="space-y-2">
+                        {suggestion.matching_books?.they_want_from_me?.map((item, idx) => {
+                          const book = item.my_book;
+                          return (
+                          <div key={book?.book_id || idx} className="bg-white p-3 rounded-lg shadow-sm">
+                            <div className="font-medium text-sm">{book?.title}</div>
+                            <div className="text-xs text-gray-600">{book?.author}</div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="outline" size="sm">{book?.condition}</Badge>
+                              {book?.category && <Badge variant="info" size="sm">{book?.category}</Badge>}
+                            </div>
+                          </div>
+                        )})}
+                      </div>
+                    </div>
+
+                    {/* They Can Offer */}
+                    <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                      <h5 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                        <Eye className="w-4 h-4 text-green-600" />
+                        Họ có thể đưa ({suggestion.matching_books?.i_want_from_them?.length || 0})
+                      </h5>
+                      <div className="space-y-2">
+                        {suggestion.matching_books?.i_want_from_them?.map((item, idx) => {
+                          const book = item.their_book;
+                          return (
+                          <div key={book?.book_id || idx} className="bg-white p-3 rounded-lg shadow-sm">
+                            <div className="font-medium text-sm">{book?.title}</div>
+                            <div className="text-xs text-gray-600">{book?.author}</div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="outline" size="sm">{book?.condition}</Badge>
+                              {book?.category && <Badge variant="info" size="sm">{book?.category}</Badge>}
+                            </div>
+                          </div>
+                        )})}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Match Info */}
+                  {suggestion.total_matching_books > 0 && (
+                    <div className="bg-purple-50 p-3 rounded-lg mb-4 border border-purple-200">
+                      <p className="text-sm text-purple-800">
+                        ✨ Có <strong>{suggestion.total_matching_books}</strong> sách phù hợp với mong muốn của cả hai
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex gap-2 justify-end">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => navigate(`/profile/${otherUser?.user_id}`)}
+                    >
+                      <Eye className="w-4 h-4 mr-1" />
+                      Xem hồ sơ
+                    </Button>
+                    <Button 
+                      variant="primary" 
+                      size="sm"
+                      onClick={() => handleCreateRequest(suggestion)}
+                    >
+                      <Send className="w-4 h-4 mr-1" />
+                      Gửi yêu cầu
+                    </Button>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
         )}
       </div>
     </Layout>

@@ -528,6 +528,25 @@ export class ExchangesService {
       exchange.status = ExchangeStatus.COMPLETED;
       exchange.completed_at = new Date();
 
+      // Transfer book ownership
+      const exchangeBooks = await this.exchangeBookRepo.find({
+        where: { exchange_id: exchangeId },
+      });
+
+      for (const eb of exchangeBooks) {
+        // Update owner_id from 'from' member to 'to' member
+        await this.bookRepo.update(
+          { book_id: eb.book_id },
+          { 
+            owner_id: eb.to_member_id,
+            status: BookStatus.AVAILABLE,
+            deleted_at: () => 'NULL'  // Clear deleted_at to restore book
+          }
+        );
+      }
+
+      this.logger.log(`Transferred ownership of ${exchangeBooks.length} books for exchange ${exchangeId}`);
+
       // Update member stats
       await this.memberRepo.increment(
         { member_id: exchange.member_a_id },

@@ -42,6 +42,32 @@ export const exchangeService = {
     }
   },
 
+  /**
+   * ✅ PATCH /exchanges/{id}/meeting
+   * Cập nhật thông tin lịch hẹn gặp
+   */
+  async updateMeetingInfo(id, data) {
+    try {
+      const response = await api.patch(`/exchanges/${id}/meeting`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Failed to update meeting info' };
+    }
+  },
+
+  /**
+   * ✅ PATCH /exchanges/{id}/cancel
+   * Hủy giao dịch trao đổi
+   */
+  async cancelExchange(id, data) {
+    try {
+      const response = await api.patch(`/exchanges/${id}/cancel`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Failed to cancel exchange' };
+    }
+  },
+
   // 📘 EXCHANGE REQUESTS - YÊU CẦU TRAO ĐỔI
 
   /**
@@ -50,9 +76,11 @@ export const exchangeService = {
    */
   async createExchangeRequest(requestData) {
     try {
+      // Data should already be in correct format from form
       const response = await api.post('/exchanges/requests', requestData);
       return response.data;
     } catch (error) {
+      console.error('[exchangeService] Create request failed:', error.response?.data || error);
       throw error.response?.data || { message: 'Failed to create exchange request' };
     }
   },
@@ -99,12 +127,15 @@ export const exchangeService = {
   /**
    * 🟦 PATCH /exchanges/requests/{id}/respond
    * Phản hồi yêu cầu trao đổi (chấp nhận/từ chối)
+   * @param {string} id - Request ID
+   * @param {object} data - { action: 'accept'|'reject', rejection_reason?: string }
    */
-  async respondToExchangeRequest(id, responseData) {
+  async respondToExchangeRequest(id, data) {
     try {
-      const response = await api.patch(`/exchanges/requests/${id}/respond`, responseData);
+      const response = await api.patch(`/exchanges/requests/${id}/respond`, data);
       return response.data;
     } catch (error) {
+      console.error('[exchangeService] Respond to request failed:', error.response?.data || error);
       throw error.response?.data || { message: 'Failed to respond to exchange request' };
     }
   },
@@ -170,25 +201,14 @@ export const exchangeService = {
   // ========== UTILITY METHODS ==========
 
   /**
-   * Format data để tạo request trao đổi
-   */
-  formatExchangeRequest(data) {
-    return {
-      receiver_id: data.receiverId,
-      offered_book_ids: data.offeredBooks,
-      requested_book_ids: data.requestedBooks,
-      message: data.message || '',
-      priority: data.priority || 'NORMAL'
-    };
-  },
-
-  /**
    * Format data để phản hồi request
+   * @param {string} action - 'accept' or 'reject'
+   * @param {string} reason - Rejection reason (required if action is 'reject')
    */
   formatResponseData(action, reason = '') {
     return {
-      action: action, // 'accept' hoặc 'reject'
-      rejection_reason: action === 'reject' ? reason : ''
+      action: action,
+      rejection_reason: action === 'reject' ? reason : undefined
     };
   }
 };
