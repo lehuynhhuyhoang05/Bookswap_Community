@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Body,
   HttpCode,
   HttpStatus,
@@ -25,6 +26,7 @@ import {
   ResetPasswordDto,
   RefreshTokenDto,
   UserProfileResponseDto,
+  UpdateProfileDto,
 } from '../dto/auth.dto';
 import { Public } from '../../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
@@ -84,6 +86,25 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getProfile(@Req() req) {
     return this.authService.getProfile(req.user.userId);
+  }
+
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: 'Update user profile',
+    description: 'Update user information including full name, avatar, phone, address, bio, and region'
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Profile updated successfully',
+    type: UserProfileResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async updateProfile(@Req() req, @Body() updateProfileDto: UpdateProfileDto) {
+    return this.authService.updateProfile(req.user.userId, updateProfileDto);
   }
 
   @Post('refresh')

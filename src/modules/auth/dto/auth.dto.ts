@@ -1,5 +1,5 @@
-import { IsEmail, IsString, MinLength, IsNotEmpty, Matches } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsEmail, IsString, MinLength, IsNotEmpty, Matches, IsOptional } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterDto {
   @ApiProperty({ example: 'user@example.com', description: 'Email address' })
@@ -72,6 +72,57 @@ export class RefreshTokenDto {
   })
   @IsString()
   refresh_token: string;
+}
+
+export class UpdateProfileDto {
+  @ApiPropertyOptional({ 
+    example: 'John Doe Updated', 
+    description: 'Full name'
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  full_name?: string;
+
+  @ApiPropertyOptional({ 
+    example: 'https://example.com/avatar.jpg', 
+    description: 'Avatar URL'
+  })
+  @IsOptional()
+  @IsString()
+  avatar_url?: string;
+
+  @ApiPropertyOptional({ 
+    example: '0901234567', 
+    description: 'Phone number'
+  })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional({ 
+    example: '123 Nguyen Hue, District 1, Ho Chi Minh City', 
+    description: 'Address'
+  })
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional({ 
+    example: 'I love reading books!', 
+    description: 'Bio/description'
+  })
+  @IsOptional()
+  @IsString()
+  bio?: string;
+
+  @ApiPropertyOptional({ 
+    example: 'Ho Chi Minh', 
+    description: 'Region/city'
+  })
+  @IsOptional()
+  @IsString()
+  region?: string;
 }
 
 export class UserProfileResponseDto {
