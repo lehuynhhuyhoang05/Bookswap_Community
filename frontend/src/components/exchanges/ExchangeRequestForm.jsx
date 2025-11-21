@@ -64,6 +64,15 @@ const ExchangeRequestForm = ({
       message: message.trim(),
       priority: 'NORMAL'
     };
+    
+    // Debug logging
+    console.log('[ExchangeRequestForm] Submitting request:', {
+      receiver: { id: receiver.member_id, name: receiver.full_name },
+      offered_books: selectedOfferedBooks.length,
+      requested_books: selectedRequestedBooks.length,
+      has_message: !!message.trim()
+    });
+    
     onSubmit(requestData);
   };
 

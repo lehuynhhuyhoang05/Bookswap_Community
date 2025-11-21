@@ -7,6 +7,7 @@ export const useBooks = () => {
   const [error, setError] = useState(null);
   const [categories, setCategories] = useState([]);
   const [regions, setRegions] = useState([]);
+  const [myLibrary, setMyLibrary] = useState({ items: [], loading: false, error: null });
 
   const booksServiceRef = useRef(booksService);
 
@@ -80,6 +81,18 @@ export const useBooks = () => {
 
   const getMyLibrary = useCallback(() => 
     apiCall(booksServiceRef.current.getMyLibrary), [apiCall]);
+
+  const fetchMyLibrary = useCallback(async () => {
+    setMyLibrary(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const result = await booksServiceRef.current.getMyLibrary();
+      setMyLibrary({ items: result || [], loading: false, error: null });
+      return result;
+    } catch (err) {
+      setMyLibrary(prev => ({ ...prev, loading: false, error: err.message }));
+      throw err;
+    }
+  }, []);
 
   const getBooksByRegion = useCallback((region, params = {}) => 
     apiCall(booksServiceRef.current.getBooksByRegion, region, params), [apiCall]);
@@ -181,6 +194,7 @@ export const useBooks = () => {
     error,
     categories,
     regions,
+    myLibrary,
     
     // Main API methods - Regular Books
     addBook,
@@ -192,6 +206,7 @@ export const useBooks = () => {
     getGoogleBookById,
     getGoogleBookByISBN,
     getMyLibrary,
+    fetchMyLibrary,
     getBooksByRegion,
     getAvailableRegions,
     searchBooks,
