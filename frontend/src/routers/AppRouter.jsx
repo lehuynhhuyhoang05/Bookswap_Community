@@ -33,9 +33,11 @@ import ConversationDetail from '../pages/messages/conversation/[id]';
 // Exchange Pages
 import ExchangePage from '../pages/exchange/index';
 import ExchangeRequests from '../pages/exchange/requests';
+import ExchangesList from '../pages/exchange/list';
 import ExchangeSuggestions from '../pages/exchange/suggestions';
-import ExchangeDetail from '../pages/exchange/detail/[id]';
 import CreateExchangeRequest from '../pages/exchange/create-request';
+import ExchangeRequestDetail from '../pages/exchange/request-detail/[id]';
+import ExchangeDetail from '../pages/exchange/detail/[id]';
 
 const AppRouter = () => (
   <Routes>
@@ -72,8 +74,10 @@ const AppRouter = () => (
     {/* Exchange Routes */}
     <Route path="/exchange" element={<PrivateRoute><ExchangePage /></PrivateRoute>} />
     <Route path="/exchange/requests" element={<PrivateRoute><ExchangeRequests /></PrivateRoute>} />
+    <Route path="/exchange/request/:id" element={<PrivateRoute><ExchangeRequestDetail /></PrivateRoute>} />
+    <Route path="/exchange/list" element={<PrivateRoute><ExchangesList /></PrivateRoute>} />
+    <Route path="/exchange/:id" element={<PrivateRoute><ExchangeDetail /></PrivateRoute>} />
     <Route path="/exchange/suggestions" element={<PrivateRoute><ExchangeSuggestions /></PrivateRoute>} />
-    <Route path="/exchange/detail/:id" element={<PrivateRoute><ExchangeDetail /></PrivateRoute>} />
     <Route path="/exchange/create-request" element={<PrivateRoute><CreateExchangeRequest /></PrivateRoute>} />
 
     {/* 404 */}

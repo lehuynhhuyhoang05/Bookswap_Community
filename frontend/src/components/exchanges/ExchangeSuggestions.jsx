@@ -46,37 +46,87 @@ const ExchangeSuggestions = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {/* Họ muốn từ tôi */}
             <div>
-              <h5 className="font-medium text-gray-900 mb-2">Họ muốn từ tôi:</h5>
+              <h5 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
+                <span className="text-blue-600">📤</span>
+                Họ muốn từ tôi ({suggestion.matching_books.they_want_from_me?.length || 0})
+              </h5>
               <div className="space-y-2">
-                {suggestion.matching_books.they_want_from_me.map((match, index) => (
-                  <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                    <div>
-                      <div className="font-medium text-sm">{match.my_book.title}</div>
-                      <div className="text-xs text-gray-600">tác giả: {match.my_book.author}</div>
+                {(suggestion.matching_books.they_want_from_me || []).map((match, index) => (
+                  <div key={index} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      {match.my_book?.cover_image && (
+                        <img 
+                          src={match.my_book.cover_image} 
+                          alt={match.my_book.title}
+                          className="w-12 h-16 object-cover rounded"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm text-gray-900 truncate">
+                          {match.my_book?.title || 'N/A'}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          {match.my_book?.author || 'N/A'}
+                        </div>
+                        <div className="flex gap-2 mt-1">
+                          <Badge variant="outline" size="sm">
+                            {match.my_book?.condition || 'N/A'}
+                          </Badge>
+                          <Badge variant="outline" size="sm">
+                            Độ ưu tiên: {match.their_want?.priority || 'NORMAL'}
+                          </Badge>
+                        </div>
+                      </div>
                     </div>
-                    <Badge variant="outline">
-                      {(match.match_score * 100).toFixed(1)}%
-                    </Badge>
                   </div>
                 ))}
+                {(!suggestion.matching_books.they_want_from_me || suggestion.matching_books.they_want_from_me.length === 0) && (
+                  <p className="text-sm text-gray-500 italic">Không có sách nào</p>
+                )}
               </div>
             </div>
 
+            {/* Tôi muốn từ họ */}
             <div>
-              <h5 className="font-medium text-gray-900 mb-2">Tôi muốn từ họ:</h5>
+              <h5 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
+                <span className="text-green-600">📥</span>
+                Tôi muốn từ họ ({suggestion.matching_books.i_want_from_them?.length || 0})
+              </h5>
               <div className="space-y-2">
-                {suggestion.matching_books.i_want_from_them.map((match, index) => (
-                  <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                    <div>
-                      <div className="font-medium text-sm">{match.their_book.title}</div>
-                      <div className="text-xs text-gray-600">tác giả: {match.their_book.author}</div>
+                {(suggestion.matching_books.i_want_from_them || []).map((match, index) => (
+                  <div key={index} className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      {match.their_book?.cover_image && (
+                        <img 
+                          src={match.their_book.cover_image} 
+                          alt={match.their_book.title}
+                          className="w-12 h-16 object-cover rounded"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm text-gray-900 truncate">
+                          {match.their_book?.title || 'N/A'}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          {match.their_book?.author || 'N/A'}
+                        </div>
+                        <div className="flex gap-2 mt-1">
+                          <Badge variant="outline" size="sm">
+                            {match.their_book?.condition || 'N/A'}
+                          </Badge>
+                          <Badge variant="outline" size="sm">
+                            Độ ưu tiên: {match.my_want?.priority || 'NORMAL'}
+                          </Badge>
+                        </div>
+                      </div>
                     </div>
-                    <Badge variant="outline">
-                      {(match.match_score * 100).toFixed(1)}%
-                    </Badge>
                   </div>
                 ))}
+                {(!suggestion.matching_books.i_want_from_them || suggestion.matching_books.i_want_from_them.length === 0) && (
+                  <p className="text-sm text-gray-500 italic">Không có sách nào</p>
+                )}
               </div>
             </div>
           </div>

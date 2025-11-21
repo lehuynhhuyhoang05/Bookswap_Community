@@ -13,28 +13,23 @@ import { BookMatchPair } from '../../infrastructure/database/entities/book-match
 import { ExchangesController } from './controllers/exchanges.controller';
 import { ExchangesService } from './services/exchanges.service';
 import { MatchingService } from './services/matching.service';
-import { TrustScoreService } from '../../common/services/trust-score.service';
-import { Review } from '../../infrastructure/database/entities/review.entity';
-import { User } from '../../infrastructure/database/entities/user.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Member,
       Book,
-      BookWanted,
+      BookWanted, // ← THIS WAS MISSING!
       ExchangeRequest,
       ExchangeRequestBook,
       Exchange,
       ExchangeBook,
       ExchangeSuggestion,
       BookMatchPair,
-      Review, // For TrustScoreService
-      User, // For TrustScoreService
     ]),
   ],
   controllers: [ExchangesController],
-  providers: [ExchangesService, MatchingService, TrustScoreService],
-  exports: [ExchangesService, MatchingService, TrustScoreService],
+  providers: [ExchangesService, MatchingService],
+  exports: [ExchangesService, MatchingService],
 })
 export class ExchangesModule {}

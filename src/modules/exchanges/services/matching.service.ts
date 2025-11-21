@@ -80,6 +80,7 @@ export class MatchingService {
       order: { priority: 'DESC' },
     });
 
+    this.logger.debug(`[findMatchingSuggestions] Found ${myWantedBooks.length} wanted books`);
     if (myWantedBooks.length === 0) {
       this.logger.debug('[findMatchingSuggestions] No wanted books found');
       return { suggestions: [], total: 0 };
@@ -94,6 +95,7 @@ export class MatchingService {
       },
     });
 
+    this.logger.debug(`[findMatchingSuggestions] Found ${myAvailableBooks.length} available books to offer`);
     if (myAvailableBooks.length === 0) {
       this.logger.debug('[findMatchingSuggestions] No available books to offer');
       return { suggestions: [], total: 0 };
@@ -101,17 +103,25 @@ export class MatchingService {
 
     // 6) Pre-collect potential owner IDs
     const potentialOwnerIds = new Set<string>();
+    this.logger.debug(`[findMatchingSuggestions] Searching through ${myWantedBooks.length} wanted books...`);
+    
     for (const myWant of myWantedBooks) {
       if (potentialOwnerIds.size >= this.config.maxProcessedMembers) break;
 
+      this.logger.debug(`[findMatchingSuggestions] Searching for: "${myWant.title}" by "${myWant.author}"`);
       const booksIWant = await this.findBooksMatchingWant(myWant, member.member_id);
+      
       booksIWant.forEach((book) => {
         if (!excludeSet.has(book.owner_id)) {
+          this.logger.debug(`[findMatchingSuggestions] Found potential match: ${book.title} owned by ${book.owner_id}`);
           potentialOwnerIds.add(book.owner_id);
+        } else {
+          this.logger.debug(`[findMatchingSuggestions] Excluded owner: ${book.owner_id} (blocked or has pending request)`);
         }
       });
     }
 
+    this.logger.debug(`[findMatchingSuggestions] Total potential owners found: ${potentialOwnerIds.size}`);
     if (potentialOwnerIds.size === 0) {
       this.logger.debug('[findMatchingSuggestions] No potential matches found');
       return { suggestions: [], total: 0 };
@@ -297,47 +307,81 @@ export class MatchingService {
     });
 
     return {
-      suggestions: suggestions.map((s) => ({
-        suggestion_id: s.suggestion_id,
-        match_score: Number(s.match_score as any),
-        total_matching_books: s.total_matching_books,
-        is_viewed: s.is_viewed,
-        score_breakdown: s.score_breakdown,
-        member: {
-          member_id: s.member_b.member_id,
-          full_name: s.member_b.user?.full_name,
-          avatar_url: s.member_b.user?.avatar_url,
-          region: s.member_b.region,
-          trust_score: Number(s.member_b.trust_score as any),
-          average_rating: Number(s.member_b.average_rating as any),
-          is_verified: s.member_b.is_verified,
-          completed_exchanges: s.member_b.completed_exchanges,
-        },
-        matching_books: s.match_pairs.map((pair) => ({
-          direction: (pair as any).pair_direction ?? undefined,
-          your_book: pair.book_a
-            ? {
-                book_id: pair.book_a.book_id,
-                title: pair.book_a.title,
-                author: pair.book_a.author,
-                condition: pair.book_a.book_condition,
-              }
-            : null,
-          their_book: pair.book_b
-            ? {
-                book_id: pair.book_b.book_id,
-                title: pair.book_b.title,
-                author: pair.book_b.author,
-                condition: pair.book_b.book_condition,
-              }
-            : null,
-          match_reason: pair.match_reason,
-          match_score: Number(pair.match_score as any),
-        })),
-        created_at: s.created_at,
-        expired_at: s.expired_at,
-        viewed_at: s.viewed_at,
-      })),
+      suggestions: suggestions.map((s) => {
+        // Group pairs by direction to match generateSuggestions format
+        const theyWantFromMe = s.match_pairs
+          .filter((pair) => (pair as any).pair_direction === 'THEY_WANT_FROM_ME')
+          .map((pair) => ({
+            my_book: pair.book_a
+              ? {
+                  book_id: pair.book_a.book_id,
+                  title: pair.book_a.title,
+                  author: pair.book_a.author,
+                  category: pair.book_a.category,
+                  condition: pair.book_a.book_condition,
+                  cover_image: pair.book_a.cover_image_url,
+                }
+              : null,
+            their_want: pair.book_b
+              ? {
+                  // Note: book_b stores wanted book info in pair_direction=THEY_WANT_FROM_ME
+                  title: pair.book_b.title,
+                  author: pair.book_b.author,
+                }
+              : null,
+            match_score: Number(pair.match_score as any),
+            reasons: pair.match_reason ? [pair.match_reason] : [],
+          }));
+
+        const iWantFromThem = s.match_pairs
+          .filter((pair) => (pair as any).pair_direction === 'I_WANT_FROM_THEM')
+          .map((pair) => ({
+            their_book: pair.book_b
+              ? {
+                  book_id: pair.book_b.book_id,
+                  title: pair.book_b.title,
+                  author: pair.book_b.author,
+                  category: pair.book_b.category,
+                  condition: pair.book_b.book_condition,
+                  cover_image: pair.book_b.cover_image_url,
+                }
+              : null,
+            my_want: pair.book_a
+              ? {
+                  // Note: book_a stores wanted book info in pair_direction=I_WANT_FROM_THEM
+                  title: pair.book_a.title,
+                  author: pair.book_a.author,
+                }
+              : null,
+            match_score: Number(pair.match_score as any),
+            reasons: pair.match_reason ? [pair.match_reason] : [],
+          }));
+
+        return {
+          suggestion_id: s.suggestion_id,
+          match_score: Number(s.match_score as any),
+          total_matching_books: s.total_matching_books,
+          is_viewed: s.is_viewed,
+          score_breakdown: s.score_breakdown,
+          member: {
+            member_id: s.member_b.member_id,
+            full_name: s.member_b.user?.full_name,
+            avatar_url: s.member_b.user?.avatar_url,
+            region: s.member_b.region,
+            trust_score: Number(s.member_b.trust_score as any),
+            average_rating: Number(s.member_b.average_rating as any),
+            is_verified: s.member_b.is_verified,
+            completed_exchanges: s.member_b.completed_exchanges,
+          },
+          matching_books: {
+            they_want_from_me: theyWantFromMe,
+            i_want_from_them: iWantFromThem,
+          },
+          created_at: s.created_at,
+          expired_at: s.expired_at,
+          viewed_at: s.viewed_at,
+        };
+      }),
       total: suggestions.length,
     };
   }
@@ -581,7 +625,42 @@ export class MatchingService {
   // ========== Minimal implementations to compile ==========
 
   private async findBooksMatchingWant(myWant: BookWanted, excludeOwnerId: string): Promise<Book[]> {
-    // Bạn có thể thay bằng query builder tối ưu của bạn
+    // Use raw query for debugging to bypass TypeORM issues
+    this.logger.debug(`[findBooksMatchingWant] Searching for: "${myWant.title}" by "${myWant.author}", excluding owner: ${excludeOwnerId}`);
+    
+    if (myWant.title && myWant.author) {
+      const titlePattern = `%${myWant.title.toLowerCase()}%`;
+      const authorPattern = `%${myWant.author.toLowerCase()}%`;
+      
+      this.logger.debug(`[findBooksMatchingWant] Raw query params: status=${BookStatus.AVAILABLE}, title LIKE ${titlePattern}, author LIKE ${authorPattern}`);
+      
+      const rawResults = await this.bookRepo.query(
+        `SELECT * FROM books 
+         WHERE status = ? 
+         AND deleted_at IS NULL 
+         AND owner_id != ?
+         AND LOWER(title) LIKE ?
+         AND LOWER(author) LIKE ?
+         LIMIT 100`,
+        [
+          BookStatus.AVAILABLE,
+          excludeOwnerId,
+          titlePattern,
+          authorPattern,
+        ]
+      );
+      
+      this.logger.debug(`[findBooksMatchingWant] Raw query returned ${rawResults.length} results`);
+      if (rawResults.length > 0) {
+        this.logger.debug(`[findBooksMatchingWant] First result: book_id=${rawResults[0].book_id}, title="${rawResults[0].title}", author="${rawResults[0].author}", owner=${rawResults[0].owner_id}`);
+      }
+      
+      // Map raw results to Book entities
+      const books = rawResults.map(raw => this.bookRepo.create(raw));
+      return books;
+    }
+
+    // Fallback to QueryBuilder for other cases
     const qb = this.bookRepo
       .createQueryBuilder('b')
       .where('b.status = :status', { status: BookStatus.AVAILABLE })
@@ -597,42 +676,83 @@ export class MatchingService {
     if (myWant.category) {
       qb.andWhere('b.category = :cat', { cat: myWant.category });
     }
-
-    return qb.take(100).getMany();
+    
+    const results = await qb.take(100).getMany();
+    this.logger.debug(`[findBooksMatchingWant] QueryBuilder returned ${results.length} results`);
+    return results;
   }
 
   private async saveSuggestion(memberAId: string, match: PotentialMatch): Promise<ExchangeSuggestion> {
-  const pairScores: number[] = [
-    ...match.myBooksTheyWant.map(x => x.score.score),
-    ...match.theirBooksIWant.map(x => x.score.score),
-  ];
+    const pairScores: number[] = [
+      ...match.myBooksTheyWant.map(x => x.score.score),
+      ...match.theirBooksIWant.map(x => x.score.score),
+    ];
 
-  // overallScore chuẩn hoá 0–1: dùng AVERAGE (đề xuất)
-  const avg = pairScores.length ? (pairScores.reduce((a,b) => a+b, 0) / pairScores.length) : 0;
-  const overallScore = Math.min(1, Math.max(0, avg)); // clamp [0,1]
+    // overallScore chuẩn hoá 0–1: dùng AVERAGE (đề xuất)
+    const avg = pairScores.length ? (pairScores.reduce((a,b) => a+b, 0) / pairScores.length) : 0;
+    const overallScore = Math.min(1, Math.max(0, avg)); // clamp [0,1]
 
-  const suggestion = this.suggestionRepo.create({
-    suggestion_id: uuidv4(),
-    member_a_id: memberAId,
-    member_b_id: match.otherMember.member_id,
-    match_score: Number(overallScore.toFixed(3)), // <= 1.000 → hợp DECIMAL(4,3)
-    total_matching_books: match.myBooksTheyWant.length + match.theirBooksIWant.length,
-    is_viewed: false,
-    expired_at: new Date(Date.now() + this.config.suggestionExpirationDays * 86400000),
-    score_breakdown: {
-      book_match: match.scoreBreakdown.bookMatch,
-      trust_score: match.scoreBreakdown.trustScore,
-      exchange_history: match.scoreBreakdown.exchangeHistory,
-      rating: match.scoreBreakdown.rating,
-      geographic: match.scoreBreakdown.geographic,
-      verification: match.scoreBreakdown.verification,
-      priority: match.scoreBreakdown.priority,
-      condition: match.scoreBreakdown.condition,
-    },
-  });
+    const suggestionId = uuidv4();
+    
+    const suggestion = this.suggestionRepo.create({
+      suggestion_id: suggestionId,
+      member_a_id: memberAId,
+      member_b_id: match.otherMember.member_id,
+      match_score: Number(overallScore.toFixed(3)), // <= 1.000 → hợp DECIMAL(4,3)
+      total_matching_books: match.myBooksTheyWant.length + match.theirBooksIWant.length,
+      is_viewed: false,
+      expired_at: new Date(Date.now() + this.config.suggestionExpirationDays * 86400000),
+      score_breakdown: {
+        book_match: match.scoreBreakdown.bookMatch,
+        trust_score: match.scoreBreakdown.trustScore,
+        exchange_history: match.scoreBreakdown.exchangeHistory,
+        rating: match.scoreBreakdown.rating,
+        geographic: match.scoreBreakdown.geographic,
+        verification: match.scoreBreakdown.verification,
+        priority: match.scoreBreakdown.priority,
+        condition: match.scoreBreakdown.condition,
+      },
+    });
 
-  return this.suggestionRepo.save(suggestion);
-}
+    const savedSuggestion = await this.suggestionRepo.save(suggestion);
+
+    // Save book match pairs
+    const pairs: BookMatchPair[] = [];
+
+    // They want from me
+    for (const item of match.myBooksTheyWant) {
+      const pair = this.pairRepo.create({
+        pair_id: uuidv4(),
+        suggestion_id: suggestionId,
+        book_a_id: item.myBook.book_id,
+        book_b_id: null, // For wanted books, we don't store book_id
+        match_reason: item.score.reasons.join(', '),
+        match_score: Number(item.score.score.toFixed(3)),
+        pair_direction: 'THEY_WANT_FROM_ME',
+      });
+      pairs.push(pair);
+    }
+
+    // I want from them
+    for (const item of match.theirBooksIWant) {
+      const pair = this.pairRepo.create({
+        pair_id: uuidv4(),
+        suggestion_id: suggestionId,
+        book_a_id: null, // For wanted books, we don't store book_id
+        book_b_id: item.theirBook.book_id,
+        match_reason: item.score.reasons.join(', '),
+        match_score: Number(item.score.score.toFixed(3)),
+        pair_direction: 'I_WANT_FROM_THEM',
+      });
+      pairs.push(pair);
+    }
+
+    if (pairs.length > 0) {
+      await this.pairRepo.save(pairs);
+    }
+
+    return savedSuggestion;
+  }
 
 
   private formatSuggestion(s: ExchangeSuggestion, match: PotentialMatch) {

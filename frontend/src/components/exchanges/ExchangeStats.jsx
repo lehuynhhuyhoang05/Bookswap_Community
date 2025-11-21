@@ -1,42 +1,61 @@
 import React from 'react';
+import { Send, Inbox, Clock, RefreshCw, CheckCircle, TrendingUp } from 'lucide-react';
 
 const ExchangeStats = ({ stats }) => {
   const statCards = [
     {
       title: 'Sent Requests',
+      titleVi: 'Yêu cầu đã gửi',
       value: stats?.total_requests_sent || 0,
       description: 'Requests you sent',
-      color: 'blue'
+      descriptionVi: 'Yêu cầu bạn đã gửi',
+      color: 'blue',
+      icon: Send
     },
     {
       title: 'Received Requests',
+      titleVi: 'Yêu cầu nhận được',
       value: stats?.total_requests_received || 0,
       description: 'Requests you received',
-      color: 'green'
+      descriptionVi: 'Yêu cầu bạn nhận được',
+      color: 'green',
+      icon: Inbox
     },
     {
       title: 'Pending Requests',
+      titleVi: 'Yêu cầu đang chờ',
       value: stats?.pending_requests || 0,
       description: 'Awaiting response',
-      color: 'yellow'
+      descriptionVi: 'Đang chờ phản hồi',
+      color: 'yellow',
+      icon: Clock
     },
     {
       title: 'Active Exchanges',
+      titleVi: 'Trao đổi đang diễn ra',
       value: stats?.active_exchanges || 0,
       description: 'In progress',
-      color: 'indigo'
+      descriptionVi: 'Đang tiến hành',
+      color: 'indigo',
+      icon: RefreshCw
     },
     {
       title: 'Completed Exchanges',
+      titleVi: 'Trao đổi hoàn tất',
       value: stats?.completed_exchanges || 0,
       description: 'Successfully finished',
-      color: 'purple'
+      descriptionVi: 'Hoàn tất thành công',
+      color: 'purple',
+      icon: CheckCircle
     },
     {
       title: 'Success Rate',
-      value: `${stats?.success_rate || 0}%`,
+      titleVi: 'Tỷ lệ thành công',
+      value: `${Math.round(stats?.success_rate || 0)}%`,
       description: 'Exchange success rate',
-      color: 'emerald'
+      descriptionVi: 'Tỷ lệ trao đổi thành công',
+      color: 'emerald',
+      icon: TrendingUp
     }
   ];
 
@@ -54,18 +73,23 @@ const ExchangeStats = ({ stats }) => {
 
   return (
     <div className="mb-8">
-      <h3 className="text-xl font-semibold text-gray-900 mb-4">Exchange Statistics</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {statCards.map((stat, index) => (
-          <div 
-            key={index} 
-            className={`border rounded-lg p-4 text-center ${getColorClasses(stat.color)}`}
-          >
-            <div className="text-2xl font-bold mb-1">{stat.value}</div>
-            <div className="font-medium mb-1">{stat.title}</div>
-            <div className="text-sm opacity-80">{stat.description}</div>
-          </div>
-        ))}
+        {statCards.map((stat, index) => {
+          const Icon = stat.icon;
+          return (
+            <div 
+              key={index} 
+              className={`border rounded-lg p-4 text-center transition-all hover:shadow-md ${getColorClasses(stat.color)}`}
+            >
+              <div className="flex justify-center mb-2">
+                <Icon className="w-8 h-8" />
+              </div>
+              <div className="text-3xl font-bold mb-1">{stat.value}</div>
+              <div className="font-semibold text-base mb-1">{stat.titleVi}</div>
+              <div className="text-xs opacity-75">{stat.descriptionVi}</div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

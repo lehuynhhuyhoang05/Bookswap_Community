@@ -17,8 +17,8 @@ export class Conversation {
   @PrimaryColumn('varchar', { length: 36 })
   conversation_id: string;
 
-  @Column('varchar', { length: 36, nullable: true })
-  exchange_request_id: string | null;
+  @Column('varchar', { length: 36 })
+  exchange_request_id: string;
 
   @Column('varchar', { length: 36 })
   member_a_id: string;

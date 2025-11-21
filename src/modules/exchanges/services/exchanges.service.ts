@@ -8,8 +8,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, IsNull, LessThan } from 'typeorm';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Repository, In, IsNull } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Member } from '../../../infrastructure/database/entities/member.entity';
 import { Book, BookStatus } from '../../../infrastructure/database/entities/book.entity';
@@ -24,7 +23,6 @@ import {
 import {
   Exchange,
   ExchangeStatus,
-  CancellationReason,
 } from '../../../infrastructure/database/entities/exchange.entity';
 import { ExchangeBook } from '../../../infrastructure/database/entities/exchange-book.entity';
 import {
@@ -32,10 +30,7 @@ import {
   RespondToRequestDto,
   QueryExchangeRequestsDto,
   QueryExchangesDto,
-  CancelExchangeDto,
-  UpdateMeetingDto,
 } from '../dto/exchange.dto';
-import { TrustScoreService } from '../../../common/services/trust-score.service';
 
 @Injectable()
 export class ExchangesService {
@@ -59,8 +54,6 @@ export class ExchangesService {
 
     @InjectRepository(ExchangeBook)
     private exchangeBookRepo: Repository<ExchangeBook>,
-
-    private trustScoreService: TrustScoreService,
   ) {}
 
   // ==================== CREATE EXCHANGE REQUEST ====================
@@ -91,36 +84,7 @@ export class ExchangesService {
       throw new BadRequestException('Cannot create exchange request with yourself');
     }
 
-    // 4. Check trust score restrictions
-    const MIN_TRUST_SCORE = 10; // Users with score < 10 cannot create requests
-    const LOW_TRUST_SCORE = 20; // Users with score < 20 have limits
-    
-    if (requester.trust_score < MIN_TRUST_SCORE) {
-      throw new ForbiddenException(
-        `Your trust score (${requester.trust_score}) is too low to create exchange requests. ` +
-        `Minimum required: ${MIN_TRUST_SCORE}. Complete exchanges successfully to improve your score.`
-      );
-    }
-
-    if (requester.trust_score < LOW_TRUST_SCORE) {
-      // Count pending/active requests for low-trust users
-      const pendingCount = await this.requestRepo.count({
-        where: {
-          requester_id: requester.member_id,
-          status: ExchangeRequestStatus.PENDING,
-        },
-      });
-
-      const MAX_PENDING_LOW_TRUST = 2;
-      if (pendingCount >= MAX_PENDING_LOW_TRUST) {
-        throw new ForbiddenException(
-          `Your trust score (${requester.trust_score}) limits you to ${MAX_PENDING_LOW_TRUST} pending requests at a time. ` +
-          `Wait for responses or improve your trust score by completing exchanges successfully.`
-        );
-      }
-    }
-
-    // 5. Validate offered books (must be owned by requester and available)
+    // 4. Validate offered books (must be owned by requester and available)
     const offeredBooks = await this.bookRepo.find({
       where: {
         book_id: In(dto.offered_book_ids),
@@ -200,8 +164,11 @@ export class ExchangesService {
       await this.requestBookRepo.save(requestBook);
     }
 
-    // 10. Books stay AVAILABLE until request is accepted
-    // No status change here to allow multiple pending requests
+    // 10. Update book status to EXCHANGING
+    await this.bookRepo.update(
+      { book_id: In([...dto.offered_book_ids, ...dto.requested_book_ids]) },
+      { status: BookStatus.EXCHANGING },
+    );
 
     this.logger.log(`Exchange request created: ${request.request_id}`);
 
@@ -274,17 +241,9 @@ export class ExchangesService {
       queryBuilder.andWhere('request.status = :status', { status });
     }
 
-    // Trust score-based sorting: High trust users' requests appear first
-    // This gives priority visibility to reliable users
-    if (type === 'received') {
-      queryBuilder.orderBy('requester.trust_score', 'DESC');
-      queryBuilder.addOrderBy('request.created_at', 'DESC');
-    } else {
-      queryBuilder.orderBy('request.created_at', 'DESC');
-    }
-
     // Pagination
     const [requests, total] = await queryBuilder
+      .orderBy('request.created_at', 'DESC')
       .skip(skip)
       .take(limit)
       .getManyAndCount();
@@ -349,128 +308,27 @@ export class ExchangesService {
 
   // ==================== ACCEPT REQUEST ====================
   private async acceptRequest(request: ExchangeRequest) {
-    // 0. Check receiver's trust score for response time limit
-    const receiver = await this.memberRepo.findOne({
-      where: { member_id: request.receiver_id },
-    });
-
-    if (receiver && receiver.trust_score < 20) {
-      // Low trust users must respond within 24 hours
-      const requestAge = Date.now() - request.created_at.getTime();
-      const maxResponseTime = 24 * 60 * 60 * 1000; // 24 hours
-      
-      if (requestAge > maxResponseTime) {
-        throw new BadRequestException(
-          `Users with trust score < 20 must respond within 24 hours. ` +
-          `This request is ${Math.floor(requestAge / (60 * 60 * 1000))} hours old.`
-        );
-      }
-    }
-
-    // 1. Get all books involved in this request
-    const requestBooks = await this.requestBookRepo.find({
-      where: { request_id: request.request_id },
-    });
-    const bookIds = requestBooks.map((rb) => rb.book_id);
-
-    // 2. Check if any books are already in PENDING or ACCEPTED exchanges
-    const conflictingExchanges = await this.exchangeBookRepo
-      .createQueryBuilder('eb')
-      .innerJoin('eb.exchange', 'e')
-      .where('eb.book_id IN (:...bookIds)', { bookIds })
-      .andWhere('e.status IN (:...statuses)', {
-        statuses: [ExchangeStatus.PENDING, ExchangeStatus.ACCEPTED],
-      })
-      .getMany();
-
-    if (conflictingExchanges.length > 0) {
-      // Books are locked in another exchange
-      const conflictingBookIds = [...new Set(conflictingExchanges.map(eb => eb.book_id))];
-      const conflictingBooks = await this.bookRepo.find({
-        where: { book_id: In(conflictingBookIds) },
-      });
-      const bookTitles = conflictingBooks.map(b => b.title).join(', ');
-      
-      throw new ConflictException(
-        `Cannot accept request: The following books are already in an active exchange: ${bookTitles}`,
-      );
-    }
-
-    // 3. Update request status
+    // 1. Update request status
     request.status = ExchangeRequestStatus.ACCEPTED;
     request.responded_at = new Date();
     await this.requestRepo.save(request);
 
-    // 4. Update book status to EXCHANGING (lock the books)
-    await this.bookRepo.update(
-      { book_id: In(bookIds) },
-      { status: BookStatus.EXCHANGING },
-    );
-
-    // 5. Auto-reject all other PENDING requests containing these books
-    const conflictingRequests = await this.requestBookRepo
-      .createQueryBuilder('rb')
-      .innerJoin('rb.request', 'r')
-      .where('rb.book_id IN (:...bookIds)', { bookIds })
-      .andWhere('r.status = :status', { status: ExchangeRequestStatus.PENDING })
-      .andWhere('r.request_id != :currentRequestId', { currentRequestId: request.request_id })
-      .select('r.request_id')
-      .distinct(true)
-      .getRawMany();
-
-    if (conflictingRequests.length > 0) {
-      const conflictingRequestIds = conflictingRequests.map(r => r.r_request_id);
-      await this.requestRepo.update(
-        { request_id: In(conflictingRequestIds) },
-        {
-          status: ExchangeRequestStatus.REJECTED,
-          rejection_reason: 'Books no longer available - already in another exchange',
-          responded_at: new Date(),
-        },
-      );
-      this.logger.log(
-        `Auto-rejected ${conflictingRequestIds.length} conflicting requests: ${conflictingRequestIds.join(', ')}`,
-      );
-    }
-
-    // 6. Calculate exchange expiry based on trust scores
-    const requester = await this.memberRepo.findOne({
-      where: { member_id: request.requester_id },
-    });
-
-    // Lower trust = shorter expiry time (pressure to complete quickly)
-    const minTrustScore = Math.min(
-      requester?.trust_score || 50,
-      receiver?.trust_score || 50
-    );
-    
-    let expiryDays = 14; // Default 14 days for high trust users
-    if (minTrustScore < 20) {
-      expiryDays = 3; // Low trust: only 3 days to confirm
-      this.logger.warn(`Low trust exchange: ${expiryDays} days expiry (min score: ${minTrustScore})`);
-    } else if (minTrustScore < 40) {
-      expiryDays = 7; // Medium trust: 7 days
-    }
-
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + expiryDays);
-
+    // 2. Create Exchange
     const exchange = this.exchangeRepo.create({
       exchange_id: uuidv4(),
       request_id: request.request_id,
       member_a_id: request.requester_id,
       member_b_id: request.receiver_id,
       status: ExchangeStatus.PENDING,
-      expires_at: expiresAt,
     });
 
     await this.exchangeRepo.save(exchange);
-    
-    this.logger.log(
-      `Exchange created: ${exchange.exchange_id}, expires at ${expiresAt.toISOString()}`,
-    );
 
-    // 7. Create ExchangeBooks (reuse requestBooks from step 1)
+    // 3. Create ExchangeBooks
+    const requestBooks = await this.requestBookRepo.find({
+      where: { request_id: request.request_id },
+    });
+
     for (const rb of requestBooks) {
       const exchangeBook = this.exchangeBookRepo.create({
         exchange_book_id: uuidv4(),
@@ -499,8 +357,17 @@ export class ExchangesService {
     request.responded_at = new Date();
     await this.requestRepo.save(request);
 
-    // 2. No need to release books - they were never locked during PENDING status
-    // Books only get locked when request is ACCEPTED
+    // 2. Release books back to AVAILABLE
+    const requestBooks = await this.requestBookRepo.find({
+      where: { request_id: request.request_id },
+    });
+
+    const bookIds = requestBooks.map((rb) => rb.book_id);
+
+    await this.bookRepo.update(
+      { book_id: In(bookIds) },
+      { status: BookStatus.AVAILABLE },
+    );
 
     this.logger.log(`Request rejected: ${request.request_id}`);
 
@@ -545,8 +412,12 @@ export class ExchangesService {
     request.status = ExchangeRequestStatus.CANCELLED;
     await this.requestRepo.save(request);
 
-    // No need to release books - they were never locked during PENDING status
-    // Books only lock when request is ACCEPTED (creating an Exchange)
+    // Release books
+    const bookIds = request.request_books.map((rb) => rb.book_id);
+    await this.bookRepo.update(
+      { book_id: In(bookIds) },
+      { status: BookStatus.AVAILABLE },
+    );
 
     return { message: 'Exchange request cancelled successfully' };
   }
@@ -662,23 +533,19 @@ export class ExchangesService {
         where: { exchange_id: exchangeId },
       });
 
-      this.logger.log(
-        `[confirmExchange] Transferring ${exchangeBooks.length} books for exchange ${exchangeId}`,
-      );
-
       for (const eb of exchangeBooks) {
-        this.logger.log(
-          `[confirmExchange] Book ${eb.book_id}: ${eb.from_member_id} → ${eb.to_member_id}`,
-        );
-        
+        // Update owner_id from 'from' member to 'to' member
         await this.bookRepo.update(
           { book_id: eb.book_id },
-          {
+          { 
             owner_id: eb.to_member_id,
             status: BookStatus.AVAILABLE,
-          },
+            deleted_at: () => 'NULL'  // Clear deleted_at to restore book
+          }
         );
       }
+
+      this.logger.log(`Transferred ownership of ${exchangeBooks.length} books for exchange ${exchangeId}`);
 
       // Update member stats
       await this.memberRepo.increment(
@@ -691,19 +558,9 @@ export class ExchangesService {
         'completed_exchanges',
         1,
       );
-
-      this.logger.log(`[confirmExchange] Exchange ${exchangeId} completed successfully`);
     }
 
-    // Save exchange FIRST to ensure status is COMPLETED in database
     await this.exchangeRepo.save(exchange);
-
-    // THEN update trust scores (queries will see the completed exchange)
-    if (exchange.status === ExchangeStatus.COMPLETED) {
-      this.logger.log('[confirmExchange] Updating trust scores after completion');
-      await this.trustScoreService.updateTrustScore(exchange.member_a_id);
-      await this.trustScoreService.updateTrustScore(exchange.member_b_id);
-    }
 
     return this.getExchangeById(exchangeId);
   }
@@ -844,6 +701,176 @@ export class ExchangesService {
     };
   }
 
+  // ==================== UPDATE MEETING INFO ====================
+  async updateMeetingInfo(
+    userId: string,
+    exchangeId: string,
+    dto: any, // UpdateMeetingInfoDto
+  ) {
+    this.logger.log(`[updateMeetingInfo] exchangeId=${exchangeId}`);
+
+    // Get ALL member records for user
+    const members = await this.memberRepo.find({
+      where: { user_id: userId },
+    });
+
+    if (!members || members.length === 0) {
+      throw new NotFoundException('Member profile not found');
+    }
+
+    const memberIds = members.map((m) => m.member_id);
+
+    const exchange = await this.exchangeRepo.findOne({
+      where: { exchange_id: exchangeId },
+    });
+
+    if (!exchange) {
+      throw new NotFoundException('Exchange not found');
+    }
+
+    // Verify user is part of exchange
+    let isPartOfExchange = false;
+    for (const memberId of memberIds) {
+      if (exchange.member_a_id === memberId || exchange.member_b_id === memberId) {
+        isPartOfExchange = true;
+        break;
+      }
+    }
+
+    if (!isPartOfExchange) {
+      throw new ForbiddenException('You are not part of this exchange');
+    }
+
+    // Can only update meeting info for PENDING or ACCEPTED exchanges
+    if (![ExchangeStatus.PENDING, 'ACCEPTED'].includes(exchange.status as any)) {
+      throw new BadRequestException('Cannot update meeting info for this exchange status');
+    }
+
+    // Update meeting info
+    if (dto.meeting_location !== undefined) {
+      exchange.meeting_location = dto.meeting_location;
+    }
+    if (dto.meeting_time !== undefined) {
+      if (dto.meeting_time) {
+        exchange.meeting_time = new Date(dto.meeting_time);
+      } else {
+        exchange.meeting_time = null as any;
+      }
+    }
+    if (dto.meeting_notes !== undefined) {
+      exchange.meeting_notes = dto.meeting_notes;
+    }
+
+    await this.exchangeRepo.save(exchange);
+
+    return this.getExchangeById(exchangeId);
+  }
+
+  // ==================== CANCEL EXCHANGE ====================
+  async cancelExchange(
+    userId: string,
+    exchangeId: string,
+    dto: any, // CancelExchangeDto
+  ) {
+    this.logger.log(`[cancelExchange] exchangeId=${exchangeId} reason=${dto.cancellation_reason}`);
+
+    // Get ALL member records for user
+    const members = await this.memberRepo.find({
+      where: { user_id: userId },
+    });
+
+    if (!members || members.length === 0) {
+      throw new NotFoundException('Member profile not found');
+    }
+
+    const memberIds = members.map((m) => m.member_id);
+
+    const exchange = await this.exchangeRepo.findOne({
+      where: { exchange_id: exchangeId },
+      relations: ['exchange_books', 'exchange_books.book'],
+    });
+
+    if (!exchange) {
+      throw new NotFoundException('Exchange not found');
+    }
+
+    // Verify user is part of exchange
+    let isPartOfExchange = false;
+    for (const memberId of memberIds) {
+      if (exchange.member_a_id === memberId || exchange.member_b_id === memberId) {
+        isPartOfExchange = true;
+        break;
+      }
+    }
+
+    if (!isPartOfExchange) {
+      throw new ForbiddenException('You are not part of this exchange');
+    }
+
+    // Cannot cancel completed exchanges
+    if (exchange.status === ExchangeStatus.COMPLETED) {
+      throw new BadRequestException('Cannot cancel a completed exchange');
+    }
+
+    // Update exchange status
+    exchange.status = ExchangeStatus.CANCELLED;
+    exchange.cancellation_reason = dto.cancellation_reason;
+    exchange.cancellation_details = dto.cancellation_details || null;
+
+    await this.exchangeRepo.save(exchange);
+
+    // Release books back to AVAILABLE
+    const bookIds = exchange.exchange_books.map((eb) => eb.book_id);
+    await this.bookRepo.update(
+      { book_id: In(bookIds) },
+      { status: BookStatus.AVAILABLE },
+    );
+
+    // Update member stats for cancellations (trust score impact)
+    await this.memberRepo.increment(
+      { member_id: exchange.member_a_id },
+      'cancelled_exchanges',
+      1,
+    );
+    await this.memberRepo.increment(
+      { member_id: exchange.member_b_id },
+      'cancelled_exchanges',
+      1,
+    );
+
+    // Decrease trust score for cancellations (except ADMIN_CANCELLED)
+    if (dto.cancellation_reason !== 'ADMIN_CANCELLED') {
+      const penaltyPoints = this.getCancellationPenalty(dto.cancellation_reason);
+      
+      await this.memberRepo.decrement(
+        { member_id: exchange.member_a_id },
+        'trust_score',
+        penaltyPoints,
+      );
+      await this.memberRepo.decrement(
+        { member_id: exchange.member_b_id },
+        'trust_score',
+        penaltyPoints,
+      );
+    }
+
+    this.logger.log(`Exchange cancelled: ${exchange.exchange_id}`);
+
+    return this.getExchangeById(exchangeId);
+  }
+
+  // ==================== GET CANCELLATION PENALTY ====================
+  private getCancellationPenalty(reason: string): number {
+    const penalties = {
+      USER_CANCELLED: 2,
+      NO_SHOW: 5,
+      BOTH_NO_SHOW: 5,
+      DISPUTE: 3,
+      ADMIN_CANCELLED: 0,
+    };
+    return penalties[reason] || 2;
+  }
+
   private formatExchangeResponse(exchange: Exchange) {
     return {
       exchange_id: exchange.exchange_id,
@@ -866,282 +893,13 @@ export class ExchangesService {
       })),
       member_a_confirmed: exchange.member_a_confirmed,
       member_b_confirmed: exchange.member_b_confirmed,
-      completed_at: exchange.completed_at,
-      cancelled_at: exchange.cancelled_at,
-      cancelled_by: exchange.cancelled_by,
-      cancellation_reason: exchange.cancellation_reason,
-      expires_at: exchange.expires_at,
       meeting_location: exchange.meeting_location,
       meeting_time: exchange.meeting_time,
       meeting_notes: exchange.meeting_notes,
-      meeting_updated_by: exchange.meeting_updated_by,
-      meeting_updated_at: exchange.meeting_updated_at,
+      cancellation_reason: exchange.cancellation_reason,
+      cancellation_details: exchange.cancellation_details,
+      completed_at: exchange.completed_at,
       created_at: exchange.created_at,
-    };
-  }
-
-  // ==================== CANCEL EXCHANGE ====================
-  async cancelExchange(userId: string, exchangeId: string, dto: CancelExchangeDto) {
-    this.logger.log(`[cancelExchange] exchangeId=${exchangeId} userId=${userId}`);
-
-    // Get ALL member records for user
-    const members = await this.memberRepo.find({
-      where: { user_id: userId },
-    });
-
-    if (!members || members.length === 0) {
-      throw new NotFoundException('Member profile not found');
-    }
-
-    const memberIds = members.map((m) => m.member_id);
-
-    const exchange = await this.exchangeRepo.findOne({
-      where: { exchange_id: exchangeId },
-      relations: ['exchange_books'],
-    });
-
-    if (!exchange) {
-      throw new NotFoundException('Exchange not found');
-    }
-
-    // Verify user is part of exchange
-    let isPartOfExchange = false;
-    let cancellingMemberId: string | undefined;
-
-    for (const memberId of memberIds) {
-      if (exchange.member_a_id === memberId || exchange.member_b_id === memberId) {
-        isPartOfExchange = true;
-        cancellingMemberId = memberId;
-        break;
-      }
-    }
-
-    if (!isPartOfExchange || !cancellingMemberId) {
-      throw new ForbiddenException('You are not part of this exchange');
-    }
-
-    // Can only cancel PENDING or ACCEPTED exchanges
-    if (exchange.status === ExchangeStatus.COMPLETED) {
-      throw new BadRequestException('Cannot cancel a completed exchange');
-    }
-
-    if (exchange.status === ExchangeStatus.CANCELLED || exchange.status === ExchangeStatus.EXPIRED) {
-      throw new BadRequestException('Exchange is already cancelled or expired');
-    }
-
-    // Update exchange
-    exchange.status = ExchangeStatus.CANCELLED;
-    exchange.cancelled_at = new Date();
-    exchange.cancelled_by = cancellingMemberId;
-    exchange.cancellation_reason = CancellationReason[dto.reason];
-    exchange.cancellation_note = dto.note || '';
-
-    await this.exchangeRepo.save(exchange);
-
-    // Release books back to AVAILABLE
-    const bookIds = exchange.exchange_books.map((eb) => eb.book_id);
-    await this.bookRepo.update(
-      { book_id: In(bookIds) },
-      { status: BookStatus.AVAILABLE },
-    );
-
-    this.logger.log(
-      `Exchange ${exchangeId} cancelled by ${cancellingMemberId}, reason: ${dto.reason}`,
-    );
-
-    // Update trust scores ONLY for violator(s) based on cancellation reason
-    this.logger.log('[cancelExchange] Updating trust scores after cancellation');
-    
-    if (dto.reason === 'USER_CANCELLED') {
-      // Only the person who cancelled gets penalized
-      await this.trustScoreService.updateTrustScore(cancellingMemberId);
-      this.logger.log(`Penalized ${cancellingMemberId} for USER_CANCELLED`);
-    } else if (dto.reason === 'NO_SHOW') {
-      // Penalize the OTHER person (who didn't show up), NOT the canceller
-      const noShowMemberId = cancellingMemberId === exchange.member_a_id 
-        ? exchange.member_b_id 
-        : exchange.member_a_id;
-      await this.trustScoreService.updateTrustScore(noShowMemberId);
-      this.logger.log(`Penalized ${noShowMemberId} for NO_SHOW (reported by ${cancellingMemberId})`);
-    } else if (dto.reason === 'BOTH_NO_SHOW') {
-      // Both members get penalized
-      await this.trustScoreService.updateTrustScore(exchange.member_a_id);
-      await this.trustScoreService.updateTrustScore(exchange.member_b_id);
-      this.logger.log('Penalized both members for BOTH_NO_SHOW');
-    } else if (dto.reason === 'DISPUTE') {
-      // Both parties get light penalty pending admin review
-      // Admin will adjust later based on investigation
-      await this.trustScoreService.updateTrustScore(exchange.member_a_id);
-      await this.trustScoreService.updateTrustScore(exchange.member_b_id);
-      this.logger.warn(
-        `DISPUTE raised for exchange ${exchangeId} by ${cancellingMemberId}. ` +
-        `Both parties penalized pending admin review. Note: ${dto.note}`
-      );
-      // TODO: Create admin ticket for dispute resolution
-    }
-    // ADMIN_CANCELLED: No penalties for either party
-
-    return {
-      message: 'Exchange cancelled successfully',
-      exchange_id: exchangeId,
-      cancelled_by: cancellingMemberId,
-      reason: dto.reason,
-    };
-  }
-
-  // ==================== UPDATE MEETING INFO ====================
-  async updateMeetingInfo(userId: string, exchangeId: string, dto: UpdateMeetingDto) {
-    this.logger.log(`[updateMeetingInfo] exchangeId=${exchangeId} userId=${userId}`);
-
-    // Get ALL member records for user
-    const members = await this.memberRepo.find({
-      where: { user_id: userId },
-    });
-
-    if (!members || members.length === 0) {
-      throw new NotFoundException('Member profile not found');
-    }
-
-    const memberIds = members.map((m) => m.member_id);
-
-    const exchange = await this.exchangeRepo.findOne({
-      where: { exchange_id: exchangeId },
-      relations: ['member_a', 'member_b', 'member_a.user', 'member_b.user', 'exchange_books', 'exchange_books.book'],
-    });
-
-    if (!exchange) {
-      throw new NotFoundException('Exchange not found');
-    }
-
-    // Verify user is part of exchange
-    let isPartOfExchange = false;
-    let updatingMemberId: string | undefined;
-
-    for (const memberId of memberIds) {
-      if (exchange.member_a_id === memberId || exchange.member_b_id === memberId) {
-        isPartOfExchange = true;
-        updatingMemberId = memberId;
-        break;
-      }
-    }
-
-    if (!isPartOfExchange || !updatingMemberId) {
-      throw new ForbiddenException('You are not part of this exchange');
-    }
-
-    // Can only update meeting info for PENDING or ACCEPTED exchanges
-    if (exchange.status === ExchangeStatus.COMPLETED || 
-        exchange.status === ExchangeStatus.CANCELLED || 
-        exchange.status === ExchangeStatus.EXPIRED) {
-      throw new BadRequestException('Cannot update meeting info for completed, cancelled, or expired exchanges');
-    }
-
-    // Update meeting fields
-    if (dto.location !== undefined) {
-      exchange.meeting_location = dto.location;
-    }
-    if (dto.time !== undefined) {
-      exchange.meeting_time = new Date(dto.time);
-    }
-    if (dto.notes !== undefined) {
-      exchange.meeting_notes = dto.notes;
-    }
-
-    exchange.meeting_updated_by = updatingMemberId;
-    exchange.meeting_updated_at = new Date();
-
-    await this.exchangeRepo.save(exchange);
-
-    this.logger.log(
-      `Meeting info updated for exchange ${exchangeId} by ${updatingMemberId}`,
-    );
-
-    return this.formatExchangeResponse(exchange);
-  }
-
-  // ==================== AUTO-EXPIRE CRON JOB ====================
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-  async autoExpireExchanges() {
-    this.logger.log('[autoExpireExchanges] Running auto-expiration check...');
-
-    const now = new Date();
-
-    // Find all PENDING exchanges that have expired
-    const expiredExchanges = await this.exchangeRepo.find({
-      where: {
-        status: ExchangeStatus.PENDING,
-        expires_at: LessThan(now),
-      },
-      relations: ['exchange_books', 'member_a', 'member_b'],
-    });
-
-    this.logger.log(`Found ${expiredExchanges.length} expired exchanges`);
-
-    for (const exchange of expiredExchanges) {
-      try {
-        // Update exchange status
-        exchange.status = ExchangeStatus.EXPIRED;
-        exchange.cancelled_at = new Date();
-        exchange.cancellation_reason = CancellationReason.AUTO_EXPIRED;
-        exchange.cancellation_note = 'Exchange automatically expired due to timeout';
-
-        await this.exchangeRepo.save(exchange);
-
-        // Release books back to AVAILABLE
-        const bookIds = exchange.exchange_books.map((eb) => eb.book_id);
-        await this.bookRepo.update(
-          { book_id: In(bookIds) },
-          { status: BookStatus.AVAILABLE },
-        );
-
-        this.logger.log(
-          `Exchange ${exchange.exchange_id} auto-expired (created: ${exchange.created_at}, expired: ${exchange.expires_at})`,
-        );
-
-        // Update trust scores (penalty ONLY for those who haven't confirmed)
-        const penalizedMembers: string[] = [];
-        
-        if (!exchange.member_a_confirmed) {
-          await this.trustScoreService.updateTrustScore(exchange.member_a_id);
-          penalizedMembers.push(`${exchange.member_a.user?.full_name || exchange.member_a_id}`);
-        }
-        
-        if (!exchange.member_b_confirmed) {
-          await this.trustScoreService.updateTrustScore(exchange.member_b_id);
-          penalizedMembers.push(`${exchange.member_b.user?.full_name || exchange.member_b_id}`);
-        }
-        
-        if (penalizedMembers.length > 0) {
-          this.logger.log(
-            `Penalized for expiry: ${penalizedMembers.join(', ')} ` +
-            `(A confirmed: ${exchange.member_a_confirmed}, B confirmed: ${exchange.member_b_confirmed})`
-          );
-        } else {
-          this.logger.log('Both members confirmed but exchange expired (edge case)');
-        }
-
-        // TODO: Send notifications to both members
-        // await this.notificationService.send({
-        //   member_ids: [exchange.member_a_id, exchange.member_b_id],
-        //   type: 'EXCHANGE_EXPIRED',
-        //   data: { exchange_id: exchange.exchange_id }
-        // });
-
-      } catch (error) {
-        this.logger.error(
-          `Failed to expire exchange ${exchange.exchange_id}: ${error.message}`,
-          error.stack,
-        );
-      }
-    }
-
-    this.logger.log(
-      `[autoExpireExchanges] Completed. Expired ${expiredExchanges.length} exchanges`,
-    );
-
-    return {
-      expired_count: expiredExchanges.length,
-      timestamp: now.toISOString(),
     };
   }
 }

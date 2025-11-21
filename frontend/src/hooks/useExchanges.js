@@ -36,11 +36,15 @@ export const useExchanges = () => {
     confirmExchange: (id) => 
       handleApiCall(() => exchangeService.confirmExchange(id)),
 
+    updateMeetingInfo: (id, data) =>
+      handleApiCall(() => exchangeService.updateMeetingInfo(id, data)),
+
+    cancelExchange: (id, data) =>
+      handleApiCall(() => exchangeService.cancelExchange(id, data)),
+
     // Exchange Requests
     createExchangeRequest: (data) => 
-      handleApiCall(() => exchangeService.createExchangeRequest(
-        exchangeService.formatExchangeRequest(data)
-      )),
+      handleApiCall(() => exchangeService.createExchangeRequest(data)),
 
     getExchangeRequests: (params) => 
       handleApiCall(() => exchangeService.getExchangeRequests(params)),
@@ -53,7 +57,7 @@ export const useExchanges = () => {
 
     respondToExchangeRequest: (id, action, reason = '') => 
       handleApiCall(() => exchangeService.respondToExchangeRequest(
-        id, 
+        id,
         exchangeService.formatResponseData(action, reason)
       )),
 
