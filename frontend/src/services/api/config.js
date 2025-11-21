@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// Base URL từ environment variable, mặc định là localhost:3000
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// Base URL từ environment variable, mặc định là localhost:3003
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3003';
 
 // Tạo instance axios
 const api = axios.create({
