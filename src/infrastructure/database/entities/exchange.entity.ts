@@ -1,17 +1,17 @@
 import {
-  Entity,
-  PrimaryColumn,
   Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
   ManyToOne,
   OneToMany,
   OneToOne,
-  JoinColumn,
-  CreateDateColumn,
+  PrimaryColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Member } from './member.entity';
-import { ExchangeRequest } from './exchange-request.entity';
 import { ExchangeBook } from './exchange-book.entity';
+import { ExchangeRequest } from './exchange-request.entity';
+import { Member } from './member.entity';
 import { Review } from './review.entity';
 
 export enum ExchangeStatus {
@@ -48,6 +48,12 @@ export class Exchange {
   @Column('boolean', { default: false })
   member_b_confirmed: boolean;
 
+  @Column('boolean', { default: false })
+  member_a_reviewed: boolean;
+
+  @Column('boolean', { default: false })
+  member_b_reviewed: boolean;
+
   @Column('timestamp', { nullable: true })
   confirmed_by_a_at: Date;
 
@@ -68,7 +74,13 @@ export class Exchange {
 
   @Column({
     type: 'enum',
-    enum: ['USER_CANCELLED', 'NO_SHOW', 'BOTH_NO_SHOW', 'DISPUTE', 'ADMIN_CANCELLED'],
+    enum: [
+      'USER_CANCELLED',
+      'NO_SHOW',
+      'BOTH_NO_SHOW',
+      'DISPUTE',
+      'ADMIN_CANCELLED',
+    ],
     nullable: true,
   })
   cancellation_reason: string;

@@ -1,16 +1,15 @@
-import React from 'react';
-import Avatar from '../ui/Avatar';
-import Badge from '../ui/Badge';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import Avatar from '../ui/Avatar';
+import Badge from '../ui/Badge';
 
 const ConversationItem = ({ conversation, isSelected, onSelect }) => {
   const {
-    id,
-    other_user,
+    conversation_id,
+    other_member,
     last_message,
     unread_count,
-    updated_at
+    last_message_at,
   } = conversation;
 
   const handleClick = () => {
@@ -20,7 +19,7 @@ const ConversationItem = ({ conversation, isSelected, onSelect }) => {
   const formatTime = (timestamp) => {
     return formatDistanceToNow(new Date(timestamp), {
       addSuffix: true,
-      locale: vi
+      locale: vi,
     });
   };
 
@@ -33,19 +32,19 @@ const ConversationItem = ({ conversation, isSelected, onSelect }) => {
     >
       <div className="flex items-start space-x-3">
         <Avatar
-          src={other_user?.avatar}
-          name={other_user?.name}
+          src={other_member?.avatar_url}
+          name={other_member?.full_name}
           size="md"
         />
-        
+
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
             <h3 className="font-semibold text-gray-900 truncate">
-              {other_user?.name || 'Người dùng'}
+              {other_member?.full_name || 'Người dùng'}
             </h3>
-            {last_message && (
+            {last_message_at && (
               <span className="text-xs text-gray-500 whitespace-nowrap">
-                {formatTime(updated_at)}
+                {formatTime(last_message_at)}
               </span>
             )}
           </div>
@@ -57,17 +56,14 @@ const ConversationItem = ({ conversation, isSelected, onSelect }) => {
           )}
 
           <div className="flex items-center justify-between">
-            {other_user?.city && (
+            {other_member?.region && (
               <span className="text-xs text-gray-500">
-                {other_user.city}
+                {other_member.region}
               </span>
             )}
-            
+
             {unread_count > 0 && (
-              <Badge 
-                variant="primary" 
-                size="sm"
-              >
+              <Badge variant="primary" size="sm">
                 {unread_count}
               </Badge>
             )}

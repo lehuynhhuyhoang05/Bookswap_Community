@@ -1,31 +1,31 @@
 import {
-  Controller,
-  Post,
   Body,
-  Param,
-  Get,
-  Query,
-  Patch,
-  Delete,
-  UseGuards,
-  Request,
-  ParseUUIDPipe,
+  Controller,
   DefaultValuePipe,
+  Delete,
+  Get,
+  Param,
   ParseIntPipe,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Request,
+  UseGuards,
 } from '@nestjs/common';
 import {
-  ApiTags,
-  ApiOperation,
   ApiBearerAuth,
-  ApiQuery,
+  ApiBody,
+  ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
+  ApiTags,
 } from '@nestjs/swagger';
-import { ApiBody } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { ReviewsService } from '../services/reviews.service';
 import { CreateReviewDto } from '../dto/create-review.dto';
 import { UpdateReviewDto } from '../dto/update-review.dto';
+import { ReviewsService } from '../services/reviews.service';
 
 @ApiTags('Reviews')
 @ApiBearerAuth()
@@ -46,7 +46,7 @@ export class ReviewsController {
   }
 
   @Get('member/:memberId')
-  @ApiOperation({ summary: "Get reviews for a member (paginated)" })
+  @ApiOperation({ summary: 'Get reviews for a member (paginated)' })
   @ApiParam({ name: 'memberId', description: 'Member ID', required: true })
   @ApiQuery({ name: 'page', required: false, example: 1 })
   @ApiQuery({ name: 'pageSize', required: false, example: 20 })
@@ -59,7 +59,7 @@ export class ReviewsController {
   }
 
   @Get('member/:memberId/stats')
-  @ApiOperation({ summary: "Get review stats for a member" })
+  @ApiOperation({ summary: 'Get review stats for a member' })
   @ApiParam({ name: 'memberId', description: 'Member ID', required: true })
   async stats(@Param('memberId', new ParseUUIDPipe()) memberId: string) {
     return this.reviewsService.statsForMember(memberId);
@@ -68,20 +68,47 @@ export class ReviewsController {
   @Get('exchange/:exchangeId')
   @ApiOperation({ summary: 'Get reviews for an exchange' })
   @ApiParam({ name: 'exchangeId', description: 'Exchange ID', required: true })
-  async byExchange(@Param('exchangeId', new ParseUUIDPipe()) exchangeId: string) {
+  async byExchange(
+    @Param('exchangeId', new ParseUUIDPipe()) exchangeId: string,
+  ) {
     return this.reviewsService.findByExchange(exchangeId);
   }
 
   @Patch(':reviewId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a review' })
   @ApiBody({ type: UpdateReviewDto })
-  async update(@Param('reviewId', new ParseUUIDPipe()) reviewId: string, @Body() dto: UpdateReviewDto) {
-    return this.reviewsService.update(reviewId, dto);
+  async update(
+    @Param('reviewId', new ParseUUIDPipe()) reviewId: string,
+    @Body() dto: UpdateReviewDto,
+    @Request() req,
+  ) {
+    // Try all possible user ID fields from JWT
+    const userId =
+      req.user?.member_id ||
+      req.user?.memberId ||
+      req.user?.user_id ||
+      req.user?.userId ||
+      req.user?.sub;
+    return this.reviewsService.updateWithAuth(reviewId, dto, userId);
   }
 
   @Delete(':reviewId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a review' })
-  async remove(@Param('reviewId', new ParseUUIDPipe()) reviewId: string) {
-    return this.reviewsService.remove(reviewId);
+  async remove(
+    @Param('reviewId', new ParseUUIDPipe()) reviewId: string,
+    @Request() req,
+  ) {
+    // Try all possible user ID fields from JWT
+    const userId =
+      req.user?.member_id ||
+      req.user?.memberId ||
+      req.user?.user_id ||
+      req.user?.userId ||
+      req.user?.sub;
+    return this.reviewsService.removeWithAuth(reviewId, userId);
   }
 }

@@ -3,35 +3,65 @@
 // Service xử lý tất cả logic của Admin System
 // ============================================================
 import {
-  Injectable,
-  NotFoundException,
   BadRequestException,
+  Injectable,
   Logger,
-  ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, Not, LessThan } from 'typeorm';
-import { User, AccountStatus, UserRole } from '../../../infrastructure/database/entities/user.entity';
-import { Member } from '../../../infrastructure/database/entities/member.entity';
-import { Book, BookStatus } from '../../../infrastructure/database/entities/book.entity';
-import { Review } from '../../../infrastructure/database/entities/review.entity';
-import { Exchange, ExchangeStatus } from '../../../infrastructure/database/entities/exchange.entity';
-import { ViolationReport, ReportStatus, ReportPriority } from '../../../infrastructure/database/entities/violation-report.entity';
-import { AuditLog, AuditAction } from '../../../infrastructure/database/entities/audit-log.entity';
-import { Message } from '../../../infrastructure/database/entities/message.entity';
-import { Conversation } from '../../../infrastructure/database/entities/conversation.entity';
+import { LessThan, Not, Repository } from 'typeorm';
 import { ActivityLogService } from '../../../common/services/activity-log.service';
+import { Admin } from '../../../infrastructure/database/entities/admin.entity';
 import {
-  QueryUsersDto,
-  LockUserDto,
-  UnlockUserDto,
+  AuditAction,
+  AuditLog,
+} from '../../../infrastructure/database/entities/audit-log.entity';
+import {
+  Book,
+  BookStatus,
+} from '../../../infrastructure/database/entities/book.entity';
+import { Conversation } from '../../../infrastructure/database/entities/conversation.entity';
+import {
+  Exchange,
+  ExchangeStatus,
+} from '../../../infrastructure/database/entities/exchange.entity';
+import { Member } from '../../../infrastructure/database/entities/member.entity';
+import { Message } from '../../../infrastructure/database/entities/message.entity';
+import { Review } from '../../../infrastructure/database/entities/review.entity';
+import {
+  AccountStatus,
+  User,
+} from '../../../infrastructure/database/entities/user.entity';
+import {
+  ReportStatus,
+  ViolationReport,
+} from '../../../infrastructure/database/entities/violation-report.entity';
+import {
+  QueryBooksDto,
+  QueryReviewsDto,
+  RemoveBookDto,
+  RemoveReviewDto,
+} from '../dto/content-moderation.dto';
+import {
+  CancelExchangeDto,
+  QueryExchangesDto,
+} from '../dto/exchange-management.dto';
+import {
+  QueryMessagesDto,
+  RemoveMessageDto,
+} from '../dto/messaging-moderation.dto';
+import {
+  DismissReportDto,
+  QueryReportsDto,
+  ResolveReportDto,
+} from '../dto/report-management.dto';
+import {
   DeleteUserDto,
+  LockUserDto,
+  QueryUsersDto,
+  UnlockUserDto,
   UpdateUserRoleDto,
 } from '../dto/user-management.dto';
-import { QueryBooksDto, RemoveBookDto, QueryReviewsDto, RemoveReviewDto } from '../dto/content-moderation.dto';
-import { QueryReportsDto, ResolveReportDto, DismissReportDto } from '../dto/report-management.dto';
-import { QueryExchangesDto, CancelExchangeDto } from '../dto/exchange-management.dto';
-import { QueryMessagesDto, RemoveMessageDto } from '../dto/messaging-moderation.dto';
 
 @Injectable()
 export class AdminService {
@@ -56,6 +86,8 @@ export class AdminService {
     private messageRepo: Repository<Message>,
     @InjectRepository(Conversation)
     private conversationRepo: Repository<Conversation>,
+    @InjectRepository(Admin)
+    private adminRepo: Repository<Admin>,
     private activityLogService: ActivityLogService,
   ) {}
 
@@ -69,7 +101,7 @@ export class AdminService {
   async getUsers(dto: QueryUsersDto) {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
-    
+
     const qb = this.userRepo
       .createQueryBuilder('u')
       .leftJoinAndSelect('u.member', 'm')
@@ -138,17 +170,26 @@ export class AdminService {
       trust_score: any;
       average_rating: any;
     } | null = null;
-    
+
     if (user.member) {
       const exchangeCount = await this.exchangeRepo.count({
         where: [
-          { member_a_id: user.member.member_id, status: ExchangeStatus.COMPLETED },
-          { member_b_id: user.member.member_id, status: ExchangeStatus.COMPLETED },
+          {
+            member_a_id: user.member.member_id,
+            status: ExchangeStatus.COMPLETED,
+          },
+          {
+            member_b_id: user.member.member_id,
+            status: ExchangeStatus.COMPLETED,
+          },
         ],
       });
 
       const bookCount = await this.bookRepo.count({
-        where: { owner_id: user.member.member_id, status: Not(BookStatus.REMOVED) },
+        where: {
+          owner_id: user.member.member_id,
+          status: Not(BookStatus.REMOVED),
+        },
       });
 
       stats = {
@@ -168,7 +209,12 @@ export class AdminService {
   /**
    * Khóa tài khoản user
    */
-  async lockUser(userId: string, dto: LockUserDto, adminId: string, adminEmail: string) {
+  async lockUser(
+    userId: string,
+    dto: LockUserDto,
+    adminId: string,
+    adminEmail: string,
+  ) {
     // Không thể lock chính mình
     if (userId === adminId) {
       throw new BadRequestException('Cannot lock your own account');
@@ -208,7 +254,12 @@ export class AdminService {
   /**
    * Mở khóa tài khoản user
    */
-  async unlockUser(userId: string, dto: UnlockUserDto, adminId: string, adminEmail: string) {
+  async unlockUser(
+    userId: string,
+    dto: UnlockUserDto,
+    adminId: string,
+    adminEmail: string,
+  ) {
     const user = await this.userRepo.findOne({ where: { user_id: userId } });
     if (!user) {
       throw new NotFoundException('User not found');
@@ -242,7 +293,12 @@ export class AdminService {
   /**
    * Xóa user (soft delete)
    */
-  async deleteUser(userId: string, dto: DeleteUserDto, adminId: string, adminEmail: string) {
+  async deleteUser(
+    userId: string,
+    dto: DeleteUserDto,
+    adminId: string,
+    adminEmail: string,
+  ) {
     // Không thể xóa chính mình
     if (userId === adminId) {
       throw new BadRequestException('Cannot delete your own account');
@@ -278,7 +334,12 @@ export class AdminService {
   /**
    * Thay đổi role của user
    */
-  async updateUserRole(userId: string, dto: UpdateUserRoleDto, adminId: string, adminEmail: string) {
+  async updateUserRole(
+    userId: string,
+    dto: UpdateUserRoleDto,
+    adminId: string,
+    adminEmail: string,
+  ) {
     // Không thể thay đổi role của chính mình
     if (userId === adminId) {
       throw new BadRequestException('Cannot change your own role');
@@ -305,7 +366,9 @@ export class AdminService {
       reason: dto.reason || `Role changed to ${dto.role}`,
     });
 
-    this.logger.log(`Admin ${adminEmail} changed user ${user.email} role from ${oldRole} to ${dto.role}`);
+    this.logger.log(
+      `Admin ${adminEmail} changed user ${user.email} role from ${oldRole} to ${dto.role}`,
+    );
 
     return { success: true, message: 'User role updated successfully' };
   }
@@ -320,7 +383,7 @@ export class AdminService {
   async getBooks(dto: QueryBooksDto) {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
-    
+
     const qb = this.bookRepo
       .createQueryBuilder('b')
       .leftJoinAndSelect('b.owner', 'owner')
@@ -359,7 +422,12 @@ export class AdminService {
   /**
    * Xóa book (soft delete: set status = REMOVED)
    */
-  async removeBook(bookId: string, dto: RemoveBookDto, adminId: string, adminEmail: string) {
+  async removeBook(
+    bookId: string,
+    dto: RemoveBookDto,
+    adminId: string,
+    adminEmail: string,
+  ) {
     const book = await this.bookRepo.findOne({ where: { book_id: bookId } });
     if (!book) {
       throw new NotFoundException('Book not found');
@@ -392,7 +460,7 @@ export class AdminService {
   async getReviews(dto: QueryReviewsDto) {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
-    
+
     const qb = this.reviewRepo
       .createQueryBuilder('r')
       .leftJoinAndSelect('r.reviewer', 'reviewer')
@@ -419,8 +487,15 @@ export class AdminService {
   /**
    * Xóa review (hard delete hoặc soft delete tùy business logic)
    */
-  async removeReview(reviewId: string, dto: RemoveReviewDto, adminId: string, adminEmail: string) {
-    const review = await this.reviewRepo.findOne({ where: { review_id: reviewId } });
+  async removeReview(
+    reviewId: string,
+    dto: RemoveReviewDto,
+    adminId: string,
+    adminEmail: string,
+  ) {
+    const review = await this.reviewRepo.findOne({
+      where: { review_id: reviewId },
+    });
     if (!review) {
       throw new NotFoundException('Review not found');
     }
@@ -455,12 +530,13 @@ export class AdminService {
   async getReports(dto: QueryReportsDto) {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
-    
+
     const qb = this.reportRepo
       .createQueryBuilder('r')
       .leftJoinAndSelect('r.reporter', 'reporter')
-      .leftJoin('reporter.user', 'u')
-      .addSelect(['u.email', 'u.full_name'])
+      .leftJoinAndSelect('reporter.user', 'reporterUser')
+      .leftJoinAndSelect('r.reportedMember', 'reportedMember')
+      .leftJoinAndSelect('reportedMember.user', 'reportedUser')
       .skip((page - 1) * limit)
       .take(limit);
 
@@ -477,7 +553,9 @@ export class AdminService {
     }
 
     if (dto.reportedBy) {
-      qb.andWhere('reporter.member_id = :memberId', { memberId: dto.reportedBy });
+      qb.andWhere('reporter.member_id = :memberId', {
+        memberId: dto.reportedBy,
+      });
     }
 
     qb.orderBy('r.priority', 'DESC').addOrderBy('r.created_at', 'DESC');
@@ -498,7 +576,12 @@ export class AdminService {
   async getReportDetail(reportId: string) {
     const report = await this.reportRepo.findOne({
       where: { report_id: reportId },
-      relations: ['reporter', 'reporter.user'],
+      relations: [
+        'reporter',
+        'reporter.user',
+        'reportedMember',
+        'reportedMember.user',
+      ],
     });
 
     if (!report) {
@@ -511,23 +594,38 @@ export class AdminService {
   /**
    * Resolve report (đã xử lý)
    */
-  async resolveReport(reportId: string, dto: ResolveReportDto, adminId: string, adminEmail: string) {
-    const report = await this.reportRepo.findOne({ where: { report_id: reportId } });
+  async resolveReport(
+    reportId: string,
+    dto: ResolveReportDto,
+    userId: string,
+    adminEmail: string,
+  ) {
+    const report = await this.reportRepo.findOne({
+      where: { report_id: reportId },
+    });
     if (!report) {
       throw new NotFoundException('Report not found');
+    }
+
+    // Find admin record by user_id
+    const admin = await this.adminRepo.findOne({
+      where: { user_id: userId },
+    });
+    if (!admin) {
+      throw new NotFoundException('Admin not found');
     }
 
     report.status = ReportStatus.RESOLVED;
     report.resolution = dto.resolution;
     // DB schema không có action_taken column
     report.resolved_at = new Date();
-    report.resolved_by = adminId; // DB dùng resolved_by không phải assigned_to
+    report.resolved_by = admin.admin_id; // Use admin_id from admins table
 
     await this.reportRepo.save(report);
 
     // Log audit
     await this.createAuditLog({
-      admin_id: adminId,
+      admin_id: admin.admin_id,
       admin_email: adminEmail,
       action: AuditAction.RESOLVE_REPORT,
       entity_type: 'REPORT',
@@ -545,22 +643,37 @@ export class AdminService {
   /**
    * Dismiss report (không vi phạm)
    */
-  async dismissReport(reportId: string, dto: DismissReportDto, adminId: string, adminEmail: string) {
-    const report = await this.reportRepo.findOne({ where: { report_id: reportId } });
+  async dismissReport(
+    reportId: string,
+    dto: DismissReportDto,
+    userId: string,
+    adminEmail: string,
+  ) {
+    const report = await this.reportRepo.findOne({
+      where: { report_id: reportId },
+    });
     if (!report) {
       throw new NotFoundException('Report not found');
+    }
+
+    // Find admin record by user_id
+    const admin = await this.adminRepo.findOne({
+      where: { user_id: userId },
+    });
+    if (!admin) {
+      throw new NotFoundException('Admin not found');
     }
 
     report.status = ReportStatus.DISMISSED;
     report.resolution = dto.reason;
     report.resolved_at = new Date();
-    report.resolved_by = adminId; // DB dùng resolved_by không phải assigned_to
+    report.resolved_by = admin.admin_id; // Use admin_id from admins table
 
     await this.reportRepo.save(report);
 
     // Log audit
     await this.createAuditLog({
-      admin_id: adminId,
+      admin_id: admin.admin_id,
       admin_email: adminEmail,
       action: AuditAction.DISMISS_REPORT,
       entity_type: 'REPORT',
@@ -588,38 +701,61 @@ export class AdminService {
 
     // User stats
     const totalUsers = await this.userRepo.count();
-    const activeUsers = await this.userRepo.count({ where: { account_status: AccountStatus.ACTIVE } });
-    const lockedUsers = await this.userRepo.count({ where: { account_status: AccountStatus.LOCKED } });
+    const activeUsers = await this.userRepo.count({
+      where: { account_status: AccountStatus.ACTIVE },
+    });
+    const lockedUsers = await this.userRepo.count({
+      where: { account_status: AccountStatus.LOCKED },
+    });
     const newUsersToday = await this.userRepo.count({
       where: { created_at: Not(LessThan(today)) },
     });
 
     // Book stats
     const totalBooks = await this.bookRepo.count();
-    const availableBooks = await this.bookRepo.count({ where: { status: BookStatus.AVAILABLE } });
-    const exchangingBooks = await this.bookRepo.count({ where: { status: BookStatus.EXCHANGING } });
-    const removedBooks = await this.bookRepo.count({ where: { status: BookStatus.REMOVED } });
+    const availableBooks = await this.bookRepo.count({
+      where: { status: BookStatus.AVAILABLE },
+    });
+    const exchangingBooks = await this.bookRepo.count({
+      where: { status: BookStatus.EXCHANGING },
+    });
+    const removedBooks = await this.bookRepo.count({
+      where: { status: BookStatus.REMOVED },
+    });
 
     // Exchange stats
     const totalExchanges = await this.exchangeRepo.count();
-    const completedExchanges = await this.exchangeRepo.count({ where: { status: ExchangeStatus.COMPLETED } });
-    const pendingExchanges = await this.exchangeRepo.count({ where: { status: ExchangeStatus.PENDING } });
-    const successRate = totalExchanges > 0 ? (completedExchanges / totalExchanges) * 100 : 0;
+    const completedExchanges = await this.exchangeRepo.count({
+      where: { status: ExchangeStatus.COMPLETED },
+    });
+    const pendingExchanges = await this.exchangeRepo.count({
+      where: { status: ExchangeStatus.PENDING },
+    });
+    const successRate =
+      totalExchanges > 0 ? (completedExchanges / totalExchanges) * 100 : 0;
 
     // Report stats
     const totalReports = await this.reportRepo.count();
-    const pendingReports = await this.reportRepo.count({ where: { status: ReportStatus.PENDING } });
-    const resolvedReports = await this.reportRepo.count({ where: { status: ReportStatus.RESOLVED } });
+    const pendingReports = await this.reportRepo.count({
+      where: { status: ReportStatus.PENDING },
+    });
+    const resolvedReports = await this.reportRepo.count({
+      where: { status: ReportStatus.RESOLVED },
+    });
 
     // Tính avg resolution time (giờ)
     const resolvedWithTime = await this.reportRepo
       .createQueryBuilder('r')
-      .select('AVG(TIMESTAMPDIFF(HOUR, r.created_at, r.resolved_at))', 'avg_time')
+      .select(
+        'AVG(TIMESTAMPDIFF(HOUR, r.created_at, r.resolved_at))',
+        'avg_time',
+      )
       .where('r.status = :status', { status: ReportStatus.RESOLVED })
       .andWhere('r.resolved_at IS NOT NULL')
       .getRawOne();
 
-    const avgResolutionTime = parseFloat(resolvedWithTime?.avg_time || '0') || 0;
+    const avgResolutionTime =
+      parseFloat(resolvedWithTime?.avg_time || '0') || 0;
 
     return {
       users: {
@@ -659,7 +795,7 @@ export class AdminService {
   async getExchanges(dto: QueryExchangesDto) {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
-    
+
     const qb = this.exchangeRepo
       .createQueryBuilder('e')
       .leftJoinAndSelect('e.member_a', 'member_a')
@@ -715,7 +851,15 @@ export class AdminService {
   async getExchangeDetail(exchangeId: string) {
     const exchange = await this.exchangeRepo.findOne({
       where: { exchange_id: exchangeId },
-      relations: ['member_a', 'member_b', 'member_a.user', 'member_b.user', 'request', 'exchange_books', 'exchange_books.book'],
+      relations: [
+        'member_a',
+        'member_b',
+        'member_a.user',
+        'member_b.user',
+        'request',
+        'exchange_books',
+        'exchange_books.book',
+      ],
     });
 
     if (!exchange) {
@@ -728,7 +872,12 @@ export class AdminService {
   /**
    * Cancel exchange (admin force cancel)
    */
-  async cancelExchange(exchangeId: string, dto: CancelExchangeDto, adminId: string, adminEmail: string) {
+  async cancelExchange(
+    exchangeId: string,
+    dto: CancelExchangeDto,
+    adminId: string,
+    adminEmail: string,
+  ) {
     const exchange = await this.exchangeRepo.findOne({
       where: { exchange_id: exchangeId },
       relations: ['member_a', 'member_b'],
@@ -763,7 +912,9 @@ export class AdminService {
       reason: dto.reason,
     });
 
-    this.logger.warn(`Admin ${adminEmail} cancelled exchange ${exchangeId}: ${dto.reason}`);
+    this.logger.warn(
+      `Admin ${adminEmail} cancelled exchange ${exchangeId}: ${dto.reason}`,
+    );
 
     return { success: true, message: 'Exchange cancelled successfully' };
   }
@@ -773,28 +924,30 @@ export class AdminService {
    */
   async getExchangeStats() {
     const totalExchanges = await this.exchangeRepo.count();
-    const completedExchanges = await this.exchangeRepo.count({ 
-      where: { status: ExchangeStatus.COMPLETED } 
+    const completedExchanges = await this.exchangeRepo.count({
+      where: { status: ExchangeStatus.COMPLETED },
     });
-    const pendingExchanges = await this.exchangeRepo.count({ 
-      where: { status: ExchangeStatus.PENDING } 
+    const pendingExchanges = await this.exchangeRepo.count({
+      where: { status: ExchangeStatus.PENDING },
     });
-    const acceptedExchanges = await this.exchangeRepo.count({ 
-      where: { status: ExchangeStatus.ACCEPTED } 
+    const acceptedExchanges = await this.exchangeRepo.count({
+      where: { status: ExchangeStatus.ACCEPTED },
     });
-    const cancelledExchanges = await this.exchangeRepo.count({ 
-      where: { status: ExchangeStatus.CANCELLED } 
+    const cancelledExchanges = await this.exchangeRepo.count({
+      where: { status: ExchangeStatus.CANCELLED },
     });
 
     // Tính tỷ lệ thành công
-    const successRate = totalExchanges > 0 
-      ? (completedExchanges / totalExchanges) * 100 
-      : 0;
+    const successRate =
+      totalExchanges > 0 ? (completedExchanges / totalExchanges) * 100 : 0;
 
     // Tính avg time to complete (giờ)
     const avgTimeResult = await this.exchangeRepo
       .createQueryBuilder('e')
-      .select('AVG(TIMESTAMPDIFF(HOUR, e.created_at, e.completed_at))', 'avg_hours')
+      .select(
+        'AVG(TIMESTAMPDIFF(HOUR, e.created_at, e.completed_at))',
+        'avg_hours',
+      )
       .where('e.status = :status', { status: ExchangeStatus.COMPLETED })
       .andWhere('e.completed_at IS NOT NULL')
       .getRawOne();
@@ -808,7 +961,11 @@ export class AdminService {
       .addSelect('u.full_name', 'full_name')
       .addSelect('u.email', 'email')
       .addSelect('COUNT(*)', 'exchange_count')
-      .innerJoin('members', 'm', '(e.member_a_id = m.member_id OR e.member_b_id = m.member_id)')
+      .innerJoin(
+        'members',
+        'm',
+        '(e.member_a_id = m.member_id OR e.member_b_id = m.member_id)',
+      )
       .innerJoin('users', 'u', 'u.user_id = m.user_id')
       .where('e.status = :status', { status: ExchangeStatus.COMPLETED })
       .groupBy('m.member_id')
@@ -842,7 +999,7 @@ export class AdminService {
   async getMessages(dto: QueryMessagesDto) {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
-    
+
     const qb = this.messageRepo
       .createQueryBuilder('m')
       .leftJoinAndSelect('m.sender', 'sender')
@@ -857,7 +1014,9 @@ export class AdminService {
 
     // Filter theo conversation
     if (dto.conversationId) {
-      qb.andWhere('m.conversation_id = :conversationId', { conversationId: dto.conversationId });
+      qb.andWhere('m.conversation_id = :conversationId', {
+        conversationId: dto.conversationId,
+      });
     }
 
     // Filter theo sender
@@ -897,7 +1056,13 @@ export class AdminService {
   async getConversationDetail(conversationId: string) {
     const conversation = await this.conversationRepo.findOne({
       where: { conversation_id: conversationId },
-      relations: ['member_a', 'member_b', 'member_a.user', 'member_b.user', 'exchange_request'],
+      relations: [
+        'member_a',
+        'member_b',
+        'member_a.user',
+        'member_b.user',
+        'exchange_request',
+      ],
     });
 
     if (!conversation) {
@@ -921,8 +1086,13 @@ export class AdminService {
   /**
    * Xóa message (soft delete)
    */
-  async removeMessage(messageId: string, dto: RemoveMessageDto, adminId: string, adminEmail: string) {
-    const message = await this.messageRepo.findOne({ 
+  async removeMessage(
+    messageId: string,
+    dto: RemoveMessageDto,
+    adminId: string,
+    adminEmail: string,
+  ) {
+    const message = await this.messageRepo.findOne({
       where: { message_id: messageId },
       relations: ['sender', 'receiver'],
     });
@@ -951,7 +1121,9 @@ export class AdminService {
       reason: dto.reason,
     });
 
-    this.logger.warn(`Admin ${adminEmail} removed message ${messageId}: ${dto.reason}`);
+    this.logger.warn(
+      `Admin ${adminEmail} removed message ${messageId}: ${dto.reason}`,
+    );
 
     return { success: true, message: 'Message removed successfully' };
   }
@@ -963,13 +1135,16 @@ export class AdminService {
   /**
    * Xem activities của 1 user (admin only)
    */
-  async getUserActivities(userId: string, options?: {
-    page?: number;
-    limit?: number;
-    action?: string;
-    startDate?: string;
-    endDate?: string;
-  }) {
+  async getUserActivities(
+    userId: string,
+    options?: {
+      page?: number;
+      limit?: number;
+      action?: string;
+      startDate?: string;
+      endDate?: string;
+    },
+  ) {
     // Verify user exists
     const user = await this.userRepo.findOne({ where: { user_id: userId } });
     if (!user) {
@@ -983,8 +1158,11 @@ export class AdminService {
       endDate: options?.endDate ? new Date(options.endDate) : undefined,
     };
 
-    const activities = await this.activityLogService.getUserActivities(userId, parsedOptions);
-    
+    const activities = await this.activityLogService.getUserActivities(
+      userId,
+      parsedOptions,
+    );
+
     return {
       user: {
         user_id: user.user_id,
@@ -1005,8 +1183,11 @@ export class AdminService {
       throw new NotFoundException('User not found');
     }
 
-    const stats = await this.activityLogService.getUserActivityStats(userId, days);
-    
+    const stats = await this.activityLogService.getUserActivityStats(
+      userId,
+      days,
+    );
+
     return {
       user: {
         user_id: user.user_id,
@@ -1050,7 +1231,9 @@ export class AdminService {
       this.logger.warn(
         `Failed to write audit log (action=${data.action}, entity=${data.entity_type}/${data.entity_id}): ${err?.message || err}`,
       );
-      this.logger.warn('If this is unexpected run the DB migrations to create audit_logs table.');
+      this.logger.warn(
+        'If this is unexpected run the DB migrations to create audit_logs table.',
+      );
     }
   }
 }

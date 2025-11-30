@@ -2,7 +2,15 @@
 // src/infrastructure/database/entities/violation-report.entity.ts
 // Entity lưu báo cáo vi phạm từ members
 // ============================================================
-import { Entity, Column, PrimaryColumn, CreateDateColumn, UpdateDateColumn, Index, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryColumn,
+} from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Member } from './member.entity';
 
@@ -45,6 +53,10 @@ export class ViolationReport {
 
   @Column('varchar', { length: 36 })
   reported_member_id: string; // Member bị report
+
+  @ManyToOne(() => Member)
+  @JoinColumn({ name: 'reported_member_id' })
+  reportedMember: Member;
 
   // DB schema dùng VARCHAR thay vì ENUM
   @Column('varchar', { length: 100, nullable: true })

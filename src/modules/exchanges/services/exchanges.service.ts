@@ -1,35 +1,38 @@
 // src/modules/exchanges/services/exchanges.service.ts
 import {
-  Injectable,
-  NotFoundException,
   BadRequestException,
-  ForbiddenException,
   ConflictException,
+  ForbiddenException,
+  Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, IsNull } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
-import { Member } from '../../../infrastructure/database/entities/member.entity';
-import { Book, BookStatus } from '../../../infrastructure/database/entities/book.entity';
+import {
+  Book,
+  BookStatus,
+} from '../../../infrastructure/database/entities/book.entity';
+import { ExchangeBook } from '../../../infrastructure/database/entities/exchange-book.entity';
+import {
+  BookType,
+  ExchangeRequestBook,
+} from '../../../infrastructure/database/entities/exchange-request-book.entity';
 import {
   ExchangeRequest,
   ExchangeRequestStatus,
 } from '../../../infrastructure/database/entities/exchange-request.entity';
 import {
-  ExchangeRequestBook,
-  BookType,
-} from '../../../infrastructure/database/entities/exchange-request-book.entity';
-import {
   Exchange,
   ExchangeStatus,
 } from '../../../infrastructure/database/entities/exchange.entity';
-import { ExchangeBook } from '../../../infrastructure/database/entities/exchange-book.entity';
+import { Member } from '../../../infrastructure/database/entities/member.entity';
 import {
   CreateExchangeRequestDto,
-  RespondToRequestDto,
   QueryExchangeRequestsDto,
   QueryExchangesDto,
+  RespondToRequestDto,
 } from '../dto/exchange.dto';
 
 @Injectable()
@@ -81,7 +84,9 @@ export class ExchangesService {
 
     // 3. Cannot exchange with yourself
     if (requester.member_id === receiver.member_id) {
-      throw new BadRequestException('Cannot create exchange request with yourself');
+      throw new BadRequestException(
+        'Cannot create exchange request with yourself',
+      );
     }
 
     // 4. Validate offered books (must be owned by requester and available)
@@ -126,7 +131,9 @@ export class ExchangesService {
     });
 
     if (existingRequest) {
-      throw new ConflictException('You already have a pending request with this member');
+      throw new ConflictException(
+        'You already have a pending request with this member',
+      );
     }
 
     // 7. Create exchange request
@@ -199,7 +206,9 @@ export class ExchangesService {
 
   // ==================== LIST MY REQUESTS ====================
   async getMyRequests(userId: string, query: QueryExchangeRequestsDto) {
-    this.logger.log(`[getMyRequests] userId=${userId}, query=${JSON.stringify(query)}`);
+    this.logger.log(
+      `[getMyRequests] userId=${userId}, query=${JSON.stringify(query)}`,
+    );
 
     // Get ALL member records for this user (in case of duplicate/old records)
     const members = await this.memberRepo.find({
@@ -211,7 +220,9 @@ export class ExchangesService {
     }
 
     const memberIds = members.map((m) => m.member_id);
-    this.logger.log(`[getMyRequests] Found ${memberIds.length} member records: ${memberIds.join(', ')}`);
+    this.logger.log(
+      `[getMyRequests] Found ${memberIds.length} member records: ${memberIds.join(', ')}`,
+    );
 
     const { status, type = 'received', page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
@@ -265,7 +276,9 @@ export class ExchangesService {
     requestId: string,
     dto: RespondToRequestDto,
   ) {
-    this.logger.log(`[respondToRequest] requestId=${requestId}, action=${dto.action}`);
+    this.logger.log(
+      `[respondToRequest] requestId=${requestId}, action=${dto.action}`,
+    );
 
     // 1. Get ALL member records for user
     const members = await this.memberRepo.find({
@@ -290,7 +303,9 @@ export class ExchangesService {
 
     // 3. Verify user is the receiver (check ALL member records)
     if (!memberIds.includes(request.receiver_id)) {
-      throw new ForbiddenException('You are not authorized to respond to this request');
+      throw new ForbiddenException(
+        'You are not authorized to respond to this request',
+      );
     }
 
     // 4. Check request is still pending
@@ -405,7 +420,9 @@ export class ExchangesService {
 
     // Can only cancel pending requests
     if (request.status !== ExchangeRequestStatus.PENDING) {
-      throw new BadRequestException('Cannot cancel a request that is not pending');
+      throw new BadRequestException(
+        'Cannot cancel a request that is not pending',
+      );
     }
 
     // Update status
@@ -448,6 +465,9 @@ export class ExchangesService {
       .leftJoinAndSelect('member_b.user', 'user_b')
       .leftJoinAndSelect('exchange.exchange_books', 'exchange_books')
       .leftJoinAndSelect('exchange_books.book', 'book')
+      .leftJoinAndSelect('exchange.reviews', 'reviews')
+      .leftJoinAndSelect('reviews.reviewer', 'reviewer')
+      .leftJoinAndSelect('reviewer.user', 'reviewer_user')
       .where('exchange.member_a_id IN (:...memberIds)', { memberIds })
       .orWhere('exchange.member_b_id IN (:...memberIds)', { memberIds });
 
@@ -461,8 +481,20 @@ export class ExchangesService {
       .take(limit)
       .getManyAndCount();
 
+    this.logger.debug(`[getMyExchanges] Found ${exchanges.length} exchanges`);
+    exchanges.forEach((ex, idx) => {
+      this.logger.debug(
+        `[getMyExchanges] Exchange ${idx}: id=${ex.exchange_id}, reviews count=${ex.reviews?.length || 0}, member_a_reviewed=${ex.member_a_reviewed}, member_b_reviewed=${ex.member_b_reviewed}`,
+      );
+    });
+
+    const formatted = exchanges.map((ex) => this.formatExchangeResponse(ex));
+    this.logger.debug(
+      `[getMyExchanges] Formatted response sample: ${JSON.stringify(formatted[0])}`,
+    );
+
     return {
-      items: exchanges.map((ex) => this.formatExchangeResponse(ex)),
+      items: formatted,
       total,
       page,
       limit,
@@ -537,15 +569,17 @@ export class ExchangesService {
         // Update owner_id from 'from' member to 'to' member
         await this.bookRepo.update(
           { book_id: eb.book_id },
-          { 
+          {
             owner_id: eb.to_member_id,
             status: BookStatus.AVAILABLE,
-            deleted_at: () => 'NULL'  // Clear deleted_at to restore book
-          }
+            deleted_at: () => 'NULL', // Clear deleted_at to restore book
+          },
         );
       }
 
-      this.logger.log(`Transferred ownership of ${exchangeBooks.length} books for exchange ${exchangeId}`);
+      this.logger.log(
+        `Transferred ownership of ${exchangeBooks.length} books for exchange ${exchangeId}`,
+      );
 
       // Update member stats
       await this.memberRepo.increment(
@@ -606,7 +640,9 @@ export class ExchangesService {
     }
 
     const totalSent = await this.requestRepo.count({
-      where: { requester_id: memberIds.length === 1 ? memberIds[0] : undefined },
+      where: {
+        requester_id: memberIds.length === 1 ? memberIds[0] : undefined,
+      },
     });
 
     const totalReceived = await this.requestRepo.count({
@@ -619,8 +655,12 @@ export class ExchangesService {
     let receivedCount = 0;
 
     for (const memberId of memberIds) {
-      sentCount += await requestRepo.count({ where: { requester_id: memberId } });
-      receivedCount += await requestRepo.count({ where: { receiver_id: memberId } });
+      sentCount += await requestRepo.count({
+        where: { requester_id: memberId },
+      });
+      receivedCount += await requestRepo.count({
+        where: { receiver_id: memberId },
+      });
     }
 
     let pendingCount = 0;
@@ -643,7 +683,8 @@ export class ExchangesService {
       });
     }
 
-    const successRate = sentCount > 0 ? (completedExchanges / sentCount) * 100 : 0;
+    const successRate =
+      sentCount > 0 ? (completedExchanges / sentCount) * 100 : 0;
 
     return {
       total_requests_sent: sentCount,
@@ -731,7 +772,10 @@ export class ExchangesService {
     // Verify user is part of exchange
     let isPartOfExchange = false;
     for (const memberId of memberIds) {
-      if (exchange.member_a_id === memberId || exchange.member_b_id === memberId) {
+      if (
+        exchange.member_a_id === memberId ||
+        exchange.member_b_id === memberId
+      ) {
         isPartOfExchange = true;
         break;
       }
@@ -742,8 +786,12 @@ export class ExchangesService {
     }
 
     // Can only update meeting info for PENDING or ACCEPTED exchanges
-    if (![ExchangeStatus.PENDING, 'ACCEPTED'].includes(exchange.status as any)) {
-      throw new BadRequestException('Cannot update meeting info for this exchange status');
+    if (
+      ![ExchangeStatus.PENDING, 'ACCEPTED'].includes(exchange.status as any)
+    ) {
+      throw new BadRequestException(
+        'Cannot update meeting info for this exchange status',
+      );
     }
 
     // Update meeting info
@@ -772,7 +820,9 @@ export class ExchangesService {
     exchangeId: string,
     dto: any, // CancelExchangeDto
   ) {
-    this.logger.log(`[cancelExchange] exchangeId=${exchangeId} reason=${dto.cancellation_reason}`);
+    this.logger.log(
+      `[cancelExchange] exchangeId=${exchangeId} reason=${dto.cancellation_reason}`,
+    );
 
     // Get ALL member records for user
     const members = await this.memberRepo.find({
@@ -797,7 +847,10 @@ export class ExchangesService {
     // Verify user is part of exchange
     let isPartOfExchange = false;
     for (const memberId of memberIds) {
-      if (exchange.member_a_id === memberId || exchange.member_b_id === memberId) {
+      if (
+        exchange.member_a_id === memberId ||
+        exchange.member_b_id === memberId
+      ) {
         isPartOfExchange = true;
         break;
       }
@@ -840,8 +893,10 @@ export class ExchangesService {
 
     // Decrease trust score for cancellations (except ADMIN_CANCELLED)
     if (dto.cancellation_reason !== 'ADMIN_CANCELLED') {
-      const penaltyPoints = this.getCancellationPenalty(dto.cancellation_reason);
-      
+      const penaltyPoints = this.getCancellationPenalty(
+        dto.cancellation_reason,
+      );
+
       await this.memberRepo.decrement(
         { member_id: exchange.member_a_id },
         'trust_score',
@@ -893,6 +948,8 @@ export class ExchangesService {
       })),
       member_a_confirmed: exchange.member_a_confirmed,
       member_b_confirmed: exchange.member_b_confirmed,
+      member_a_reviewed: exchange.member_a_reviewed || false,
+      member_b_reviewed: exchange.member_b_reviewed || false,
       meeting_location: exchange.meeting_location,
       meeting_time: exchange.meeting_time,
       meeting_notes: exchange.meeting_notes,
@@ -900,6 +957,18 @@ export class ExchangesService {
       cancellation_details: exchange.cancellation_details,
       completed_at: exchange.completed_at,
       created_at: exchange.created_at,
+      reviews: exchange.reviews
+        ? exchange.reviews.map((r) => ({
+            review_id: r.review_id,
+            reviewer_id: r.reviewer_id,
+            reviewer_name: r.reviewer?.user?.full_name || 'Người dùng',
+            reviewee_id: r.reviewee_id,
+            rating: r.rating,
+            comment: r.comment,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+          }))
+        : [],
     };
   }
 }

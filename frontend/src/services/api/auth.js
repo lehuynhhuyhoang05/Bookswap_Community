@@ -28,6 +28,21 @@ export const authService = {
         localStorage.setItem('refreshToken', response.data.refresh_token);
         localStorage.setItem('user', JSON.stringify(response.data.user));
         localStorage.setItem('isLoggedIn', 'true');
+
+        // Lưu thông tin admin nếu có
+        if (
+          response.data.user?.is_admin ||
+          response.data.user?.role === 'ADMIN'
+        ) {
+          localStorage.setItem('isAdmin', 'true');
+          localStorage.setItem('userRole', 'ADMIN');
+          if (response.data.user?.admin_level) {
+            localStorage.setItem('adminLevel', response.data.user.admin_level);
+          }
+        } else {
+          localStorage.setItem('isAdmin', 'false');
+          localStorage.setItem('userRole', 'MEMBER');
+        }
       }
 
       return response.data;

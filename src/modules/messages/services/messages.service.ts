@@ -1,22 +1,25 @@
 // src/modules/messages/services/messages.service.ts
 import {
-  Injectable,
-  NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, Like } from 'typeorm';
+import { In, IsNull, Like, Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Conversation } from '../../../infrastructure/database/entities/conversation.entity';
-import { Message } from '../../../infrastructure/database/entities/message.entity';
-import { MessageReaction } from '../../../infrastructure/database/entities/message-reaction.entity';
+import {
+  ExchangeRequest,
+  ExchangeRequestStatus,
+} from '../../../infrastructure/database/entities/exchange-request.entity';
 import { Member } from '../../../infrastructure/database/entities/member.entity';
-import { ExchangeRequest, ExchangeRequestStatus } from '../../../infrastructure/database/entities/exchange-request.entity';
-import { SendMessageDto } from '../dto/send-message.dto';
-import { SearchMessagesDto } from '../dto/search-messages.dto';
+import { MessageReaction } from '../../../infrastructure/database/entities/message-reaction.entity';
+import { Message } from '../../../infrastructure/database/entities/message.entity';
 import { AddReactionDto } from '../dto/reaction.dto';
+import { SearchMessagesDto } from '../dto/search-messages.dto';
+import { SendMessageDto } from '../dto/send-message.dto';
 
 @Injectable()
 export class MessagesService {
@@ -42,10 +45,16 @@ export class MessagesService {
   /**
    * Get all conversations for a user
    */
-  async getMyConversations(userId: string, page: number = 1, limit: number = 20) {
+  async getMyConversations(
+    userId: string,
+    page: number = 1,
+    limit: number = 20,
+  ) {
     this.logger.log(`[getMyConversations] userId=${userId}, page=${page}`);
 
-    const member = await this.memberRepo.findOne({ where: { user_id: userId } });
+    const member = await this.memberRepo.findOne({
+      where: { user_id: userId },
+    });
     if (!member) throw new NotFoundException('Member profile not found');
 
     const skip = (page - 1) * limit;
@@ -55,7 +64,13 @@ export class MessagesService {
         { member_a_id: member.member_id },
         { member_b_id: member.member_id },
       ],
-      relations: ['member_a', 'member_a.user', 'member_b', 'member_b.user', 'exchange_request'],
+      relations: [
+        'member_a',
+        'member_a.user',
+        'member_b',
+        'member_b.user',
+        'exchange_request',
+      ],
       order: { last_message_at: 'DESC', created_at: 'DESC' },
       skip,
       take: limit,
@@ -92,7 +107,7 @@ export class MessagesService {
           last_message_at: conv.last_message_at,
           created_at: conv.created_at,
         };
-      })
+      }),
     );
 
     return {
@@ -115,9 +130,13 @@ export class MessagesService {
     page: number = 1,
     limit: number = 50,
   ) {
-    this.logger.log(`[getMessages] userId=${userId}, conversationId=${conversationId}`);
+    this.logger.log(
+      `[getMessages] userId=${userId}, conversationId=${conversationId}`,
+    );
 
-    const member = await this.memberRepo.findOne({ where: { user_id: userId } });
+    const member = await this.memberRepo.findOne({
+      where: { user_id: userId },
+    });
     if (!member) throw new NotFoundException('Member profile not found');
 
     const conversation = await this.conversationRepo.findOne({
@@ -140,11 +159,18 @@ export class MessagesService {
     const skip = (page - 1) * limit;
 
     const [messages, total] = await this.messageRepo.findAndCount({
-      where: { 
+      where: {
         conversation_id: conversationId,
-        deleted_at: undefined, // Exclude deleted messages
+        deleted_at: IsNull(), // Exclude deleted messages
       },
-      relations: ['sender', 'sender.user', 'receiver', 'receiver.user', 'reactions', 'reactions.member'],
+      relations: [
+        'sender',
+        'sender.user',
+        'receiver',
+        'receiver.user',
+        'reactions',
+        'reactions.member',
+      ],
       order: { sent_at: 'DESC' },
       skip,
       take: limit,
@@ -174,7 +200,9 @@ export class MessagesService {
           region: otherMember.region,
         },
       },
-      messages: messages.reverse().map((msg) => this.formatMessage(msg, member.member_id)),
+      messages: messages
+        .reverse()
+        .map((msg) => this.formatMessage(msg, member.member_id)),
       pagination: {
         page,
         limit,
@@ -245,13 +273,15 @@ export class MessagesService {
           request.requester_id !== member.member_id &&
           request.receiver_id !== member.member_id
         ) {
-          throw new ForbiddenException('You are not part of this exchange request');
+          throw new ForbiddenException(
+            'You are not part of this exchange request',
+          );
         }
 
         // Request must be ACCEPTED to start conversation
         if (request.status !== ExchangeRequestStatus.ACCEPTED) {
           throw new BadRequestException(
-            'Can only message after exchange request is accepted'
+            'Can only message after exchange request is accepted',
           );
         }
 
@@ -278,7 +308,7 @@ export class MessagesService {
       }
     } else {
       throw new BadRequestException(
-        'Must provide either conversation_id or exchange_request_id'
+        'Must provide either conversation_id or exchange_request_id',
       );
     }
 
@@ -348,7 +378,7 @@ export class MessagesService {
       {
         is_read: true,
         read_at: new Date(),
-      }
+      },
     );
 
     return { updated: result.affected || 0 };
@@ -358,9 +388,13 @@ export class MessagesService {
    * Mark all messages in conversation as read
    */
   async markConversationAsRead(userId: string, conversationId: string) {
-    this.logger.log(`[markConversationAsRead] userId=${userId}, conversationId=${conversationId}`);
+    this.logger.log(
+      `[markConversationAsRead] userId=${userId}, conversationId=${conversationId}`,
+    );
 
-    const member = await this.memberRepo.findOne({ where: { user_id: userId } });
+    const member = await this.memberRepo.findOne({
+      where: { user_id: userId },
+    });
     if (!member) throw new NotFoundException('Member profile not found');
 
     const conversation = await this.conversationRepo.findOne({
@@ -388,7 +422,7 @@ export class MessagesService {
       {
         is_read: true,
         read_at: new Date(),
-      }
+      },
     );
 
     return { updated: result.affected || 0 };
@@ -398,7 +432,9 @@ export class MessagesService {
    * Get unread message count
    */
   async getUnreadCount(userId: string) {
-    const member = await this.memberRepo.findOne({ where: { user_id: userId } });
+    const member = await this.memberRepo.findOne({
+      where: { user_id: userId },
+    });
     if (!member) throw new NotFoundException('Member profile not found');
 
     const count = await this.messageRepo.count({
@@ -418,7 +454,9 @@ export class MessagesService {
   async searchMessages(userId: string, query: SearchMessagesDto) {
     this.logger.log(`[searchMessages] userId=${userId}, q=${query.q}`);
 
-    const member = await this.memberRepo.findOne({ where: { user_id: userId } });
+    const member = await this.memberRepo.findOne({
+      where: { user_id: userId },
+    });
     if (!member) throw new NotFoundException('Member profile not found');
 
     // Validate user has access to conversation
@@ -444,16 +482,25 @@ export class MessagesService {
       where: {
         conversation_id: query.conversation_id,
         content: Like(`%${query.q}%`),
-        deleted_at: undefined, // Only include non-deleted messages
+        deleted_at: IsNull(), // Only include non-deleted messages
       },
-      relations: ['sender', 'sender.user', 'receiver', 'receiver.user', 'reactions', 'reactions.member'],
+      relations: [
+        'sender',
+        'sender.user',
+        'receiver',
+        'receiver.user',
+        'reactions',
+        'reactions.member',
+      ],
       order: { sent_at: 'DESC' },
       skip,
       take: query.limit!,
     });
 
     return {
-      messages: messages.reverse().map((msg) => this.formatMessage(msg, member.member_id)),
+      messages: messages
+        .reverse()
+        .map((msg) => this.formatMessage(msg, member.member_id)),
       pagination: {
         page: query.page!,
         limit: query.limit!,
@@ -469,7 +516,9 @@ export class MessagesService {
   async deleteMessage(userId: string, messageId: string) {
     this.logger.log(`[deleteMessage] userId=${userId}, messageId=${messageId}`);
 
-    const member = await this.memberRepo.findOne({ where: { user_id: userId } });
+    const member = await this.memberRepo.findOne({
+      where: { user_id: userId },
+    });
     if (!member) throw new NotFoundException('Member profile not found');
 
     const message = await this.messageRepo.findOne({
@@ -493,7 +542,9 @@ export class MessagesService {
     // Check if message is older than 1 hour
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     if (message.sent_at < oneHourAgo) {
-      throw new BadRequestException('Can only delete messages within 1 hour of sending');
+      throw new BadRequestException(
+        'Can only delete messages within 1 hour of sending',
+      );
     }
 
     // Soft delete
@@ -508,9 +559,13 @@ export class MessagesService {
    * Add emoji reaction to a message
    */
   async addReaction(userId: string, messageId: string, dto: AddReactionDto) {
-    this.logger.log(`[addReaction] userId=${userId}, messageId=${messageId}, emoji=${dto.emoji}`);
+    this.logger.log(
+      `[addReaction] userId=${userId}, messageId=${messageId}, emoji=${dto.emoji}`,
+    );
 
-    const member = await this.memberRepo.findOne({ where: { user_id: userId } });
+    const member = await this.memberRepo.findOne({
+      where: { user_id: userId },
+    });
     if (!member) throw new NotFoundException('Member profile not found');
 
     // Verify message exists and not deleted
@@ -555,7 +610,11 @@ export class MessagesService {
       // Toggle off: delete the reaction
       await this.reactionRepo.remove(existingReaction);
       this.logger.log(`[addReaction] Removed reaction for user`);
-      return { success: true, action: 'removed', reaction_id: existingReaction.reaction_id };
+      return {
+        success: true,
+        action: 'removed',
+        reaction_id: existingReaction.reaction_id,
+      };
     }
 
     // Add new reaction
@@ -586,9 +645,13 @@ export class MessagesService {
    * Remove emoji reaction from a message
    */
   async removeReaction(userId: string, reactionId: string) {
-    this.logger.log(`[removeReaction] userId=${userId}, reactionId=${reactionId}`);
+    this.logger.log(
+      `[removeReaction] userId=${userId}, reactionId=${reactionId}`,
+    );
 
-    const member = await this.memberRepo.findOne({ where: { user_id: userId } });
+    const member = await this.memberRepo.findOne({
+      where: { user_id: userId },
+    });
     if (!member) throw new NotFoundException('Member profile not found');
 
     const reaction = await this.reactionRepo.findOne({
@@ -620,7 +683,13 @@ export class MessagesService {
     });
 
     // Group by emoji
-    const grouped: { [emoji: string]: { count: number; members: string[]; userReacted: boolean } } = {};
+    const grouped: {
+      [emoji: string]: {
+        count: number;
+        members: string[];
+        userReacted: boolean;
+      };
+    } = {};
 
     reactions.forEach((reaction) => {
       if (!grouped[reaction.emoji]) {
@@ -683,7 +752,12 @@ export class MessagesService {
               }
               return acc;
             },
-            [] as Array<{ emoji: string; count: number; members: string[]; current_user_reacted: boolean }>
+            [] as Array<{
+              emoji: string;
+              count: number;
+              members: string[];
+              current_user_reacted: boolean;
+            }>,
           )
         : [],
     };

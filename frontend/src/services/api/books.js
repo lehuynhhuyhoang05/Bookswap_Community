@@ -14,7 +14,10 @@ export const booksService = {
       if (error.response?.status === 404) {
         throw { message: 'Member profile not found' };
       } else if (error.response?.status === 408) {
-        throw { message: 'Request timeout - Google Books or DB processing took too long' };
+        throw {
+          message:
+            'Request timeout - Google Books or DB processing took too long',
+        };
       }
       throw errorData || { message: 'Failed to add book' };
     }
@@ -25,12 +28,12 @@ export const booksService = {
    */
   async getBooks(params = {}) {
     try {
-      const response = await api.get('/books', { 
+      const response = await api.get('/books', {
         params: {
           page: 1,
           limit: 20,
-          ...params
-        }
+          ...params,
+        },
       });
       return response.data;
     } catch (error) {
@@ -92,16 +95,18 @@ export const booksService = {
    */
   async getBooksByCategory(category, params = {}) {
     try {
-      const response = await api.get(`/books/category/${category}`, { 
+      const response = await api.get(`/books/category/${category}`, {
         params: {
           page: 1,
           limit: 20,
-          ...params
-        }
+          ...params,
+        },
       });
       return response.data;
     } catch (error) {
-      throw error.response?.data || { message: 'Failed to fetch books by category' };
+      throw (
+        error.response?.data || { message: 'Failed to fetch books by category' }
+      );
     }
   },
 
@@ -113,7 +118,9 @@ export const booksService = {
       const response = await api.get(`/books/google/${googleBookId}`);
       return response.data;
     } catch (error) {
-      throw error.response?.data || { message: 'Failed to fetch Google Books data' };
+      throw (
+        error.response?.data || { message: 'Failed to fetch Google Books data' }
+      );
     }
   },
 
@@ -136,9 +143,9 @@ export const booksService = {
     try {
       const response = await api.get('/books/my-library');
       console.log('📚 MyLibrary RAW Response:', response.data);
-      
+
       const data = response.data;
-      
+
       // ✅ Xử lý nhiều định dạng response
       if (data && typeof data === 'object') {
         // Trường hợp 1: { books: [] }
@@ -154,19 +161,19 @@ export const booksService = {
           return data;
         }
       }
-      
+
       console.warn('⚠️ Unexpected MyLibrary response format:', data);
       return [];
     } catch (error) {
       console.error('❌ MyLibrary API Error:', error);
       const errorData = error.response?.data;
-      
+
       if (error.response?.status === 401) {
         throw { message: 'Vui lòng đăng nhập để xem thư viện của bạn' };
       } else if (error.response?.status === 404) {
         throw { message: 'Không tìm thấy thư viện' };
       }
-      
+
       throw errorData || { message: 'Failed to fetch my library' };
     }
   },
@@ -176,16 +183,18 @@ export const booksService = {
    */
   async getBooksByRegion(region, params = {}) {
     try {
-      const response = await api.get(`/books/region/${region}`, { 
+      const response = await api.get(`/books/region/${region}`, {
         params: {
           page: 1,
           limit: 20,
-          ...params
-        }
+          ...params,
+        },
       });
       return response.data;
     } catch (error) {
-      throw error.response?.data || { message: 'Failed to fetch books by region' };
+      throw (
+        error.response?.data || { message: 'Failed to fetch books by region' }
+      );
     }
   },
 
@@ -197,7 +206,9 @@ export const booksService = {
       const response = await api.get('/books/regions/available');
       return response.data;
     } catch (error) {
-      throw error.response?.data || { message: 'Failed to fetch available regions' };
+      throw (
+        error.response?.data || { message: 'Failed to fetch available regions' }
+      );
     }
   },
 
@@ -207,12 +218,12 @@ export const booksService = {
   async searchBooks(query, params = {}) {
     try {
       const response = await api.get('/books/search', {
-        params: { 
+        params: {
           q: query,
           page: 1,
           limit: 20,
-          ...params 
-        }
+          ...params,
+        },
       });
       return response.data;
     } catch (error) {
@@ -225,35 +236,51 @@ export const booksService = {
    */
   async advancedSearch(filters = {}) {
     try {
-      const response = await api.get('/books/search/advanced', {
-        params: {
-          page: 1,
-          limit: 20,
-          sort_by: 'created_at',
-          order: 'DESC',
-          ...filters
+      // Loại bỏ các params rỗng
+      const cleanParams = Object.entries({
+        page: 1,
+        limit: 20,
+        sort_by: 'created_at',
+        order: 'DESC',
+        ...filters,
+      }).reduce((acc, [key, value]) => {
+        // Chỉ thêm param nếu có giá trị (không phải empty string, null, undefined)
+        if (value !== '' && value != null) {
+          acc[key] = value;
         }
+        return acc;
+      }, {});
+
+      const response = await api.get('/books/search/advanced', {
+        params: cleanParams,
       });
       return response.data;
     } catch (error) {
-      throw error.response?.data || { message: 'Failed to perform advanced search' };
+      throw (
+        error.response?.data || { message: 'Failed to perform advanced search' }
+      );
     }
   },
 
   /**
    * 📌 14. GET /books/search/google - Google Books search
+   * Query params: query (required), maxResults (1-40, default 20)
    */
   async searchGoogleBooks(params = {}) {
     try {
-      const response = await api.get('/books/search/google', { 
-        params: {
-          limit: 10,
-          ...params 
-        }
+      // Chỉ gửi query và maxResults, loại bỏ các params khác
+      const cleanParams = {};
+      if (params.query) cleanParams.query = params.query;
+      if (params.maxResults) cleanParams.maxResults = params.maxResults;
+
+      const response = await api.get('/books/search/google', {
+        params: cleanParams,
       });
       return response.data;
     } catch (error) {
-      throw error.response?.data || { message: 'Failed to search Google Books' };
+      throw (
+        error.response?.data || { message: 'Failed to search Google Books' }
+      );
     }
   },
 
@@ -287,16 +314,18 @@ export const booksService = {
   async searchWantedBooks(query, params = {}) {
     try {
       const response = await api.get('/books/wanted/search', {
-        params: { 
+        params: {
           q: query,
           page: 1,
           limit: 20,
-          ...params 
-        }
+          ...params,
+        },
       });
       return response.data;
     } catch (error) {
-      throw error.response?.data || { message: 'Failed to search wanted books' };
+      throw (
+        error.response?.data || { message: 'Failed to search wanted books' }
+      );
     }
   },
 
@@ -304,11 +333,32 @@ export const booksService = {
 
   getCategories() {
     return [
-      'Fiction', 'Non-Fiction', 'Science', 'Technology', 'History', 
-      'Biography', 'Business', 'Self-Help', 'Cookbooks', 'Travel',
-      'Art', 'Music', 'Health', 'Sports', 'Religion', 'Philosophy',
-      'Programming', 'Design', 'Education', 'Children', 'Fantasy',
-      'Mystery', 'Romance', 'Science Fiction', 'Thriller', 'Horror'
+      'Fiction',
+      'Non-Fiction',
+      'Science',
+      'Technology',
+      'History',
+      'Biography',
+      'Business',
+      'Self-Help',
+      'Cookbooks',
+      'Travel',
+      'Art',
+      'Music',
+      'Health',
+      'Sports',
+      'Religion',
+      'Philosophy',
+      'Programming',
+      'Design',
+      'Education',
+      'Children',
+      'Fantasy',
+      'Mystery',
+      'Romance',
+      'Science Fiction',
+      'Thriller',
+      'Horror',
     ];
   },
 
@@ -318,17 +368,17 @@ export const booksService = {
       { value: 'VERY_GOOD', label: 'Rất tốt' },
       { value: 'GOOD', label: 'Tốt' },
       { value: 'FAIR', label: 'Khá' },
-      { value: 'POOR', label: 'Kém' }
+      { value: 'POOR', label: 'Kém' },
     ];
   },
 
   formatBookCondition(condition) {
     const conditions = {
-      'LIKE_NEW': 'Như mới',
-      'VERY_GOOD': 'Rất tốt', 
-      'GOOD': 'Tốt',
-      'FAIR': 'Khá',
-      'POOR': 'Kém'
+      LIKE_NEW: 'Như mới',
+      VERY_GOOD: 'Rất tốt',
+      GOOD: 'Tốt',
+      FAIR: 'Khá',
+      POOR: 'Kém',
     };
     return conditions[condition] || condition;
   },
@@ -338,45 +388,47 @@ export const booksService = {
       { value: 'created_at', label: 'Ngày thêm' },
       { value: 'title', label: 'Tên sách' },
       { value: 'author', label: 'Tác giả' },
-      { value: 'views', label: 'Lượt xem' }
+      { value: 'views', label: 'Lượt xem' },
     ];
   },
 
   getOrderOptions() {
     return [
       { value: 'DESC', label: 'Giảm dần' },
-      { value: 'ASC', label: 'Tăng dần' }
+      { value: 'ASC', label: 'Tăng dần' },
     ];
   },
 
   validateBookData(bookData) {
     const errors = [];
-    
+
     if (!bookData.title?.trim()) {
       errors.push('Tên sách là bắt buộc');
     }
-    
+
     if (!bookData.author?.trim()) {
       errors.push('Tác giả là bắt buộc');
     }
-    
+
     if (!bookData.category?.trim()) {
       errors.push('Danh mục là bắt buộc');
     }
-    
+
     if (!bookData.book_condition) {
       errors.push('Tình trạng sách là bắt buộc');
     }
-    
+
     return errors;
   },
 
   formatBookData(bookData) {
     return {
       ...bookData,
-      page_count: bookData.page_count ? parseInt(bookData.page_count) : undefined,
+      page_count: bookData.page_count
+        ? parseInt(bookData.page_count)
+        : undefined,
     };
-  }
+  },
 };
 
 export default booksService;

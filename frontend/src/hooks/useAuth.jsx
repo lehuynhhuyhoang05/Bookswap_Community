@@ -55,6 +55,15 @@ export const AuthProvider = ({ children }) => {
       setUser(response.user);
       setIsAuthenticated(true);
 
+      // Log thông tin admin để debug
+      if (response.user?.is_admin || response.user?.role === 'ADMIN') {
+        console.log('✅ Admin logged in:', {
+          isAdmin: true,
+          role: response.user?.role,
+          adminLevel: response.user?.admin_level,
+        });
+      }
+
       return response;
     } catch (error) {
       setError(error.message || 'Login failed');
@@ -141,6 +150,7 @@ export const AuthProvider = ({ children }) => {
 
   const value = {
     user,
+    setUser,
     isAuthenticated,
     loading,
     error,
