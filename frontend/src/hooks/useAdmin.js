@@ -21,6 +21,7 @@ import {
   getAdminUserActivityStats,
   getAdminUsers,
   lockAdminUser,
+  permanentDeleteAdminBook,
   resolveAdminReport,
   unlockAdminUser,
   updateAdminUserRole,
@@ -67,7 +68,22 @@ export const useAdminBooks = () => {
     }
   }, []);
 
-  return { books, loading, error, fetchBooks, removeBook };
+  const permanentRemoveBook = useCallback(async (bookId, reason) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await permanentDeleteAdminBook(bookId, { reason });
+      setBooks((prev) => prev.filter((book) => book.book_id !== bookId));
+      return result;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { books, loading, error, fetchBooks, removeBook, permanentRemoveBook };
 };
 
 /**

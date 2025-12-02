@@ -71,7 +71,8 @@ const ReportsManagement = () => {
         'Reason:',
         dismissReason,
       );
-      await dismissReport(selectedReport.report_id, dismissReason);
+      // API expects { reason } object format
+      await dismissReport(selectedReport.report_id, { reason: dismissReason });
       console.log(
         '[ReportsManagement] Dismiss successful, reloading reports...',
       );
@@ -99,7 +100,8 @@ const ReportsManagement = () => {
         'Resolution:',
         resolution,
       );
-      await resolveReport(selectedReport.report_id, resolution);
+      // API expects { resolution } object format
+      await resolveReport(selectedReport.report_id, { resolution: resolution });
       console.log(
         '[ReportsManagement] Resolve successful, reloading reports...',
       );

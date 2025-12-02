@@ -11,7 +11,6 @@ const BookManagement = () => {
     reported: false,
     search: '',
   });
-  const [hideRemoved, setHideRemoved] = useState(true); // Ẩn sách đã xóa theo mặc định
   const [selectedBook, setSelectedBook] = useState(null);
   const [deleteReason, setDeleteReason] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -35,7 +34,7 @@ const BookManagement = () => {
 
   const handleDeleteBook = async () => {
     if (!selectedBook || !deleteReason.trim()) {
-      alert('Vui lòng nhập lý do xóa sách');
+      alert('Vui lòng nhập lý do ẩn sách');
       return;
     }
 
@@ -46,16 +45,18 @@ const BookManagement = () => {
         'Reason:',
         deleteReason,
       );
+
       await removeBook(selectedBook.book_id, deleteReason);
+
       console.log('[BookManagement] Delete successful, reloading books...');
       setShowDeleteModal(false);
       setDeleteReason('');
       setSelectedBook(null);
       await loadBooks();
-      alert('Xóa sách thành công!');
+      alert('Ẩn sách thành công!');
     } catch (err) {
       console.error('[BookManagement] Delete failed:', err);
-      alert('Lỗi khi xóa sách: ' + err.message);
+      alert('Lỗi khi ẩn sách: ' + err.message);
     }
   };
 
@@ -73,6 +74,7 @@ const BookManagement = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
           <form onSubmit={handleSearch} className="col-span-2">
             <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <input
                 type="text"
                 placeholder="Tìm kiếm sách..."
@@ -80,9 +82,8 @@ const BookManagement = () => {
                 onChange={(e) =>
                   setFilters({ ...filters, search: e.target.value })
                 }
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
-              <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
             </div>
           </form>
 
@@ -93,7 +94,7 @@ const BookManagement = () => {
             }
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
           >
-            <option value="">Tất cả trạng thái</option>
+            <option value="">Tất cả hoạt động</option>
             <option value="AVAILABLE">Có sẵn</option>
             <option value="BORROWED">Đang mượn</option>
             <option value="EXCHANGING">Đang trao đổi</option>
@@ -117,18 +118,6 @@ const BookManagement = () => {
               <span className="text-sm text-gray-700">Chỉ sách bị báo cáo</span>
             </label>
           </div>
-        </div>
-
-        <div className="flex items-center">
-          <label className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
-            <input
-              type="checkbox"
-              checked={hideRemoved}
-              onChange={(e) => setHideRemoved(e.target.checked)}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <span className="text-sm text-gray-700">Ẩn sách đã xóa</span>
-          </label>
         </div>
       </div>
 
@@ -179,14 +168,20 @@ const BookManagement = () => {
                 <tr>
                   <td
                     colSpan="7"
-                    className="px-6 py-4 text-center text-gray-500"
+                    className="px-6 py-4 whitespace-nowrap text-center text-gray-500"
                   >
                     Không tìm thấy sách nào
                   </td>
                 </tr>
               ) : (
                 books
-                  .filter((book) => !hideRemoved || book.status !== 'REMOVED')
+                  .filter((book) => {
+                    // Nếu không chọn status cụ thể, ẩn sách REMOVED
+                    if (filters.status === '') {
+                      return book.status !== 'REMOVED';
+                    }
+                    return true; // Hiển thị tất cả nếu có filter status
+                  })
                   .map((book) => (
                     <tr
                       key={book.book_id}
@@ -198,16 +193,15 @@ const BookManagement = () => {
                         <div className="text-sm font-medium text-gray-900">
                           {book.title}
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">
-                          {book.author}
+                        <div className="text-xs text-gray-500">
+                          ID: {book.book_id.slice(0, 8)}...
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">
-                          {book.category}
-                        </div>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {book.author || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {book.category || '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span
@@ -215,19 +209,19 @@ const BookManagement = () => {
                             book.status === 'AVAILABLE'
                               ? 'bg-green-100 text-green-800'
                               : book.status === 'BORROWED'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : book.status === 'REMOVED'
-                                  ? 'bg-gray-100 text-gray-800 line-through'
-                                  : 'bg-blue-100 text-blue-800'
+                                ? 'bg-blue-100 text-blue-800'
+                                : book.status === 'EXCHANGING'
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : book.status === 'REMOVED'
+                                    ? 'bg-red-100 text-red-800'
+                                    : 'bg-gray-100 text-gray-800'
                           }`}
                         >
                           {book.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">
-                          {book.region}
-                        </div>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {book.region || '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {book.reported ? (
@@ -239,20 +233,13 @@ const BookManagement = () => {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        {book.status !== 'REMOVED' && (
-                          <button
-                            onClick={() => openDeleteModal(book)}
-                            className="text-red-600 hover:text-red-900 inline-flex items-center"
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Xóa
-                          </button>
-                        )}
-                        {book.status === 'REMOVED' && (
-                          <span className="text-xs text-gray-500 italic">
-                            Đã xóa
-                          </span>
-                        )}
+                        <button
+                          onClick={() => openDeleteModal(book)}
+                          className="text-red-600 hover:text-red-900 inline-flex items-center"
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Xóa
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -291,21 +278,31 @@ const BookManagement = () => {
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Xóa sách</h3>
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Ẩn sách</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Bạn có chắc muốn xóa sách "{selectedBook?.title}"?
+              Bạn có chắc muốn ẩn sách "{selectedBook?.title}"?
             </p>
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Lý do xóa <span className="text-red-500">*</span>
+                Lý do ẩn sách <span className="text-red-500">*</span>
               </label>
               <textarea
                 value={deleteReason}
                 onChange={(e) => setDeleteReason(e.target.value)}
-                placeholder="Nhập lý do xóa sách (ví dụ: Nội dung không phù hợp)"
+                placeholder="Nhập lý do ẩn sách (ví dụ: Nội dung không phù hợp)"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 rows="3"
               />
+            </div>
+            <div className="mb-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+              <div className="flex items-center">
+                <AlertCircle className="h-5 w-5 text-orange-600 mr-2" />
+                <p className="text-orange-800 font-medium">Thông báo</p>
+              </div>
+              <p className="text-orange-700 text-sm mt-1">
+                Sách sẽ được ẩn khỏi hệ thống (soft delete). Admin có thể khôi
+                phục sau này.
+              </p>
             </div>
             <div className="flex gap-3 justify-end">
               <button
@@ -320,9 +317,9 @@ const BookManagement = () => {
               </button>
               <button
                 onClick={handleDeleteBook}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
               >
-                Xóa sách
+                Ẩn sách
               </button>
             </div>
           </div>

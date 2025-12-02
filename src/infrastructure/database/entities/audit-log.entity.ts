@@ -2,9 +2,17 @@
 // src/infrastructure/database/entities/audit-log.entity.ts
 // Entity lưu nhật ký mọi hành động của admin
 // ============================================================
-import { Entity, Column, PrimaryColumn, CreateDateColumn, Index, ManyToOne, JoinColumn } from 'typeorm';
-import { Admin } from './admin.entity';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryColumn,
+} from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
+import { Admin } from './admin.entity';
 
 export enum AuditAction {
   LOCK_USER = 'LOCK_USER',
@@ -12,6 +20,7 @@ export enum AuditAction {
   DELETE_USER = 'DELETE_USER',
   UPDATE_ROLE = 'UPDATE_ROLE',
   REMOVE_BOOK = 'REMOVE_BOOK',
+  PERMANENT_DELETE_BOOK = 'PERMANENT_DELETE_BOOK',
   RESTORE_BOOK = 'RESTORE_BOOK',
   REMOVE_REVIEW = 'REMOVE_REVIEW',
   RESOLVE_REPORT = 'RESOLVE_REPORT',

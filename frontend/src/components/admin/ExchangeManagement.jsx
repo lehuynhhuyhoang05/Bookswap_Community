@@ -53,7 +53,8 @@ const ExchangeManagement = () => {
 
   const loadExchanges = async () => {
     try {
-      await fetchExchanges(filters);
+      const result = await fetchExchanges(filters);
+      console.log('[ExchangeManagement] Loaded exchanges:', result);
     } catch (err) {
       console.error('Failed to load exchanges:', err);
     }
@@ -206,9 +207,8 @@ const ExchangeManagement = () => {
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Tất cả trạng thái</option>
-            <option value="PENDING">Chờ xác nhận</option>
-            <option value="CONFIRMED">Đã xác nhận</option>
             <option value="COMPLETED">Hoàn thành</option>
+            <option value="PENDING">Chờ xác nhận</option>
             <option value="CANCELLED">Đã hủy</option>
           </select>
 
@@ -318,18 +318,28 @@ const ExchangeManagement = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {exchange.memberA_name}
+                        {exchange.memberA_name ||
+                          exchange.member_a?.user?.full_name ||
+                          exchange.member_a?.user?.email ||
+                          'N/A'}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {exchange.memberA_email}
+                        {exchange.memberA_email ||
+                          exchange.member_a?.user?.email ||
+                          ''}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {exchange.memberB_name}
+                        {exchange.memberB_name ||
+                          exchange.member_b?.user?.full_name ||
+                          exchange.member_b?.user?.email ||
+                          'N/A'}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {exchange.memberB_email}
+                        {exchange.memberB_email ||
+                          exchange.member_b?.user?.email ||
+                          ''}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -471,7 +481,9 @@ const ExchangeManagement = () => {
                   <div className="bg-gray-50 p-3 rounded">
                     <p className="text-sm text-gray-600">Member A</p>
                     <p className="font-medium">
-                      {currentExchange.memberA_name}
+                      {currentExchange.memberA_name ||
+                        currentExchange.member_a?.user?.full_name ||
+                        'Tên không xác định'}
                     </p>
                     <p className="text-sm text-gray-500">
                       {currentExchange.memberA_email}
@@ -480,7 +492,9 @@ const ExchangeManagement = () => {
                   <div className="bg-gray-50 p-3 rounded">
                     <p className="text-sm text-gray-600">Member B</p>
                     <p className="font-medium">
-                      {currentExchange.memberB_name}
+                      {currentExchange.memberB_name ||
+                        currentExchange.member_b?.user?.full_name ||
+                        'Tên không xác định'}
                     </p>
                     <p className="text-sm text-gray-500">
                       {currentExchange.memberB_email}

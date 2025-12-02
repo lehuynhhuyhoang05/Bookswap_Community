@@ -33,9 +33,11 @@ const cleanParams = (params) => {
 export const getAdminExchanges = async (params = {}) => {
   try {
     const cleanedParams = cleanParams(params);
+    console.log('[Admin Exchanges] Fetching with params:', cleanedParams);
     const response = await api.get('/admin/exchanges', {
       params: cleanedParams,
     });
+    console.log('[Admin Exchanges] API response:', response.data);
     return response.data;
   } catch (error) {
     console.error('Error fetching admin exchanges:', error);

@@ -11,11 +11,13 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../hooks/useAuth';
 
 const AdminPanel = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { user, logout } = useAuth();
 
   const menuItems = [
     {
@@ -58,11 +60,17 @@ const AdminPanel = () => {
     return location.pathname.startsWith(path);
   };
 
-  const handleLogout = () => {
-    // Implement logout logic
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    navigate('/auth/login');
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/auth/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Fallback: clear localStorage and navigate
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      navigate('/auth/login');
+    }
   };
 
   return (
@@ -141,11 +149,15 @@ const AdminPanel = () => {
 
             <div className="flex items-center gap-4">
               <div className="text-right">
-                <p className="text-sm font-medium text-gray-900">Admin User</p>
-                <p className="text-xs text-gray-500">admin@bookswap.com</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {user?.name || user?.full_name || 'Admin User'}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {user?.email || 'admin@bookswap.com'}
+                </p>
               </div>
               <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
-                A
+                {(user?.name || user?.full_name || 'A').charAt(0).toUpperCase()}
               </div>
             </div>
           </div>

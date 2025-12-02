@@ -9,6 +9,7 @@ const cleanParams = (params) => {
   const cleaned = {};
   Object.keys(params).forEach((key) => {
     const value = params[key];
+    // Chỉ thêm parameter nếu có giá trị thực sự
     if (value !== '' && value !== null && value !== undefined) {
       cleaned[key] = value;
     }
@@ -45,6 +46,7 @@ export const getAdminConversation = async (conversationId) => {
 export const getAdminMessages = async (params = {}) => {
   try {
     const cleanedParams = cleanParams(params);
+    console.log('[Admin Messages] Fetching with params:', cleanedParams);
     const response = await api.get('/admin/messages', {
       params: cleanedParams,
     });
@@ -77,8 +79,21 @@ export const deleteAdminMessage = async (messageId, data) => {
     console.error('[Admin Messages] Error deleting message:', error);
     console.error('[Admin Messages] Error response:', error.response?.data);
     console.error('[Admin Messages] Error status:', error.response?.status);
-    const errorMessage =
-      error.response?.data?.message || error.message || 'Lỗi khi xóa tin nhắn';
+
+    // Extract detailed error message from response
+    let errorMessage = 'Lỗi khi xóa tin nhắn';
+
+    if (error.response?.data?.message) {
+      errorMessage = error.response.data.message;
+    } else if (error.response?.status === 400) {
+      errorMessage =
+        'Yêu cầu không hợp lệ - tin nhắn có thể đã được xóa hoặc không tồn tại';
+    } else if (error.response?.status === 404) {
+      errorMessage = 'Message not found';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+
     throw new Error(errorMessage);
   }
 };

@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useAdminUsers } from '../../hooks/useAdmin';
-import UserManagementDebug from './UserManagementDebug';
 
 const UserManagement = () => {
   const {
@@ -29,13 +28,11 @@ const UserManagement = () => {
     page: 1,
     limit: 20,
     role: '',
-    status: '',
+    status: 'ACTIVE', // Mặc định chỉ hiện users đang hoạt động
     search: '',
     sortBy: 'created_at',
     sortOrder: 'DESC',
   });
-
-  const [hideDeleted, setHideDeleted] = useState(true); // Ẩn users đã xóa theo mặc định
 
   const [modalState, setModalState] = useState({
     type: null, // 'delete' | 'lock' | 'unlock' | 'role' | 'activities'
@@ -55,6 +52,7 @@ const UserManagement = () => {
     filters.limit,
     filters.role,
     filters.status,
+    filters.search,
     filters.sortBy,
     filters.sortOrder,
   ]);
@@ -202,23 +200,17 @@ const UserManagement = () => {
         fetchUserActivities(user.user_id, { page: 1, limit: 50 }),
         fetchUserActivityStats(user.user_id, { days: 30 }),
       ]);
-      setActivities(activitiesData);
+      setActivities(Array.isArray(activitiesData) ? activitiesData : []);
       setActivityStats(statsData);
     } catch (err) {
       alert('Lỗi khi tải hoạt động: ' + err.message);
+      setActivities([]);
+      setActivityStats(null);
     }
   };
 
   return (
     <div className="p-6 bg-white rounded-lg shadow">
-      {/* Debug Panel */}
-      <UserManagementDebug
-        users={users}
-        loading={loading}
-        error={error}
-        filters={filters}
-      />
-
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-800 mb-4">
           Quản lý người dùng
@@ -287,15 +279,6 @@ const UserManagement = () => {
             <option value="ASC">Tăng dần</option>
             <option value="DESC">Giảm dần</option>
           </select>
-          <label className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
-            <input
-              type="checkbox"
-              checked={hideDeleted}
-              onChange={(e) => setHideDeleted(e.target.checked)}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <span className="text-sm text-gray-700">Ẩn users đã xóa</span>
-          </label>
         </div>
       </div>
 
@@ -349,109 +332,101 @@ const UserManagement = () => {
                   </td>
                 </tr>
               ) : (
-                users
-                  .filter(
-                    (user) => !hideDeleted || user.account_status !== 'DELETED',
-                  )
-                  .map((user) => (
-                    <tr
-                      key={user.user_id}
-                      className={
-                        user.account_status === 'DELETED'
-                          ? 'bg-red-50 opacity-60'
-                          : ''
-                      }
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {user.full_name}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">
-                          {user.email}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            user.role === 'ADMIN'
-                              ? 'bg-purple-100 text-purple-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}
-                        >
-                          {user.role}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            user.account_status === 'ACTIVE'
-                              ? 'bg-green-100 text-green-800'
-                              : user.account_status === 'DELETED'
-                                ? 'bg-gray-100 text-gray-800 line-through'
-                                : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {user.account_status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(user.created_at).toLocaleDateString('vi-VN')}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex gap-2 justify-end">
-                          {user.account_status !== 'DELETED' && (
-                            <>
+                users.map((user) => (
+                  <tr
+                    key={user.user_id}
+                    className={
+                      user.account_status === 'LOCKED' ? 'bg-yellow-50' : ''
+                    }
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">
+                        {user.full_name}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-500">{user.email}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          user.role === 'ADMIN'
+                            ? 'bg-purple-100 text-purple-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}
+                      >
+                        {user.role}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          user.account_status === 'ACTIVE'
+                            ? 'bg-green-100 text-green-800'
+                            : user.account_status === 'DELETED'
+                              ? 'bg-gray-100 text-gray-800 line-through'
+                              : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {user.account_status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {new Date(user.created_at).toLocaleDateString('vi-VN')}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex gap-2 justify-end">
+                        {user.account_status !== 'DELETED' && (
+                          <>
+                            <button
+                              onClick={() => handleViewActivities(user)}
+                              className="text-blue-600 hover:text-blue-900"
+                              title="Xem hoạt động"
+                            >
+                              <Activity className="h-4 w-4" />
+                            </button>
+                            {user.account_status === 'ACTIVE' ? (
                               <button
-                                onClick={() => handleViewActivities(user)}
-                                className="text-blue-600 hover:text-blue-900"
-                                title="Xem hoạt động"
+                                onClick={() => openModal('lock', user)}
+                                className="text-orange-600 hover:text-orange-900"
+                                title="Khóa tài khoản"
                               >
-                                <Activity className="h-4 w-4" />
+                                <Lock className="h-4 w-4" />
                               </button>
-                              {user.account_status === 'ACTIVE' ? (
-                                <button
-                                  onClick={() => openModal('lock', user)}
-                                  className="text-orange-600 hover:text-orange-900"
-                                  title="Khóa tài khoản"
-                                >
-                                  <Lock className="h-4 w-4" />
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => openModal('unlock', user)}
-                                  className="text-green-600 hover:text-green-900"
-                                  title="Mở khóa"
-                                >
-                                  <Unlock className="h-4 w-4" />
-                                </button>
-                              )}
+                            ) : (
                               <button
-                                onClick={() => openModal('role', user)}
-                                className="text-purple-600 hover:text-purple-900"
-                                title="Thay đổi quyền"
+                                onClick={() => openModal('unlock', user)}
+                                className="text-green-600 hover:text-green-900"
+                                title="Mở khóa"
                               >
-                                <Shield className="h-4 w-4" />
+                                <Unlock className="h-4 w-4" />
                               </button>
-                              <button
-                                onClick={() => openModal('delete', user)}
-                                className="text-red-600 hover:text-red-900"
-                                title="Xóa user"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </>
-                          )}
-                          {user.account_status === 'DELETED' && (
-                            <span className="text-xs text-gray-500 italic">
-                              Đã xóa
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                            )}
+                            <button
+                              onClick={() => openModal('role', user)}
+                              className="text-purple-600 hover:text-purple-900"
+                              title="Thay đổi quyền"
+                            >
+                              <Shield className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => openModal('delete', user)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Xóa user"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                        {user.account_status === 'DELETED' && (
+                          <span className="text-xs text-gray-500 italic">
+                            Đã xóa
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -601,26 +576,32 @@ const UserManagement = () => {
             )}
 
             <div className="space-y-2">
-              {activities.map((activity, index) => (
-                <div
-                  key={index}
-                  className="border border-gray-200 rounded-lg p-3"
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <span className="font-medium text-gray-900">
-                        {activity.action}
+              {Array.isArray(activities) && activities.length > 0 ? (
+                activities.map((activity, index) => (
+                  <div
+                    key={index}
+                    className="border border-gray-200 rounded-lg p-3"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="font-medium text-gray-900">
+                          {activity.action}
+                        </span>
+                        <p className="text-sm text-gray-600 mt-1">
+                          {activity.details}
+                        </p>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {new Date(activity.created_at).toLocaleString('vi-VN')}
                       </span>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {activity.details}
-                      </p>
                     </div>
-                    <span className="text-xs text-gray-500">
-                      {new Date(activity.created_at).toLocaleString('vi-VN')}
-                    </span>
                   </div>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-gray-500 text-center py-4">
+                  Không có hoạt động nào được tìm thấy
+                </p>
+              )}
             </div>
 
             <div className="mt-4 flex justify-end">

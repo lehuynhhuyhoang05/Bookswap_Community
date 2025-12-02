@@ -308,7 +308,7 @@ const MessagesTab = () => {
     limit: 20,
     conversationId: '',
     senderId: '',
-    deletedOnly: false,
+    deletedOnly: false, // Mặc định chỉ hiện messages chưa xóa
     search: '',
   });
 
@@ -319,10 +319,11 @@ const MessagesTab = () => {
 
   useEffect(() => {
     loadMessages();
-  }, [filters.page, filters.limit, filters.deletedOnly]);
+  }, [filters.page, filters.limit, filters.deletedOnly, filters.search]);
 
   const loadMessages = async () => {
     try {
+      console.log('[MessagesTab] Loading messages with filters:', filters);
       await fetchMessages(filters);
     } catch (err) {
       console.error('Failed to load messages:', err);
@@ -356,7 +357,28 @@ const MessagesTab = () => {
       alert('Xóa tin nhắn thành công!');
     } catch (err) {
       console.error('[MessagesTab] Delete failed:', err);
-      alert('Lỗi khi xóa tin nhắn: ' + err.message);
+
+      // Handle specific error cases
+      let errorMessage = 'Lỗi khi xóa tin nhắn';
+      if (err.message?.includes('Message is already deleted')) {
+        errorMessage = 'Tin nhắn này đã được xóa trước đó';
+        // Close modal and refresh data to show updated status
+        setShowDeleteModal(false);
+        setDeleteReason('');
+        setSelectedMessage(null);
+        await loadMessages();
+      } else if (err.message?.includes('Message not found')) {
+        errorMessage = 'Không tìm thấy tin nhắn này';
+        // Close modal and refresh data
+        setShowDeleteModal(false);
+        setDeleteReason('');
+        setSelectedMessage(null);
+        await loadMessages();
+      } else {
+        errorMessage = err.message || 'Có lỗi xảy ra khi xóa tin nhắn';
+      }
+
+      alert(errorMessage);
     }
   };
 
@@ -392,7 +414,7 @@ const MessagesTab = () => {
           <label className="flex items-center cursor-pointer">
             <input
               type="checkbox"
-              checked={filters.deletedOnly}
+              checked={filters.deletedOnly === true}
               onChange={(e) =>
                 setFilters({
                   ...filters,
@@ -402,7 +424,7 @@ const MessagesTab = () => {
               }
               className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
             />
-            <span className="text-sm text-gray-700">Chỉ tin nhắn đã xóa</span>
+            <span className="text-sm text-gray-700">Xem tin nhắn đã xóa</span>
           </label>
         </div>
       </div>
@@ -428,56 +450,69 @@ const MessagesTab = () => {
               Không tìm thấy tin nhắn nào
             </div>
           ) : (
-            messages.map((message) => (
-              <div
-                key={message.message_id}
-                className={`border rounded-lg p-4 ${message.deleted ? 'bg-red-50 border-red-200' : 'border-gray-200'}`}
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-sm font-medium text-gray-900">
-                        {message.sender_name || 'Unknown'}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {new Date(message.created_at).toLocaleString('vi-VN')}
-                      </span>
-                      {message.deleted && (
-                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                          Đã xóa
+            messages
+              .filter((message) => {
+                // Nếu deletedOnly = true, chỉ hiển thị messages đã xóa
+                if (filters.deletedOnly === true) {
+                  return message.deleted;
+                }
+                // Nếu deletedOnly = false, chỉ hiển thị messages chưa xóa
+                if (filters.deletedOnly === false) {
+                  return !message.deleted;
+                }
+                // Nếu không có filter, hiển thị tất cả
+                return true;
+              })
+              .map((message) => (
+                <div
+                  key={message.message_id}
+                  className={`border rounded-lg p-4 ${message.deleted ? 'bg-red-50 border-red-200' : 'border-gray-200'}`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm font-medium text-gray-900">
+                          {message.sender_name || 'Unknown'}
                         </span>
+                        <span className="text-xs text-gray-500">
+                          {new Date(message.created_at).toLocaleString('vi-VN')}
+                        </span>
+                        {message.deleted && (
+                          <span className="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                            Đã xóa
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-gray-700 mb-2">{message.content}</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() =>
+                            handleViewConversation(message.conversation_id)
+                          }
+                          className="text-xs text-blue-600 hover:text-blue-800 inline-flex items-center"
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          Xem conversation
+                        </button>
+                      </div>
+                    </div>
+                    <div className="ml-4">
+                      {!message.deleted && (
+                        <button
+                          onClick={() => {
+                            setSelectedMessage(message);
+                            setShowDeleteModal(true);
+                          }}
+                          className="text-red-600 hover:text-red-900 inline-flex items-center"
+                        >
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          Xóa
+                        </button>
                       )}
                     </div>
-                    <p className="text-gray-700 mb-2">{message.content}</p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() =>
-                          handleViewConversation(message.conversation_id)
-                        }
-                        className="text-xs text-blue-600 hover:text-blue-800 inline-flex items-center"
-                      >
-                        <Eye className="h-3 w-3 mr-1" />
-                        Xem conversation
-                      </button>
-                    </div>
-                  </div>
-                  <div className="ml-4">
-                    {!message.deleted && (
-                      <button
-                        onClick={() => {
-                          setSelectedMessage(message);
-                          setShowDeleteModal(true);
-                        }}
-                        className="text-red-600 hover:text-red-900 inline-flex items-center"
-                      >
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        Xóa
-                      </button>
-                    )}
                   </div>
                 </div>
-              </div>
-            ))
+              ))
           )}
         </div>
       )}

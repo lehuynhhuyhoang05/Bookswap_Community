@@ -9,7 +9,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThan, Not, Repository } from 'typeorm';
+import { LessThan, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { ActivityLogService } from '../../../common/services/activity-log.service';
 import { Admin } from '../../../infrastructure/database/entities/admin.entity';
 import {
@@ -455,6 +455,49 @@ export class AdminService {
   }
 
   /**
+   * Xóa vĩnh viễn book (hard delete từ database)
+   */
+  async permanentDeleteBook(
+    bookId: string,
+    dto: RemoveBookDto,
+    adminId: string,
+    adminEmail: string,
+  ) {
+    const book = await this.bookRepo.findOne({ where: { book_id: bookId } });
+    if (!book) {
+      throw new NotFoundException('Book not found');
+    }
+
+    // Lưu thông tin book để audit log
+    const bookInfo = {
+      title: book.title,
+      author: book.author,
+      status: book.status,
+    };
+
+    // Hard delete - xóa hẳn khỏi database
+    await this.bookRepo.remove(book);
+
+    // Log audit
+    await this.createAuditLog({
+      admin_id: adminId,
+      admin_email: adminEmail,
+      action: 'PERMANENT_DELETE_BOOK' as AuditAction,
+      entity_type: 'BOOK',
+      entity_id: bookId,
+      old_value: bookInfo,
+      new_value: { deleted: true },
+      reason: dto.reason,
+    });
+
+    this.logger.log(
+      `Admin ${adminEmail} permanently deleted book ${bookInfo.title}`,
+    );
+
+    return { success: true, message: 'Book permanently deleted' };
+  }
+
+  /**
    * Lấy danh sách reviews
    */
   async getReviews(dto: QueryReviewsDto) {
@@ -615,6 +658,8 @@ export class AdminService {
       throw new NotFoundException('Admin not found');
     }
 
+    const oldStatus = report.status;
+
     report.status = ReportStatus.RESOLVED;
     report.resolution = dto.resolution;
     // DB schema không có action_taken column
@@ -623,14 +668,14 @@ export class AdminService {
 
     await this.reportRepo.save(report);
 
-    // Log audit
+    // Log audit with correct old status
     await this.createAuditLog({
       admin_id: admin.admin_id,
       admin_email: adminEmail,
       action: AuditAction.RESOLVE_REPORT,
       entity_type: 'REPORT',
       entity_id: reportId,
-      old_value: { status: ReportStatus.PENDING },
+      old_value: { status: oldStatus },
       new_value: { status: ReportStatus.RESOLVED, resolution: dto.resolution },
       reason: dto.resolution, // DB không có action_taken, dùng resolution làm reason
     });
@@ -660,9 +705,17 @@ export class AdminService {
     const admin = await this.adminRepo.findOne({
       where: { user_id: userId },
     });
+    console.log('[DEBUG] AdminService.dismissReport - Looking up admin:', {
+      userId,
+      adminFound: !!admin,
+      adminId: admin?.admin_id,
+      adminLevel: admin?.admin_level,
+    });
     if (!admin) {
       throw new NotFoundException('Admin not found');
     }
+
+    const oldStatus = report.status;
 
     report.status = ReportStatus.DISMISSED;
     report.resolution = dto.reason;
@@ -671,14 +724,14 @@ export class AdminService {
 
     await this.reportRepo.save(report);
 
-    // Log audit
+    // Log audit with correct old status
     await this.createAuditLog({
       admin_id: admin.admin_id,
       admin_email: adminEmail,
       action: AuditAction.DISMISS_REPORT,
       entity_type: 'REPORT',
       entity_id: reportId,
-      old_value: { status: report.status },
+      old_value: { status: oldStatus },
       new_value: { status: ReportStatus.DISMISSED },
       reason: dto.reason,
     });
@@ -706,6 +759,9 @@ export class AdminService {
     });
     const lockedUsers = await this.userRepo.count({
       where: { account_status: AccountStatus.LOCKED },
+    });
+    const deletedUsers = await this.userRepo.count({
+      where: { account_status: AccountStatus.DELETED },
     });
     const newUsersToday = await this.userRepo.count({
       where: { created_at: Not(LessThan(today)) },
@@ -762,6 +818,7 @@ export class AdminService {
         total: totalUsers,
         active: activeUsers,
         locked: lockedUsers,
+        deleted: deletedUsers,
         new_today: newUsersToday,
       },
       books: {
@@ -836,8 +893,23 @@ export class AdminService {
 
     const [items, total] = await qb.getManyAndCount();
 
+    // Transform data để thêm tên members
+    const transformedItems = items.map((item) => ({
+      ...item,
+      memberA_name:
+        item.member_a?.user?.full_name ||
+        item.member_a?.user?.email ||
+        'Unknown',
+      memberA_email: item.member_a?.user?.email || '',
+      memberB_name:
+        item.member_b?.user?.full_name ||
+        item.member_b?.user?.email ||
+        'Unknown',
+      memberB_email: item.member_b?.user?.email || '',
+    }));
+
     return {
-      items,
+      items: transformedItems,
       total,
       page,
       limit,
@@ -1000,6 +1072,8 @@ export class AdminService {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
 
+    console.log('[DEBUG] getMessages called with dto:', dto);
+
     const qb = this.messageRepo
       .createQueryBuilder('m')
       .leftJoinAndSelect('m.sender', 'sender')
@@ -1025,12 +1099,12 @@ export class AdminService {
     }
 
     // Filter theo deleted status
-    if (dto.deletedOnly) {
+    if (dto.deletedOnly === true) {
       qb.andWhere('m.deleted_at IS NOT NULL');
-    } else {
-      // Mặc định chỉ show messages chưa bị xóa
+    } else if (dto.deletedOnly === false) {
       qb.andWhere('m.deleted_at IS NULL');
     }
+    // Nếu deletedOnly không được chỉ định, hiển thị tất cả messages (cả deleted và chưa deleted)
 
     // Search trong content
     if (dto.search) {
@@ -1041,8 +1115,16 @@ export class AdminService {
 
     const [items, total] = await qb.getManyAndCount();
 
+    // Transform data để thêm thông tin về deleted status và sender name
+    const transformedItems = items.map((item) => ({
+      ...item,
+      deleted: !!item.deleted_at,
+      sender_name:
+        item.sender?.user?.full_name || item.sender?.user?.email || 'Unknown',
+    }));
+
     return {
-      items,
+      items: transformedItems,
       total,
       page,
       limit,
@@ -1195,6 +1277,223 @@ export class AdminService {
         full_name: user.full_name,
       },
       ...stats,
+    };
+  }
+
+  // ============================================================
+  // EXCHANGE MANAGEMENT
+  // ============================================================
+
+  /**
+   * Lấy danh sách exchanges với filter và pagination
+   */
+  async getExchanges(dto: QueryExchangesDto) {
+    const {
+      page = 1,
+      limit = 20,
+      status,
+      memberAId,
+      memberBId,
+      startDate,
+      endDate,
+      sortBy = 'created_at',
+      sortOrder = 'DESC',
+    } = dto;
+
+    const query = this.exchangeRepo
+      .createQueryBuilder('exchange')
+      .leftJoinAndSelect('exchange.member_a', 'memberA')
+      .leftJoinAndSelect('memberA.user', 'userA')
+      .leftJoinAndSelect('exchange.member_b', 'memberB')
+      .leftJoinAndSelect('memberB.user', 'userB')
+      .leftJoinAndSelect('exchange.request', 'request')
+      .leftJoinAndSelect('exchange.exchange_books', 'exchange_books')
+      .leftJoinAndSelect('exchange_books.book', 'book');
+
+    // Filters
+    if (status) {
+      query.andWhere('exchange.status = :status', { status });
+    }
+
+    if (memberAId) {
+      query.andWhere('exchange.member_a_id = :memberAId', { memberAId });
+    }
+
+    if (memberBId) {
+      query.andWhere('exchange.member_b_id = :memberBId', { memberBId });
+    }
+
+    if (startDate) {
+      query.andWhere('exchange.created_at >= :startDate', { startDate });
+    }
+
+    if (endDate) {
+      query.andWhere('exchange.created_at <= :endDate', { endDate });
+    }
+
+    // Sorting
+    const validSortFields = [
+      'created_at',
+      'updated_at',
+      'status',
+      'completed_at',
+    ];
+    const sortField = validSortFields.includes(sortBy) ? sortBy : 'created_at';
+    const order = sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+    query.orderBy(`exchange.${sortField}`, order);
+
+    // Pagination
+    const offset = (page - 1) * limit;
+    query.skip(offset).take(limit);
+
+    const [exchanges, total] = await query.getManyAndCount();
+
+    // Transform data to include member names and emails
+    const transformedExchanges = exchanges.map((exchange) => ({
+      ...exchange,
+      memberA_name:
+        exchange.member_a?.user?.full_name || exchange.member_a?.user?.email,
+      memberA_email: exchange.member_a?.user?.email,
+      memberB_name:
+        exchange.member_b?.user?.full_name || exchange.member_b?.user?.email,
+      memberB_email: exchange.member_b?.user?.email,
+    }));
+
+    return {
+      items: transformedExchanges,
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Lấy chi tiết 1 exchange
+   */
+  async getExchangeDetail(exchangeId: string) {
+    const exchange = await this.exchangeRepo
+      .createQueryBuilder('exchange')
+      .leftJoinAndSelect('exchange.member_a', 'memberA')
+      .leftJoinAndSelect('memberA.user', 'userA')
+      .leftJoinAndSelect('exchange.member_b', 'memberB')
+      .leftJoinAndSelect('memberB.user', 'userB')
+      .leftJoinAndSelect('exchange.request', 'request')
+      .leftJoinAndSelect('exchange.exchange_books', 'exchange_books')
+      .leftJoinAndSelect('exchange_books.book', 'book')
+      .leftJoinAndSelect('exchange.reviews', 'reviews')
+      .where('exchange.exchange_id = :exchangeId', { exchangeId })
+      .getOne();
+
+    if (!exchange) {
+      throw new NotFoundException('Exchange not found');
+    }
+
+    // Transform data to include member names and emails
+    return {
+      ...exchange,
+      memberA_name:
+        exchange.member_a?.user?.full_name || exchange.member_a?.user?.email,
+      memberA_email: exchange.member_a?.user?.email,
+      memberB_name:
+        exchange.member_b?.user?.full_name || exchange.member_b?.user?.email,
+      memberB_email: exchange.member_b?.user?.email,
+    };
+  }
+
+  /**
+   * Hủy exchange bởi admin
+   */
+  async cancelExchange(
+    exchangeId: string,
+    dto: CancelExchangeDto,
+    adminId: string,
+  ) {
+    const exchange = await this.exchangeRepo.findOne({
+      where: { exchange_id: exchangeId },
+      relations: ['member_a', 'member_b', 'member_a.user', 'member_b.user'],
+    });
+
+    if (!exchange) {
+      throw new NotFoundException('Exchange not found');
+    }
+
+    if (exchange.status === ExchangeStatus.CANCELLED) {
+      throw new BadRequestException('Exchange already cancelled');
+    }
+
+    if (exchange.status === ExchangeStatus.COMPLETED) {
+      throw new BadRequestException('Cannot cancel completed exchange');
+    }
+
+    // Update exchange
+    exchange.status = ExchangeStatus.CANCELLED;
+    exchange.cancellation_reason = 'ADMIN_CANCELLED';
+    exchange.cancellation_details = dto.reason;
+    exchange.updated_at = new Date();
+
+    await this.exchangeRepo.save(exchange);
+
+    // Log audit
+    await this.createAuditLog({
+      admin_id: adminId,
+      admin_email: 'N/A',
+      action: AuditAction.DELETE,
+      entity_type: 'exchange',
+      entity_id: exchangeId,
+      old_value: 'status: ' + ExchangeStatus.PENDING,
+      new_value:
+        'status: ' + ExchangeStatus.CANCELLED + ', reason: ' + dto.reason,
+    });
+
+    return {
+      message: 'Exchange cancelled successfully',
+      exchange,
+    };
+  }
+
+  /**
+   * Thống kê tổng quan về exchanges
+   */
+  async getExchangeStatistics() {
+    // Count by status
+    const statusCounts = await this.exchangeRepo
+      .createQueryBuilder('exchange')
+      .select('exchange.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('exchange.status')
+      .getRawMany();
+
+    // Total exchanges
+    const totalExchanges = await this.exchangeRepo.count();
+
+    // Completed exchanges
+    const completedExchanges = await this.exchangeRepo.count({
+      where: { status: ExchangeStatus.COMPLETED },
+    });
+
+    // Success rate
+    const successRate =
+      totalExchanges > 0 ? (completedExchanges / totalExchanges) * 100 : 0;
+
+    // Recent exchanges (last 7 days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const recentExchanges = await this.exchangeRepo.count({
+      where: {
+        created_at: MoreThanOrEqual(sevenDaysAgo),
+      },
+    });
+    return {
+      totalExchanges,
+      completedExchanges,
+      successRate: Number(successRate.toFixed(2)),
+      recentExchanges,
+      statusBreakdown: statusCounts.reduce((acc, curr) => {
+        acc[curr.status] = Number(curr.count);
+        return acc;
+      }, {}),
     };
   }
 

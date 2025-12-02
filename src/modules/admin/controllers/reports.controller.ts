@@ -40,20 +40,27 @@ export class ReportsController {
 
   @Get()
   @ApiOperation({
-    summary: '🚨 Lấy danh sách báo cáo vi phạm',
+    summary: 'Lấy danh sách báo cáo vi phạm',
     description:
-      'Xem tất cả reports trong hệ thống. Filter theo status (PENDING/RESOLVED/DISMISSED), priority (HIGH/MEDIUM/LOW), entity type. Hỗ trợ phân trang.',
+      'Xem tất cả báo cáo vi phạm trong hệ thống. Hỗ trợ lọc theo trạng thái, độ ưu tiên, loại vi phạm, người báo cáo, và phân trang.',
   })
-  @ApiResponse({ status: 200, description: 'Danh sách reports' })
-  async getReports(@Query() dto: QueryReportsDto) {
+  @ApiResponse({ status: 200, description: 'Trả về danh sách reports' })
+  async getReports(@Query() dto: QueryReportsDto, @CurrentAdmin() admin: any) {
+    console.log('[DEBUG] ReportsController.getReports - admin from JWT:', {
+      sub: admin.sub,
+      userId: admin.userId,
+      email: admin.email,
+      role: admin.role,
+      memberId: admin.memberId,
+    });
     return this.adminService.getReports(dto);
   }
 
   @Get(':reportId')
   @ApiOperation({
-    summary: '🔍 Xem chi tiết báo cáo',
+    summary: 'Xem chi tiết 1 báo cáo',
     description:
-      'Xem thông tin đầy đủ của 1 report: reporter info, target entity, reason, evidence, status history.',
+      'Xem thông tin đầy đủ của 1 report, bao gồm: người báo cáo, đối tượng bị báo cáo, lý do, bằng chứng, và lịch sử trạng thái.',
   })
   @ApiResponse({ status: 200, description: 'Chi tiết report' })
   @ApiResponse({ status: 404, description: 'Report không tồn tại' })
@@ -64,9 +71,9 @@ export class ReportsController {
   @Post(':reportId/resolve')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: '✅ Xử lý báo cáo (đã giải quyết)',
+    summary: 'Xử lý báo cáo (đã giải quyết)',
     description:
-      'Resolve report - xác nhận vi phạm và đã xử lý (khóa user, xóa content...). Cần có action_taken trong body.',
+      'Xác nhận report vi phạm và đã xử lý (ví dụ: khóa user, xóa nội dung...). Cần cung cấp hành động đã thực hiện.',
   })
   @ApiResponse({ status: 200, description: 'Resolve report thành công' })
   @ApiResponse({ status: 404, description: 'Report không tồn tại' })
@@ -75,10 +82,16 @@ export class ReportsController {
     @Body() dto: ResolveReportDto,
     @CurrentAdmin() admin: any,
   ) {
-    console.log('[ReportsController] Resolve Report Called:', {
+    console.log('[DEBUG] ReportsController.resolveReport Called:', {
       reportId,
       dto,
-      admin: admin.email,
+      admin: {
+        sub: admin.sub,
+        userId: admin.userId,
+        email: admin.email,
+        role: admin.role,
+        memberId: admin.memberId,
+      },
     });
     return this.adminService.resolveReport(
       reportId,
@@ -91,21 +104,27 @@ export class ReportsController {
   @Post(':reportId/dismiss')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: '❌ Bác bỏ báo cáo (không vi phạm)',
+    summary: 'Bác bỏ báo cáo (không vi phạm)',
     description:
-      'Dismiss report - xác nhận không có vi phạm hoặc report sai. Cần có lý do trong body.',
+      'Xác nhận report không vi phạm hoặc báo cáo sai. Cần cung cấp lý do.',
   })
-  @ApiResponse({ status: 200, description: 'Dismiss report thành công' })
+  @ApiResponse({ status: 200, description: 'Bác bỏ report thành công' })
   @ApiResponse({ status: 404, description: 'Report không tồn tại' })
   async dismissReport(
     @Param('reportId') reportId: string,
     @Body() dto: DismissReportDto,
     @CurrentAdmin() admin: any,
   ) {
-    console.log('[ReportsController] Dismiss Report Called:', {
+    console.log('[DEBUG] ReportsController.dismissReport Called:', {
       reportId,
       dto,
-      admin: admin.email,
+      admin: {
+        sub: admin.sub,
+        userId: admin.userId,
+        email: admin.email,
+        role: admin.role,
+        memberId: admin.memberId,
+      },
     });
     return this.adminService.dismissReport(
       reportId,

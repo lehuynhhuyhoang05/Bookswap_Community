@@ -64,7 +64,36 @@ export const deleteAdminBook = async (bookId, data) => {
   }
 };
 
+/**
+ * Permanently delete book (hard delete)
+ */
+export const permanentDeleteAdminBook = async (bookId, data) => {
+  try {
+    console.log(
+      '[Admin Books] Permanently deleting book:',
+      bookId,
+      'with data:',
+      data,
+    );
+    const response = await api.delete(`/admin/books/${bookId}/permanent`, {
+      data,
+    });
+    console.log('[Admin Books] Permanent delete response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('[Admin Books] Error permanently deleting book:', error);
+    console.error('[Admin Books] Error response:', error.response?.data);
+    console.error('[Admin Books] Error status:', error.response?.status);
+    const errorMessage =
+      error.response?.data?.message ||
+      error.message ||
+      'Lỗi khi xóa vĩnh viễn sách';
+    throw new Error(errorMessage);
+  }
+};
+
 export default {
   getAdminBooks,
   deleteAdminBook,
+  permanentDeleteAdminBook,
 };
