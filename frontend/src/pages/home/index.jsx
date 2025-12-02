@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Layout from '../../components/layout/Layout';
+import { UpcomingMeetingsWidget } from '../../components/home';
+import { useAuth } from '../../hooks/useAuth';
 import { useBooks } from '../../hooks/useBooks';
 
 const Home = () => {
+  const { user } = useAuth();
   const { getBooks, getLibraryStats, loading, error } = useBooks();
   const [recentBooks, setRecentBooks] = useState([]);
   const [stats, setStats] = useState({
@@ -150,6 +153,15 @@ const Home = () => {
           </div>
         </div>
       </section>
+
+      {/* Upcoming Meetings Widget - Only for logged in users */}
+      {user && (
+        <section className="py-8 bg-gray-50">
+          <div className="container mx-auto px-4">
+            <UpcomingMeetingsWidget currentUserId={user?.member?.member_id || user?.user_id} />
+          </div>
+        </section>
+      )}
 
       {/* Features Section */}
       <section className="py-16 bg-white">

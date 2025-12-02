@@ -171,6 +171,7 @@ const HeaderMember = () => {
     { name: 'Hồ sơ', href: '/profile' },
     { name: 'Thư viện của tôi', href: '/books/my-library' },
     { name: 'Sách muốn có', href: '/library/wanted-books' },
+    { name: 'Lịch hẹn', href: '/exchange/meetings' },
     { name: 'Cài đặt', href: '/settings' },
   ];
 

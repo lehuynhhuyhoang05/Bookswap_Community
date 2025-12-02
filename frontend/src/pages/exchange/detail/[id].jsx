@@ -2,11 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Layout from '../../../components/layout/Layout';
 import { Card, Button, LoadingSpinner, Badge, Avatar, Input, Textarea } from '../../../components/ui';
+import ReviewModal from '../../../components/review/ReviewModal';
+import { MeetingTimeline, MeetingScheduler, MeetingCard } from '../../../components/exchanges';
 import { useExchanges } from '../../../hooks/useExchanges';
 import { useAuth } from '../../../hooks/useAuth';
+import { useMeeting } from '../../../hooks/useMeeting';
+import { reviewsService } from '../../../services/api/reviews';
 import { 
   ArrowLeft, Users, Book, Calendar, MapPin, MessageSquare, 
-  Check, X, Edit, AlertCircle, CheckCircle, Clock 
+  Check, X, Edit, AlertCircle, CheckCircle, Clock, Star, Play 
 } from 'lucide-react';
 
 /**
@@ -21,21 +25,21 @@ const ExchangeDetailPage = () => {
   const { 
     getExchangeDetail, 
     confirmExchange, 
-    updateMeetingInfo, 
     cancelExchange 
   } = useExchanges();
+  const {
+    scheduleMeeting,
+    confirmMeeting,
+    startExchange,
+    loading: meetingLoading
+  } = useMeeting();
 
   const [exchange, setExchange] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Meeting form state
-  const [editingMeeting, setEditingMeeting] = useState(false);
-  const [meetingForm, setMeetingForm] = useState({
-    meeting_location: '',
-    meeting_time: '',
-    meeting_notes: ''
-  });
+  // Meeting scheduler state
+  const [showSchedulerModal, setShowSchedulerModal] = useState(false);
 
   // Cancel modal state
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -44,22 +48,29 @@ const ExchangeDetailPage = () => {
     cancellation_details: ''
   });
 
+  // Review modal state
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [existingReview, setExistingReview] = useState(null);
+  const [reviewTarget, setReviewTarget] = useState(null); // member to review
+
   useEffect(() => {
     loadExchangeDetail();
   }, [id]);
+
+  // Load existing review if exchange is completed
+  useEffect(() => {
+    if (exchange?.status === 'COMPLETED' && exchange?.exchange_id) {
+      checkExistingReview();
+    }
+  }, [exchange?.status, exchange?.exchange_id]);
 
   const loadExchangeDetail = async () => {
     setLoading(true);
     try {
       const data = await getExchangeDetail(id);
+      console.log('[ExchangeDetail] Loaded data:', data);
       setExchange(data);
-      
-      // Initialize meeting form with existing data
-      setMeetingForm({
-        meeting_location: data.meeting_location || '',
-        meeting_time: data.meeting_time ? new Date(data.meeting_time).toISOString().slice(0, 16) : '',
-        meeting_notes: data.meeting_notes || ''
-      });
     } catch (error) {
       console.error('[ExchangeDetail] Failed to load:', error);
       alert('Không thể tải chi tiết giao dịch');
@@ -69,24 +80,21 @@ const ExchangeDetailPage = () => {
     }
   };
 
-  const handleUpdateMeeting = async () => {
-    setActionLoading(true);
+  // Helper: Get current member ID from various sources
+  const getCurrentMemberId = () => {
+    // Try to get from JWT token first
     try {
-      const data = {
-        meeting_location: meetingForm.meeting_location,
-        meeting_time: meetingForm.meeting_time || null,
-        meeting_notes: meetingForm.meeting_notes
-      };
-      
-      await updateMeetingInfo(id, data);
-      alert('Đã cập nhật lịch hẹn!');
-      setEditingMeeting(false);
-      loadExchangeDetail();
+      const token = localStorage.getItem('token');
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.memberId) return payload.memberId;
+      }
     } catch (error) {
-      alert('Cập nhật thất bại: ' + (error.message || 'Vui lòng thử lại'));
-    } finally {
-      setActionLoading(false);
+      console.error('Failed to decode token:', error);
     }
+    
+    // Fallback to user context
+    return user?.member?.member_id || user?.member_id || null;
   };
 
   const handleConfirm = async () => {
@@ -120,6 +128,104 @@ const ExchangeDetailPage = () => {
       alert('Hủy thất bại: ' + (error.message || 'Vui lòng thử lại'));
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // Meeting handlers
+  const handleScheduleMeeting = async (meetingData) => {
+    try {
+      await scheduleMeeting(id, meetingData);
+      alert('✅ Đã đặt lịch hẹn thành công! Chờ người kia xác nhận.');
+      setShowSchedulerModal(false);
+      loadExchangeDetail();
+    } catch (error) {
+      alert('❌ Đặt lịch thất bại: ' + (error.message || 'Vui lòng thử lại'));
+    }
+  };
+
+  const handleConfirmMeeting = async () => {
+    try {
+      await confirmMeeting(id);
+      alert('✅ Đã xác nhận lịch hẹn!');
+      loadExchangeDetail();
+    } catch (error) {
+      alert('❌ Xác nhận thất bại: ' + (error.message || 'Vui lòng thử lại'));
+    }
+  };
+
+  const handleStartExchange = async () => {
+    if (!confirm('Bắt đầu trao đổi sách ngay bây giờ?')) return;
+    
+    try {
+      await startExchange(id);
+      alert('✅ Đã bắt đầu trao đổi!');
+      loadExchangeDetail();
+    } catch (error) {
+      alert('❌ Bắt đầu thất bại: ' + (error.message || 'Vui lòng thử lại'));
+    }
+  };
+
+  const checkExistingReview = async () => {
+    try {
+      const response = await reviewsService.getExchangeReviews(exchange.exchange_id);
+      // Check if current user already reviewed
+      const myReview = response.data?.find(r => r.reviewer_id === user.user_id);
+      if (myReview) {
+        setExistingReview(myReview);
+      }
+    } catch (error) {
+      console.error('Failed to load existing review:', error);
+    }
+  };
+
+  const handleOpenReviewModal = () => {
+    // Determine who to review - handle multiple possible data structures
+    let otherMember;
+    
+    // Try to determine current user's role in the exchange
+    const currentUserId = user.user_id;
+    const currentMemberId = user?.member?.member_id || currentUserId;
+    
+    // Check various possible structures
+    if (exchange.requester_id && exchange.owner_id) {
+      // New structure with requester/owner
+      otherMember = exchange.requester_id === currentMemberId
+        ? { 
+            member_id: exchange.owner_id, 
+            full_name: exchange.owner_full_name || exchange.owner_name || 'Thành viên khác',
+            username: exchange.owner_username 
+          }
+        : { 
+            member_id: exchange.requester_id, 
+            full_name: exchange.requester_full_name || exchange.requester_name || 'Thành viên khác',
+            username: exchange.requester_username 
+          };
+    } else if (exchange.member_a && exchange.member_b) {
+      // Old structure with member_a/member_b
+      const isMemberA = currentMemberId === exchange.member_a?.member_id;
+      otherMember = isMemberA ? exchange.member_b : exchange.member_a;
+    } else {
+      // Fallback - try to find the other person
+      console.error('Cannot determine other member from exchange structure:', exchange);
+      alert('Không thể xác định được người trao đổi. Vui lòng thử lại.');
+      return;
+    }
+    
+    setReviewTarget(otherMember);
+    setShowReviewModal(true);
+  };
+
+  const handleSubmitReview = async (reviewData) => {
+    setReviewLoading(true);
+    try {
+      await reviewsService.createReview(reviewData);
+      alert('✅ Đã gửi đánh giá thành công!');
+      setShowReviewModal(false);
+      checkExistingReview();
+    } catch (error) {
+      alert('❌ Gửi đánh giá thất bại: ' + (error.message || 'Vui lòng thử lại'));
+    } finally {
+      setReviewLoading(false);
     }
   };
 
@@ -204,6 +310,11 @@ const ExchangeDetailPage = () => {
           {getStatusBadge(exchange.status)}
         </div>
 
+        {/* Meeting Timeline */}
+        <div className="mb-6">
+          <MeetingTimeline exchange={exchange} />
+        </div>
+
         {/* Members Info */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           {/* Current User */}
@@ -286,121 +397,37 @@ const ExchangeDetailPage = () => {
         </div>
 
         {/* Meeting Information */}
-        <Card className="p-6 mb-6 bg-purple-50 border-purple-200">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-purple-600" />
-              Thông tin lịch hẹn
-            </h2>
-            {canEdit && !editingMeeting && (
-              <Button variant="outline" size="sm" onClick={() => setEditingMeeting(true)}>
-                <Edit className="w-4 h-4 mr-2" />
-                Chỉnh sửa
-              </Button>
-            )}
+        {exchange.meeting_time ? (
+          <div className="mb-6">
+            <MeetingCard
+              exchange={exchange}
+              variant="full"
+              currentUserId={getCurrentMemberId()}
+              requesterId={exchange.member_a?.member_id}
+              ownerId={exchange.member_b?.member_id}
+              onConfirm={handleConfirmMeeting}
+              onStart={exchange.meeting?.confirmed_by_a && exchange.meeting?.confirmed_by_b ? handleStartExchange : null}
+            />
           </div>
-
-          {editingMeeting ? (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <MapPin className="w-4 h-4 inline mr-1" />
-                  Địa điểm
-                </label>
-                <Input
-                  value={meetingForm.meeting_location}
-                  onChange={(e) => setMeetingForm({ ...meetingForm, meeting_location: e.target.value })}
-                  placeholder="Nhập địa điểm gặp mặt"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Calendar className="w-4 h-4 inline mr-1" />
-                  Thời gian
-                </label>
-                <Input
-                  type="datetime-local"
-                  value={meetingForm.meeting_time}
-                  onChange={(e) => setMeetingForm({ ...meetingForm, meeting_time: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <MessageSquare className="w-4 h-4 inline mr-1" />
-                  Ghi chú
-                </label>
-                <Textarea
-                  value={meetingForm.meeting_notes}
-                  onChange={(e) => setMeetingForm({ ...meetingForm, meeting_notes: e.target.value })}
-                  placeholder="Ghi chú thêm về cuộc gặp..."
-                  rows={3}
-                />
-              </div>
-
-              <div className="flex gap-3">
+        ) : (
+          <Card className="p-6 mb-6 bg-purple-50 border-purple-200">
+            <div className="text-center py-8">
+              <Calendar className="w-16 h-16 text-purple-400 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Chưa có lịch hẹn</h3>
+              <p className="text-gray-600 mb-6">Hãy đặt lịch hẹn để bắt đầu trao đổi sách!</p>
+              {canEdit && (
                 <Button 
                   variant="primary" 
-                  onClick={handleUpdateMeeting}
-                  disabled={actionLoading}
+                  onClick={() => setShowSchedulerModal(true)}
+                  className="mx-auto"
                 >
-                  {actionLoading ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  <Calendar className="w-5 h-5 mr-2" />
+                  Đặt lịch hẹn
                 </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => setEditingMeeting(false)}
-                  disabled={actionLoading}
-                >
-                  Hủy
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <MapPin className="w-5 h-5 text-gray-500 mt-0.5" />
-                <div>
-                  <div className="text-sm text-gray-600">Địa điểm</div>
-                  <div className="font-medium text-gray-900">
-                    {exchange.meeting_location || 'Chưa đặt địa điểm'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <Calendar className="w-5 h-5 text-gray-500 mt-0.5" />
-                <div>
-                  <div className="text-sm text-gray-600">Thời gian</div>
-                  <div className="font-medium text-gray-900">
-                    {exchange.meeting_time 
-                      ? new Date(exchange.meeting_time).toLocaleString('vi-VN', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })
-                      : 'Chưa đặt lịch'
-                    }
-                  </div>
-                </div>
-              </div>
-
-              {exchange.meeting_notes && (
-                <div className="flex items-start gap-3">
-                  <MessageSquare className="w-5 h-5 text-gray-500 mt-0.5" />
-                  <div>
-                    <div className="text-sm text-gray-600">Ghi chú</div>
-                    <div className="font-medium text-gray-900 whitespace-pre-wrap">
-                      {exchange.meeting_notes}
-                    </div>
-                  </div>
-                </div>
               )}
             </div>
-          )}
-        </Card>
+          </Card>
+        )}
 
         {/* Cancellation Info */}
         {exchange.status === 'CANCELLED' && exchange.cancellation_reason && (
@@ -421,7 +448,7 @@ const ExchangeDetailPage = () => {
         {/* Actions */}
         {exchange.status !== 'CANCELLED' && exchange.status !== 'COMPLETED' && (
           <Card className="p-6">
-            <div className="flex gap-3 justify-end">
+            <div className="flex gap-3 justify-end flex-wrap">
               {canCancel && (
                 <Button 
                   variant="error"
@@ -433,7 +460,28 @@ const ExchangeDetailPage = () => {
                 </Button>
               )}
 
-              {canConfirm && (
+              {exchange.status === 'MEETING_SCHEDULED' && exchange.requester_confirmed_meeting && exchange.owner_confirmed_meeting && (
+                <Button 
+                  variant="info"
+                  onClick={handleStartExchange}
+                  disabled={actionLoading}
+                  className="text-lg px-6"
+                >
+                  {actionLoading ? (
+                    <>
+                      <LoadingSpinner size="sm" className="mr-2" />
+                      Đang xử lý...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-5 h-5 mr-2" />
+                      Bắt đầu trao đổi
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {canConfirm && exchange.status === 'IN_PROGRESS' && (
                 <Button 
                   variant="success"
                   onClick={handleConfirm}
@@ -459,12 +507,49 @@ const ExchangeDetailPage = () => {
 
         {/* Completion Message */}
         {exchange.status === 'COMPLETED' && (
-          <Card className="p-6 bg-green-50 border-green-200 text-center">
-            <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
-            <h3 className="text-2xl font-bold text-green-900 mb-2">Giao dịch hoàn tất!</h3>
-            <p className="text-green-700">
-              Hoàn thành lúc: {new Date(exchange.completed_at).toLocaleString('vi-VN')}
-            </p>
+          <Card className="p-6 bg-green-50 border-green-200">
+            <div className="text-center mb-4">
+              <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
+              <h3 className="text-2xl font-bold text-green-900 mb-2">Giao dịch hoàn tất!</h3>
+              <p className="text-green-700 mb-4">
+                Hoàn thành lúc: {new Date(exchange.completed_at).toLocaleString('vi-VN')}
+              </p>
+            </div>
+            
+            {/* Review Section */}
+            <div className="mt-6 pt-6 border-t border-green-200">
+              {existingReview ? (
+                <div className="bg-white rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                      <Star className="w-5 h-5 text-yellow-400" />
+                      Đánh giá của bạn
+                    </h4>
+                    <Badge variant="success">Đã đánh giá</Badge>
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    <p>Bạn đã đánh giá thành viên này với {existingReview.rating} sao</p>
+                    {existingReview.comment && (
+                      <p className="mt-2 italic">"{existingReview.comment}"</p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <p className="text-gray-700 mb-4">
+                    Hãy chia sẻ trải nghiệm trao đổi sách của bạn!
+                  </p>
+                  <Button 
+                    variant="primary"
+                    onClick={handleOpenReviewModal}
+                    className="mx-auto"
+                  >
+                    <Star className="w-5 h-5 mr-2" />
+                    Viết đánh giá
+                  </Button>
+                </div>
+              )}
+            </div>
           </Card>
         )}
 
@@ -524,6 +609,26 @@ const ExchangeDetailPage = () => {
               </div>
             </Card>
           </div>
+        )}
+
+        {/* Meeting Scheduler Modal */}
+        <MeetingScheduler
+          isOpen={showSchedulerModal}
+          onClose={() => setShowSchedulerModal(false)}
+          onSubmit={handleScheduleMeeting}
+          exchange={exchange}
+        />
+
+        {/* Review Modal */}
+        {showReviewModal && reviewTarget && (
+          <ReviewModal
+            isOpen={showReviewModal}
+            onClose={() => setShowReviewModal(false)}
+            onSubmit={handleSubmitReview}
+            exchange={exchange}
+            reviewee={reviewTarget}
+            loading={reviewLoading}
+          />
         )}
       </div>
     </Layout>

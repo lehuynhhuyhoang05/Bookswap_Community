@@ -2,228 +2,158 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { reviewsService } from '../../services/api/reviews';
 import { Card, Button, RatingStars, Avatar, Pagination, LoadingSpinner, Tabs, Badge } from '../../components/ui';
+import Layout from '../../components/layout/Layout';
 
 const ProfileReviews = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('received');
-  const [loading, setLoading] = useState(false);
-  const [reviews, setReviews] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    pageSize: 10,
-    total: 0,
-    totalPages: 0
-  });
-
-  // Load review stats
-  useEffect(() => {
-    if (user) {
-      loadReviewStats();
-    }
-  }, [user]);
-
-  // Load reviews khi tab hoặc page thay đổi
-  useEffect(() => {
-    loadReviews();
-  }, [activeTab, pagination.page, user]);
-
-  const loadReviewStats = async () => {
-    try {
-      const statsData = await reviewsService.getMemberReviewStats(user.id);
-      setStats(statsData);
-    } catch (error) {
-      console.error('Failed to load review stats:', error);
-    }
-  };
-
-  const loadReviews = async () => {
-    if (!user) return;
-    
-    setLoading(true);
-    try {
-      const params = {
-        page: pagination.page,
-        pageSize: pagination.pageSize
-      };
-
-      const response = await reviewsService.getMemberReviews(user.id, params);
-      setReviews(response.data || []);
-      setPagination(prev => ({
-        ...prev,
-        total: response.meta?.total || 0,
-        totalPages: response.meta?.totalPages || 0
-      }));
-    } catch (error) {
-      console.error('Failed to load reviews:', error);
-      setReviews([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePageChange = (newPage) => {
-    setPagination(prev => ({ ...prev, page: newPage }));
-  };
-
-  const tabs = [
-    { id: 'received', name: 'Đánh giá nhận được' },
-    { id: 'given', name: 'Đánh giá đã cho' },
-  ];
-
-  const getRatingDistribution = () => {
-    if (!stats?.rating_breakdown) return [];
-    
-    const total = stats.total_reviews || 1;
-    return [5, 4, 3, 2, 1].map(rating => ({
-      rating,
-      count: stats.rating_breakdown[rating] || 0,
-      percentage: ((stats.rating_breakdown[rating] || 0) / total) * 100
-    }));
-  };
-
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
+      <Layout>
+        <div className="min-h-screen flex items-center justify-center">
+          <LoadingSpinner size="lg" />
+        </div>
+      </Layout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Đánh giá</h1>
-          <p className="text-gray-600 mt-2">Quản lý và xem đánh giá từ các thành viên</p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Sidebar - Review Stats */}
-          <div className="lg:col-span-1">
-            <Card className="p-6">
-              <div className="text-center mb-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Điểm đánh giá</h3>
-                <div className="flex items-center justify-center space-x-2 mb-2">
-                  <RatingStars rating={stats?.average_rating || 0} size="lg" />
-                  <span className="text-2xl font-bold text-gray-900">
-                    {stats?.average_rating?.toFixed(1) || '0.0'}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-500">
-                  {stats?.total_reviews || 0} đánh giá
-                </p>
-              </div>
-
-              {/* Rating Distribution */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-medium text-gray-900">Phân bố đánh giá</h4>
-                {getRatingDistribution().map((item) => (
-                  <div key={item.rating} className="flex items-center space-x-2">
-                    <div className="flex items-center space-x-1 w-16">
-                      <span className="text-sm text-gray-600">{item.rating}</span>
-                      <RatingStars rating={1} size="sm" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          className="bg-yellow-400 h-2 rounded-full"
-                          style={{ width: `${item.percentage}%` }}
-                        />
-                      </div>
-                    </div>
-                    <span className="text-sm text-gray-600 w-8 text-right">
-                      {item.count}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            {/* Quick Stats */}
-            <Card className="p-6 mt-6">
-              <h4 className="text-sm font-medium text-gray-900 mb-4">Thống kê nhanh</h4>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Tổng đánh giá</span>
-                  <Badge variant="primary">{stats?.total_reviews || 0}</Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Điểm trung bình</span>
-                  <Badge variant="success">{stats?.average_rating?.toFixed(1) || '0.0'}</Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">5 sao</span>
-                  <Badge>{stats?.rating_breakdown?.[5] || 0}</Badge>
-                </div>
-              </div>
-            </Card>
+    <Layout>
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Header */}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">Đánh giá</h1>
+            <p className="text-gray-600 mt-2">Quản lý và xem đánh giá từ các thành viên</p>
           </div>
 
-          {/* Main Content */}
-          <div className="lg:col-span-3">
-            <Card className="p-6">
-              <Tabs 
-                tabs={tabs} 
-                activeTab={activeTab} 
-                onTabChange={setActiveTab}
-              />
-
-              <div className="mt-6">
-                {loading ? (
-                  <div className="flex justify-center py-8">
-                    <LoadingSpinner />
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* Sidebar - Review Stats */}
+            <div className="lg:col-span-1">
+              <Card className="p-6">
+                <div className="text-center mb-6">
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Điểm đánh giá</h3>
+                  <div className="flex items-center justify-center space-x-2 mb-2">
+                    <RatingStars rating={stats?.average_rating || 0} size="lg" />
+                    <span className="text-2xl font-bold text-gray-900">
+                      {stats?.average_rating?.toFixed(1) || '0.0'}
+                    </span>
                   </div>
-                ) : reviews.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="text-gray-400 mb-4">
-                      <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                      </svg>
-                    </div>
-                    <h4 className="text-lg font-medium text-gray-900 mb-2">
-                      {activeTab === 'received' ? 'Chưa có đánh giá' : 'Chưa đánh giá ai'}
-                    </h4>
-                    <p className="text-gray-500 mb-4">
-                      {activeTab === 'received' 
-                        ? 'Bạn chưa có đánh giá nào từ các thành viên khác.' 
-                        : 'Bạn chưa viết đánh giá nào cho thành viên khác.'
-                      }
-                    </p>
-                    {activeTab === 'given' && (
-                      <Button>
-                        Viết đánh giá đầu tiên
-                      </Button>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    <div className="space-y-4">
-                      {reviews.map((review) => (
-                        <ReviewCard key={review.review_id} review={review} />
-                      ))}
-                    </div>
+                  <p className="text-sm text-gray-500">
+                    {stats?.total_reviews || 0} đánh giá
+                  </p>
+                </div>
 
-                    {pagination.totalPages > 1 && (
-                      <div className="mt-6">
-                        <Pagination
-                          currentPage={pagination.page}
-                          totalPages={pagination.totalPages}
-                          onPageChange={handlePageChange}
-                        />
+                {/* Rating Distribution */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-gray-900">Phân bố đánh giá</h4>
+                  {getRatingDistribution().map((item) => (
+                    <div key={item.rating} className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-1 w-16">
+                        <span className="text-sm text-gray-600">{item.rating}</span>
+                        <RatingStars rating={1} size="sm" />
                       </div>
-                    )}
+                      <div className="flex-1">
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-yellow-400 h-2 rounded-full"
+                            style={{ width: `${item.percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                      <span className="text-sm text-gray-600 w-8 text-right">
+                        {item.count}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              {/* Quick Stats */}
+              <Card className="p-6 mt-6">
+                <h4 className="text-sm font-medium text-gray-900 mb-4">Thống kê nhanh</h4>
+                <div className="space-y-3">
+                  <>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600">Tổng đánh giá</span>
+                      <Badge variant="primary">{stats?.total_reviews || 0}</Badge>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600">Điểm trung bình</span>
+                      <Badge variant="success">{stats?.average_rating?.toFixed(1) || '0.0'}</Badge>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-gray-600">5 sao</span>
+                      <Badge>{stats?.rating_breakdown?.[5] || 0}</Badge>
+                    </div>
                   </>
-                )}
-              </div>
-            </Card>
+                </div>
+              </Card>
+            </div>
+
+            {/* Main Content */}
+            <div className="lg:col-span-3">
+              <Card className="p-6">
+                <Tabs 
+                  tabs={tabs} 
+                  activeTab={activeTab} 
+                  onTabChange={setActiveTab}
+                />
+
+                <div className="mt-6">
+                  {loading ? (
+                    <div className="flex justify-center py-8">
+                      <LoadingSpinner />
+                    </div>
+                  ) : reviews.length === 0 ? (
+                    <div className="text-center py-12">
+                      <div className="text-gray-400 mb-4">
+                        <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                        </svg>
+                      </div>
+                      <h4 className="text-lg font-medium text-gray-900 mb-2">
+                        {activeTab === 'received' ? 'Chưa có đánh giá' : 'Chưa đánh giá ai'}
+                      </h4>
+                      <p className="text-gray-500 mb-4">
+                        {activeTab === 'received' 
+                          ? 'Bạn chưa có đánh giá nào từ các thành viên khác.' 
+                          : 'Bạn chưa viết đánh giá nào cho thành viên khác.'
+                        }
+                      </p>
+                      {activeTab === 'given' && (
+                        <Button>
+                          Viết đánh giá đầu tiên
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-4">
+                        {reviews.map((review) => (
+                          <ReviewCard key={review.review_id} review={review} />
+                        ))}
+                      </div>
+
+                      {pagination.totalPages > 1 && (
+                        <div className="mt-6">
+                          <Pagination
+                            currentPage={pagination.page}
+                            totalPages={pagination.totalPages}
+                            onPageChange={handlePageChange}
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </Card>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-};
+    </Layout>
+);
+}
 
 // Component Review Card
 const ReviewCard = ({ review }) => {

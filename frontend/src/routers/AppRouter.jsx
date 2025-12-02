@@ -38,6 +38,7 @@ import ExchangeSuggestions from '../pages/exchange/suggestions';
 import CreateExchangeRequest from '../pages/exchange/create-request';
 import ExchangeRequestDetail from '../pages/exchange/request-detail/[id]';
 import ExchangeDetail from '../pages/exchange/detail/[id]';
+import MeetingManagement from '../pages/exchange/meetings/index';
 
 const AppRouter = () => (
   <Routes>
@@ -76,6 +77,7 @@ const AppRouter = () => (
     <Route path="/exchange/requests" element={<PrivateRoute><ExchangeRequests /></PrivateRoute>} />
     <Route path="/exchange/request/:id" element={<PrivateRoute><ExchangeRequestDetail /></PrivateRoute>} />
     <Route path="/exchange/list" element={<PrivateRoute><ExchangesList /></PrivateRoute>} />
+    <Route path="/exchange/meetings" element={<PrivateRoute><MeetingManagement /></PrivateRoute>} />
     <Route path="/exchange/:id" element={<PrivateRoute><ExchangeDetail /></PrivateRoute>} />
     <Route path="/exchange/suggestions" element={<PrivateRoute><ExchangeSuggestions /></PrivateRoute>} />
     <Route path="/exchange/create-request" element={<PrivateRoute><CreateExchangeRequest /></PrivateRoute>} />
