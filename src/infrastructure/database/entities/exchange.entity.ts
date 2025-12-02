@@ -17,6 +17,8 @@ import { Review } from './review.entity';
 export enum ExchangeStatus {
   PENDING = 'PENDING',
   ACCEPTED = 'ACCEPTED',
+  MEETING_SCHEDULED = 'MEETING_SCHEDULED',
+  IN_PROGRESS = 'IN_PROGRESS',
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
 }
@@ -60,11 +62,29 @@ export class Exchange {
   @Column('varchar', { length: 500, nullable: true })
   meeting_location: string;
 
+  @Column('decimal', { precision: 10, scale: 7, nullable: true })
+  meeting_latitude: number;
+
+  @Column('decimal', { precision: 10, scale: 7, nullable: true })
+  meeting_longitude: number;
+
   @Column('timestamp', { nullable: true })
   meeting_time: Date;
 
   @Column('text', { nullable: true })
   meeting_notes: string;
+
+  @Column('boolean', { default: false })
+  meeting_confirmed_by_a: boolean;
+
+  @Column('boolean', { default: false })
+  meeting_confirmed_by_b: boolean;
+
+  @Column('timestamp', { nullable: true })
+  meeting_scheduled_at: Date;
+
+  @Column('varchar', { length: 36, nullable: true })
+  meeting_scheduled_by: string;
 
   @Column({
     type: 'enum',
@@ -102,4 +122,5 @@ export class Exchange {
 
   @OneToMany(() => Review, (review) => review.exchange)
   reviews: Review[];
+  cancelled_by: string;
 }

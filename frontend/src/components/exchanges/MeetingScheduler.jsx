@@ -249,7 +249,7 @@ const MeetingScheduler = ({
         <form onSubmit={handleSubmit} className="p-6">
           {/* Location */}
           <div className="mb-6 relative">
-            <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+            <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
               <MapPin className="w-4 h-4 text-blue-600" />
               Địa điểm gặp mặt *
             </label>
@@ -376,7 +376,7 @@ const MeetingScheduler = ({
 
           {/* Date & Time */}
           <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+            <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
               <Calendar className="w-4 h-4 text-blue-600" />
               Ngày & Giờ *
             </label>
@@ -444,7 +444,7 @@ const MeetingScheduler = ({
 
           {/* Notes */}
           <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+            <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-blue-600" />
               Ghi chú (Tùy chọn)
             </label>

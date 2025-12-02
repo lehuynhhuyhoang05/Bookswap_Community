@@ -54,7 +54,7 @@ export class ExchangesService {
 
     @InjectRepository(ExchangeBook)
     private exchangeBookRepo: Repository<ExchangeBook>,
-  ) {}
+  ) { }
 
   // ==================== CREATE EXCHANGE REQUEST ====================
   async createExchangeRequest(userId: string, dto: CreateExchangeRequestDto) {
@@ -493,6 +493,11 @@ export class ExchangesService {
       throw new NotFoundException('Exchange not found');
     }
 
+    // Can only confirm exchanges that are IN_PROGRESS or MEETING_SCHEDULED
+    if (![ExchangeStatus.IN_PROGRESS, ExchangeStatus.MEETING_SCHEDULED, ExchangeStatus.PENDING].includes(exchange.status)) {
+      throw new BadRequestException('Can only confirm exchanges that are in progress');
+    }
+
     // Verify user is part of exchange (check ALL member records)
     let isPartOfExchange = false;
     let userIsMemberA = false;
@@ -537,7 +542,7 @@ export class ExchangesService {
         // Update owner_id from 'from' member to 'to' member
         await this.bookRepo.update(
           { book_id: eb.book_id },
-          { 
+          {
             owner_id: eb.to_member_id,
             status: BookStatus.AVAILABLE,
             deleted_at: () => 'NULL'  // Clear deleted_at to restore book
@@ -701,15 +706,161 @@ export class ExchangesService {
     };
   }
 
-  // ==================== UPDATE MEETING INFO ====================
-  async updateMeetingInfo(
+  // ==================== SCHEDULE MEETING ====================
+  async scheduleMeeting(
     userId: string,
     exchangeId: string,
-    dto: any, // UpdateMeetingInfoDto
+    dto: any, // ScheduleMeetingDto
   ) {
-    this.logger.log(`[updateMeetingInfo] exchangeId=${exchangeId}`);
+    this.logger.log(`[scheduleMeeting] exchangeId=${exchangeId}`);
 
     // Get ALL member records for user
+    const members = await this.memberRepo.find({
+      where: { user_id: userId },
+    });
+
+    if (!members || members.length === 0) {
+      throw new NotFoundException('Member profile not found');
+    }
+
+    const memberIds = members.map((m) => m.member_id);
+    const currentMemberId = members[0].member_id;
+
+    const exchange = await this.exchangeRepo.findOne({
+      where: { exchange_id: exchangeId },
+    });
+
+    if (!exchange) {
+      throw new NotFoundException('Exchange not found');
+    }
+
+    // Verify user is part of exchange
+    let isPartOfExchange = false;
+    let userIsMemberA = false;
+    for (const memberId of memberIds) {
+      if (exchange.member_a_id === memberId) {
+        isPartOfExchange = true;
+        userIsMemberA = true;
+        break;
+      }
+      if (exchange.member_b_id === memberId) {
+        isPartOfExchange = true;
+        userIsMemberA = false;
+        break;
+      }
+    }
+
+    if (!isPartOfExchange) {
+      throw new ForbiddenException('You are not part of this exchange');
+    }
+
+    // Can only schedule meeting for PENDING exchanges
+    if (exchange.status !== ExchangeStatus.PENDING) {
+      throw new BadRequestException('Can only schedule meeting for pending exchanges');
+    }
+
+    // Validate meeting time is in the future
+    const meetingTime = new Date(dto.meeting_time);
+    if (meetingTime <= new Date()) {
+      throw new BadRequestException('Meeting time must be in the future');
+    }
+
+    // Update exchange with meeting details
+    exchange.meeting_location = dto.meeting_location;
+    exchange.meeting_time = meetingTime;
+    exchange.meeting_notes = dto.meeting_notes || null;
+    exchange.meeting_latitude = dto.meeting_latitude || null;
+    exchange.meeting_longitude = dto.meeting_longitude || null;
+    exchange.meeting_scheduled_at = new Date();
+    exchange.meeting_scheduled_by = currentMemberId;
+
+    // The person who schedules automatically confirms
+    if (userIsMemberA) {
+      exchange.meeting_confirmed_by_a = true;
+    } else {
+      exchange.meeting_confirmed_by_b = true;
+    }
+
+    // Status changes to MEETING_SCHEDULED once both confirm
+    // For now, it stays PENDING until the other person confirms
+
+    await this.exchangeRepo.save(exchange);
+
+    this.logger.log(`Meeting scheduled for exchange: ${exchangeId}`);
+
+    return this.getExchangeById(exchangeId);
+  }
+
+  // ==================== CONFIRM MEETING ====================
+  async confirmMeeting(userId: string, exchangeId: string) {
+    this.logger.log(`[confirmMeeting] exchangeId=${exchangeId}`);
+
+    // Get ALL member records for user
+    const members = await this.memberRepo.find({
+      where: { user_id: userId },
+    });
+
+    if (!members || members.length === 0) {
+      throw new NotFoundException('Member profile not found');
+    }
+
+    const memberIds = members.map((m) => m.member_id);
+
+    const exchange = await this.exchangeRepo.findOne({
+      where: { exchange_id: exchangeId },
+    });
+
+    if (!exchange) {
+      throw new NotFoundException('Exchange not found');
+    }
+
+    // Verify user is part of exchange
+    let isPartOfExchange = false;
+    let userIsMemberA = false;
+    for (const memberId of memberIds) {
+      if (exchange.member_a_id === memberId) {
+        isPartOfExchange = true;
+        userIsMemberA = true;
+        break;
+      }
+      if (exchange.member_b_id === memberId) {
+        isPartOfExchange = true;
+        userIsMemberA = false;
+        break;
+      }
+    }
+
+    if (!isPartOfExchange) {
+      throw new ForbiddenException('You are not part of this exchange');
+    }
+
+    // Must have meeting scheduled first
+    if (!exchange.meeting_time || !exchange.meeting_location) {
+      throw new BadRequestException('No meeting has been scheduled yet');
+    }
+
+    // Update confirmation
+    if (userIsMemberA) {
+      exchange.meeting_confirmed_by_a = true;
+    } else {
+      exchange.meeting_confirmed_by_b = true;
+    }
+
+    // If both confirmed, update status to MEETING_SCHEDULED
+    if (exchange.meeting_confirmed_by_a && exchange.meeting_confirmed_by_b) {
+      exchange.status = ExchangeStatus.MEETING_SCHEDULED;
+      this.logger.log(`Meeting confirmed by both parties for exchange: ${exchangeId}`);
+    }
+
+    await this.exchangeRepo.save(exchange);
+
+    return this.getExchangeById(exchangeId);
+  }
+
+  // ==================== START EXCHANGE (After meeting) ====================
+  async startExchange(userId: string, exchangeId: string) {
+    this.logger.log(`[startExchange] exchangeId=${exchangeId}`);
+
     const members = await this.memberRepo.find({
       where: { user_id: userId },
     });
@@ -741,8 +892,69 @@ export class ExchangesService {
       throw new ForbiddenException('You are not part of this exchange');
     }
 
-    // Can only update meeting info for PENDING or ACCEPTED exchanges
-    if (![ExchangeStatus.PENDING, 'ACCEPTED'].includes(exchange.status as any)) {
+    // Can only start from MEETING_SCHEDULED status
+    if (exchange.status !== ExchangeStatus.MEETING_SCHEDULED) {
+      throw new BadRequestException('Can only start exchange after meeting is scheduled and confirmed');
+    }
+
+    exchange.status = ExchangeStatus.IN_PROGRESS;
+    await this.exchangeRepo.save(exchange);
+
+    this.logger.log(`Exchange started: ${exchangeId}`);
+
+    return this.getExchangeById(exchangeId);
+  }
+
+  // ==================== UPDATE MEETING INFO ====================
+  async updateMeetingInfo(
+    userId: string,
+    exchangeId: string,
+    dto: any, // UpdateMeetingInfoDto
+  ) {
+    this.logger.log(`[updateMeetingInfo] exchangeId=${exchangeId}`);
+
+    // Get ALL member records for user
+    const members = await this.memberRepo.find({
+      where: { user_id: userId },
+    });
+
+    if (!members || members.length === 0) {
+      throw new NotFoundException('Member profile not found');
+    }
+
+    const memberIds = members.map((m) => m.member_id);
+    const currentMemberId = members[0].member_id;
+
+    const exchange = await this.exchangeRepo.findOne({
+      where: { exchange_id: exchangeId },
+    });
+
+    if (!exchange) {
+      throw new NotFoundException('Exchange not found');
+    }
+
+    // Verify user is part of exchange
+    let isPartOfExchange = false;
+    let userIsMemberA = false;
+    for (const memberId of memberIds) {
+      if (exchange.member_a_id === memberId) {
+        isPartOfExchange = true;
+        userIsMemberA = true;
+        break;
+      }
+      if (exchange.member_b_id === memberId) {
+        isPartOfExchange = true;
+        userIsMemberA = false;
+        break;
+      }
+    }
+
+    if (!isPartOfExchange) {
+      throw new ForbiddenException('You are not part of this exchange');
+    }
+
+    // Can only update meeting info for PENDING or MEETING_SCHEDULED exchanges
+    if (![ExchangeStatus.PENDING, ExchangeStatus.MEETING_SCHEDULED].includes(exchange.status)) {
       throw new BadRequestException('Cannot update meeting info for this exchange status');
     }
 
@@ -759,6 +971,30 @@ export class ExchangesService {
     }
     if (dto.meeting_notes !== undefined) {
       exchange.meeting_notes = dto.meeting_notes;
+    }
+    if (dto.meeting_latitude !== undefined) {
+      exchange.meeting_latitude = dto.meeting_latitude;
+    }
+    if (dto.meeting_longitude !== undefined) {
+      exchange.meeting_longitude = dto.meeting_longitude;
+    }
+
+    // Reset confirmations when meeting is updated (other person needs to re-confirm)
+    if (dto.meeting_location || dto.meeting_time) {
+      if (userIsMemberA) {
+        exchange.meeting_confirmed_by_a = true;
+        exchange.meeting_confirmed_by_b = false;
+      } else {
+        exchange.meeting_confirmed_by_a = false;
+        exchange.meeting_confirmed_by_b = true;
+      }
+      exchange.meeting_scheduled_by = currentMemberId;
+      exchange.meeting_scheduled_at = new Date();
+
+      // If status was MEETING_SCHEDULED, revert to PENDING
+      if (exchange.status === ExchangeStatus.MEETING_SCHEDULED) {
+        exchange.status = ExchangeStatus.PENDING;
+      }
     }
 
     await this.exchangeRepo.save(exchange);
@@ -841,7 +1077,7 @@ export class ExchangesService {
     // Decrease trust score for cancellations (except ADMIN_CANCELLED)
     if (dto.cancellation_reason !== 'ADMIN_CANCELLED') {
       const penaltyPoints = this.getCancellationPenalty(dto.cancellation_reason);
-      
+
       await this.memberRepo.decrement(
         { member_id: exchange.member_a_id },
         'trust_score',
@@ -893,6 +1129,20 @@ export class ExchangesService {
       })),
       member_a_confirmed: exchange.member_a_confirmed,
       member_b_confirmed: exchange.member_b_confirmed,
+      // Meeting info
+      meeting: {
+        location: exchange.meeting_location,
+        latitude: exchange.meeting_latitude,
+        longitude: exchange.meeting_longitude,
+        time: exchange.meeting_time,
+        notes: exchange.meeting_notes,
+        scheduled_at: exchange.meeting_scheduled_at,
+        scheduled_by: exchange.meeting_scheduled_by,
+        confirmed_by_a: exchange.meeting_confirmed_by_a,
+        confirmed_by_b: exchange.meeting_confirmed_by_b,
+        is_confirmed: exchange.meeting_confirmed_by_a && exchange.meeting_confirmed_by_b,
+      },
+      // Legacy fields for backward compatibility
       meeting_location: exchange.meeting_location,
       meeting_time: exchange.meeting_time,
       meeting_notes: exchange.meeting_notes,
