@@ -3,9 +3,11 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { MulterModule } from '@nestjs/platform-express';
 import { MessagesController } from './controllers/messages.controller';
 import { MessagesService } from './services/messages.service';
 import { MessagesGateway } from './gateways/messages/messages.gateway';
+import { StorageService } from '../../common/services/storage.service';
 import { Conversation } from '../../infrastructure/database/entities/conversation.entity';
 import { Message } from '../../infrastructure/database/entities/message.entity';
 import { MessageReaction } from '../../infrastructure/database/entities/message-reaction.entity';
@@ -29,9 +31,14 @@ import { ExchangeRequest } from '../../infrastructure/database/entities/exchange
       }),
       inject: [ConfigService],
     }),
+    MulterModule.register({
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB
+      },
+    }),
   ],
   controllers: [MessagesController],
-  providers: [MessagesService, MessagesGateway],
+  providers: [MessagesService, MessagesGateway, StorageService],
   exports: [MessagesService, MessagesGateway],
 })
 export class MessagesModule {}

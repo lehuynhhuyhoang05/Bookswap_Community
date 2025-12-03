@@ -1,14 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import ConditionBadge from '../ui/ConditionBadge';
 import Avatar from '../ui/Avatar';
 import { useBooks } from '../../hooks/useBooks';
+import { useMessages } from '../../hooks/useMessages';
+import { MessageSquare, Flag } from 'lucide-react';
+import CreateReportModal from '../reports/CreateReportModal';
 
 const BookDetail = ({ book }) => {
+  const navigate = useNavigate();
   const { getGoogleBookByISBN } = useBooks();
+  const { createDirectConversation } = useMessages();
   const [googleBookData, setGoogleBookData] = useState(null);
   const [loadingGoogle, setLoadingGoogle] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   // DEBUG: Log dữ liệu book từ API
   useEffect(() => {
@@ -126,6 +133,71 @@ const BookDetail = ({ book }) => {
       </div>
     );
   }
+
+  // Handle contact for exchange
+  const handleContactForExchange = () => {
+    if (!book || !book.book_id) {
+      alert('Thông tin sách không hợp lệ');
+      return;
+    }
+
+    // Kiểm tra xem có phải sách của chính mình không
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+    if (owner?.user_id === currentUser.user_id || ownerUser?.user_id === currentUser.user_id) {
+      alert('Bạn không thể tạo yêu cầu trao đổi với sách của chính mình');
+      return;
+    }
+
+    // Chuyển đến trang tạo yêu cầu trao đổi với book_id
+    navigate(`/exchange/create-request?wanted_book_id=${book.book_id}`);
+  };
+
+  // Handle direct chat with book owner
+  const handleChatWithOwner = async () => {
+    if (!book || !book.book_id) {
+      alert('Thông tin sách không hợp lệ');
+      return;
+    }
+
+    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+    const ownerId = owner?.user_id || ownerUser?.user_id;
+    
+    if (ownerId === currentUser.user_id) {
+      alert('Đây là sách của bạn');
+      return;
+    }
+
+    if (!ownerId) {
+      alert('Không tìm thấy thông tin chủ sách');
+      return;
+    }
+
+    setChatLoading(true);
+    try {
+      console.log('🚀 Creating conversation with owner:', ownerId);
+      
+      // Tạo hoặc lấy conversation trực tiếp
+      const result = await createDirectConversation(ownerId);
+      console.log('✅ Created/Retrieved conversation:', result);
+      
+      // Parse response đúng cấu trúc
+      const conversationData = result?.data || result;
+      const conversationId = conversationData?.conversation_id;
+      
+      if (conversationId) {
+        console.log('✅ Conversation ID:', conversationId);
+        // Chuyển đến trang messages với conversation_id
+        navigate(`/messages?conversation_id=${conversationId}`);
+      } else {
+        throw new Error('Không nhận được conversation_id từ server');
+      }
+    } catch (error) {
+      console.error('❌ Failed to create conversation:', error);
+      alert('Không thể mở chat: ' + (error.message || 'Vui lòng thử lại'));
+    } finally {
+      setChatLoading(false);
+    }
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -343,8 +415,20 @@ const BookDetail = ({ book }) => {
                 )}
               </div>
 
-              <button className="w-full mt-4 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors font-medium">
+              <button 
+                onClick={handleContactForExchange}
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors font-medium"
+              >
                 Liên hệ trao đổi
+              </button>
+
+              <button 
+                onClick={handleChatWithOwner}
+                disabled={chatLoading}
+                className="w-full mt-3 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors font-medium flex items-center justify-center disabled:opacity-50"
+              >
+                <MessageSquare className="w-4 h-4 mr-2" />
+                💬 Nhắn tin với chủ sách
               </button>
             </div>
 
@@ -374,11 +458,36 @@ const BookDetail = ({ book }) => {
                     Xem hồ sơ chủ sách
                   </Link>
                 )}
+
+                {/* Report Button */}
+                {owner.member_id && (
+                  <button
+                    onClick={() => setReportModalOpen(true)}
+                    className="w-full flex items-center justify-center px-4 py-2 border border-red-300 text-red-700 rounded-md hover:bg-red-50 transition-colors"
+                  >
+                    <Flag className="w-4 h-4 mr-2" />
+                    Báo cáo vi phạm
+                  </button>
+                )}
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Create Report Modal */}
+      <CreateReportModal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        reportedMember={{
+          member_id: owner.member_id,
+          full_name: ownerUser.full_name || ownerUser.username || 'Người dùng'
+        }}
+        reportedItem={{
+          type: 'BOOK',
+          id: book.book_id
+        }}
+      />
     </div>
   );
 };

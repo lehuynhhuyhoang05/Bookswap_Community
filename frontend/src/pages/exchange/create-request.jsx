@@ -5,7 +5,8 @@ import { Card, Button, LoadingSpinner, Badge, Input } from '../../components/ui'
 import { useExchanges } from '../../hooks/useExchanges';
 import { useBooks } from '../../hooks/useBooks';
 import { useAuth } from '../../hooks/useAuth';
-import { ArrowLeft, Send, User, BookOpen, X, Search, Plus } from 'lucide-react';
+import { TrustScoreWarning } from '../../components/common';
+import { ArrowLeft, Send, User, BookOpen, X, Search, Plus, ShieldX, AlertTriangle } from 'lucide-react';
 
 /**
  * Create Exchange Request Page
@@ -13,7 +14,7 @@ import { ArrowLeft, Send, User, BookOpen, X, Search, Plus } from 'lucide-react';
  */
 const CreateExchangeRequestPage = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, getTrustRestrictions, canPerformAction } = useAuth();
   const { createExchangeRequest } = useExchanges();
   const { myLibrary, fetchMyLibrary, searchBooks } = useBooks();
 
@@ -22,6 +23,10 @@ const CreateExchangeRequestPage = () => {
   const [offeredBooks, setOfferedBooks] = useState([]); // Array of book objects
   const [requestedBooks, setRequestedBooks] = useState([]); // Array of book objects
   const [message, setMessage] = useState('');
+
+  // Trust score restrictions
+  const restrictions = getTrustRestrictions();
+  const canCreateExchange = canPerformAction('exchange');
 
   // Modal states
   const [showMyBooksModal, setShowMyBooksModal] = useState(false);
@@ -102,6 +107,12 @@ const CreateExchangeRequestPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // Check trust score restriction
+    if (!canCreateExchange) {
+      alert('Điểm tin cậy của bạn quá thấp để tạo yêu cầu trao đổi. Vui lòng liên hệ quản trị viên.');
+      return;
+    }
+    
     if (!receiverInfo?.member_id || offeredBooks.length === 0 || requestedBooks.length === 0) {
       alert('Vui lòng điền đầy đủ thông tin');
       return;
@@ -136,9 +147,38 @@ const CreateExchangeRequestPage = () => {
         <Card className="p-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-8">Tạo yêu cầu trao đổi</h1>
 
-          <form onSubmit={handleSubmit} className="space-y-8">
-            {/* Receiver Info */}
-            {receiverInfo && (
+          {/* Trust Score Warning */}
+          <TrustScoreWarning restrictions={restrictions} />
+
+          {/* Blocked Message */}
+          {!canCreateExchange && (
+            <div className="bg-red-100 border-2 border-red-300 rounded-xl p-6 mb-6">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0">
+                  <ShieldX className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-red-800 mb-2">
+                    Không thể tạo yêu cầu trao đổi
+                  </h3>
+                  <p className="text-red-700 mb-3">
+                    Điểm tin cậy của bạn hiện tại là <strong>{restrictions.trust_score}</strong>, 
+                    thấp hơn mức tối thiểu (20 điểm) để tạo yêu cầu trao đổi.
+                  </p>
+                  <p className="text-sm text-red-600">
+                    Để khôi phục khả năng trao đổi sách, vui lòng liên hệ quản trị viên 
+                    hoặc cải thiện hành vi sử dụng nền tảng.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Form - only show if user can create exchange */}
+          {canCreateExchange ? (
+            <form onSubmit={handleSubmit} className="space-y-8">
+              {/* Receiver Info */}
+              {receiverInfo && (
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-200">
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center">
@@ -339,6 +379,22 @@ const CreateExchangeRequestPage = () => {
               </Button>
             </div>
           </form>
+          ) : (
+            /* Blocked UI */
+            <div className="bg-gray-100 rounded-xl p-8 text-center">
+              <AlertTriangle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500 text-lg">
+                Form tạo yêu cầu trao đổi bị khóa do điểm tin cậy thấp
+              </p>
+              <Button
+                variant="outline"
+                onClick={() => navigate('/profile')}
+                className="mt-4"
+              >
+                Xem hồ sơ
+              </Button>
+            </div>
+          )}
         </Card>
 
         {/* My Books Modal */}

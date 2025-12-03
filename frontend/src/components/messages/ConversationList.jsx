@@ -25,12 +25,12 @@ const ConversationList = ({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="overflow-y-auto h-full">
       {conversations.map((conversation) => (
         <ConversationItem
-          key={conversation.id}
+          key={conversation.conversation_id || conversation.id}
           conversation={conversation}
-          isSelected={selectedConversationId === conversation.id}
+          isSelected={selectedConversationId === (conversation.conversation_id || conversation.id)}
           onSelect={onSelectConversation}
         />
       ))}

@@ -21,6 +21,7 @@ import { AuditLog, AuditAction } from '../../../infrastructure/database/entities
 import { Message } from '../../../infrastructure/database/entities/message.entity';
 import { Conversation } from '../../../infrastructure/database/entities/conversation.entity';
 import { ActivityLogService } from '../../../common/services/activity-log.service';
+import { NotificationsService } from '../../notifications/services/notifications.service';
 import {
   QueryUsersDto,
   LockUserDto,
@@ -57,6 +58,7 @@ export class AdminService {
     @InjectRepository(Conversation)
     private conversationRepo: Repository<Conversation>,
     private activityLogService: ActivityLogService,
+    private notificationsService: NotificationsService,
   ) {}
 
   // ============================================================
@@ -509,7 +511,7 @@ export class AdminService {
   }
 
   /**
-   * Resolve report (đã xử lý)
+   * Resolve report (đã xử lý) - Với hệ thống xử phạt
    */
   async resolveReport(reportId: string, dto: ResolveReportDto, adminId: string, adminEmail: string) {
     const report = await this.reportRepo.findOne({ where: { report_id: reportId } });
@@ -517,15 +519,92 @@ export class AdminService {
       throw new NotFoundException('Report not found');
     }
 
+    // Lấy thông tin member bị báo cáo
+    const reportedMember = await this.memberRepo.findOne({ 
+      where: { member_id: report.reported_member_id },
+      relations: ['user']
+    });
+
+    if (!reportedMember) {
+      throw new NotFoundException('Reported member not found');
+    }
+
+    // Default penalty nếu không chọn
+    const penalty = dto.penalty || 'WARNING';
+    const trustScorePenalty = dto.trust_score_penalty || 0;
+
+    // ========== THỰC HIỆN XỬ PHẠT ==========
+    let penaltyMessage = '';
+    
+    switch (penalty) {
+      case 'WARNING':
+        // Chỉ cảnh cáo, giảm trust score nhẹ
+        if (trustScorePenalty > 0) {
+          reportedMember.trust_score = Math.max(0, (reportedMember.trust_score || 50) - trustScorePenalty);
+          await this.memberRepo.save(reportedMember);
+        }
+        penaltyMessage = `Bạn đã bị cảnh cáo do vi phạm quy định cộng đồng.${trustScorePenalty > 0 ? ` Điểm uy tín của bạn đã bị trừ ${trustScorePenalty} điểm.` : ''}`;
+        break;
+
+      case 'CONTENT_REMOVAL':
+        // Xóa/ẩn nội dung vi phạm + giảm trust score
+        if (report.reported_item_type === 'BOOK' && report.reported_item_id) {
+          const book = await this.bookRepo.findOne({ where: { book_id: report.reported_item_id } });
+          if (book) {
+            book.status = BookStatus.REMOVED;
+            await this.bookRepo.save(book);
+          }
+        }
+        if (trustScorePenalty > 0) {
+          reportedMember.trust_score = Math.max(0, (reportedMember.trust_score || 50) - trustScorePenalty);
+          await this.memberRepo.save(reportedMember);
+        }
+        penaltyMessage = `Nội dung vi phạm của bạn đã bị xóa.${trustScorePenalty > 0 ? ` Điểm uy tín của bạn đã bị trừ ${trustScorePenalty} điểm.` : ''}`;
+        break;
+
+      case 'TEMP_BAN':
+        // Khóa tài khoản 7 ngày
+        if (reportedMember.user) {
+          reportedMember.user.account_status = AccountStatus.LOCKED;
+          reportedMember.user.lock_reason = `Vi phạm quy định: ${report.report_type}. Tài khoản sẽ được mở sau 7 ngày.`;
+          reportedMember.user.locked_until = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 ngày
+          await this.userRepo.save(reportedMember.user);
+        }
+        if (trustScorePenalty > 0) {
+          reportedMember.trust_score = Math.max(0, (reportedMember.trust_score || 50) - trustScorePenalty);
+          await this.memberRepo.save(reportedMember);
+        }
+        penaltyMessage = `Tài khoản của bạn đã bị khóa 7 ngày do vi phạm nghiêm trọng quy định cộng đồng.`;
+        break;
+
+      case 'PERMANENT_BAN':
+        // Khóa vĩnh viễn
+        if (reportedMember.user) {
+          reportedMember.user.account_status = AccountStatus.LOCKED;
+          reportedMember.user.lock_reason = `Vi phạm nghiêm trọng: ${report.report_type}. Tài khoản bị khóa vĩnh viễn.`;
+          reportedMember.user.locked_until = null; // Vĩnh viễn
+          await this.userRepo.save(reportedMember.user);
+        }
+        reportedMember.trust_score = 0;
+        await this.memberRepo.save(reportedMember);
+        penaltyMessage = `Tài khoản của bạn đã bị khóa vĩnh viễn do vi phạm nghiêm trọng.`;
+        break;
+
+      case 'NONE':
+      default:
+        penaltyMessage = 'Admin đã xem xét báo cáo và đưa ra cảnh báo.';
+        break;
+    }
+
+    // Cập nhật report
     report.status = ReportStatus.RESOLVED;
     report.resolution = dto.resolution;
-    // DB schema không có action_taken column
     report.resolved_at = new Date();
-    report.resolved_by = adminId; // DB dùng resolved_by không phải assigned_to
+    report.resolved_by = adminId;
 
     await this.reportRepo.save(report);
 
-    // Log audit
+    // Log audit với chi tiết xử phạt
     await this.createAuditLog({
       admin_id: adminId,
       admin_email: adminEmail,
@@ -533,13 +612,56 @@ export class AdminService {
       entity_type: 'REPORT',
       entity_id: reportId,
       old_value: { status: ReportStatus.PENDING },
-      new_value: { status: ReportStatus.RESOLVED, resolution: dto.resolution },
-      reason: dto.resolution, // DB không có action_taken, dùng resolution làm reason
+      new_value: { 
+        status: ReportStatus.RESOLVED, 
+        resolution: dto.resolution,
+        penalty: penalty,
+        trust_score_penalty: trustScorePenalty
+      },
+      reason: dto.resolution,
     });
 
-    this.logger.log(`Admin ${adminEmail} resolved report ${reportId}`);
+    // Send notification to reporter (người báo cáo)
+    try {
+      await this.notificationsService.create(
+        report.reporter_id,
+        'REPORT_RESOLVED',
+        {
+          report_id: reportId,
+          report_type: report.report_type,
+          resolution: dto.resolution,
+          message: 'Báo cáo của bạn đã được xem xét và xử lý. Cảm ơn bạn đã góp phần giữ gìn cộng đồng.',
+        }
+      );
+    } catch (err) {
+      this.logger.warn(`Failed to send notification to reporter: ${err.message}`);
+    }
 
-    return { success: true, message: 'Report resolved successfully' };
+    // Send notification to reported member (người bị báo cáo) với chi tiết xử phạt
+    try {
+      await this.notificationsService.create(
+        report.reported_member_id,
+        'REPORT_ACTION_TAKEN',
+        {
+          report_id: reportId,
+          report_type: report.report_type,
+          penalty: penalty,
+          trust_score_penalty: trustScorePenalty,
+          message: penaltyMessage,
+        }
+      );
+    } catch (err) {
+      this.logger.warn(`Failed to send notification to reported member: ${err.message}`);
+    }
+
+    this.logger.log(`Admin ${adminEmail} resolved report ${reportId} with penalty: ${penalty}`);
+
+    return { 
+      success: true, 
+      message: 'Report resolved successfully',
+      penalty_applied: penalty,
+      trust_score_deducted: trustScorePenalty
+    };
   }
 
   /**
@@ -569,6 +691,22 @@ export class AdminService {
       new_value: { status: ReportStatus.DISMISSED },
       reason: dto.reason,
     });
+
+    // Send notification to reporter (người báo cáo) về việc báo cáo bị từ chối
+    try {
+      await this.notificationsService.create(
+        report.reporter_id,
+        'REPORT_DISMISSED',
+        {
+          report_id: reportId,
+          report_type: report.report_type,
+          reason: dto.reason,
+          message: 'Báo cáo của bạn đã được xem xét nhưng không phát hiện vi phạm.',
+        }
+      );
+    } catch (err) {
+      this.logger.warn(`Failed to send notification to reporter: ${err.message}`);
+    }
 
     this.logger.log(`Admin ${adminEmail} dismissed report ${reportId}`);
 

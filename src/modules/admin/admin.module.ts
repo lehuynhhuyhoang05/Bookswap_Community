@@ -5,6 +5,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../../infrastructure/database/entities/user.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { Member } from '../../infrastructure/database/entities/member.entity';
 import { Book } from '../../infrastructure/database/entities/book.entity';
 import { Review } from '../../infrastructure/database/entities/review.entity';
@@ -35,6 +36,7 @@ import { ActivityLogService } from '../../common/services/activity-log.service';
       Conversation,
       UserActivityLog,
     ]),
+    NotificationsModule, // For sending notifications when reports are resolved
   ],
   controllers: [AdminController, ReportsController],
   providers: [AdminService, ActivityLogService],

@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import PrivateRoute from './PrivateRoute';
+import AdminRoutes from './AdminRoutes';
 
 // Auth Pages
 import Login from '../pages/auth/Login';
@@ -29,6 +30,13 @@ import ProfileReviews from '../pages/profile/reviews';
 // Messages
 import Messages from '../pages/messages/index';
 import ConversationDetail from '../pages/messages/conversation/[id]';
+
+// Notifications
+import NotificationsPage from '../pages/notifications/index';
+
+// Reports
+import ReportsListPage from '../pages/reports/index';
+import ReportDetailPage from '../pages/reports/detail/[id]';
 
 // Exchange Pages
 import ExchangePage from '../pages/exchange/index';
@@ -72,6 +80,13 @@ const AppRouter = () => (
     <Route path="/messages" element={<PrivateRoute><Messages /></PrivateRoute>} />
     <Route path="/messages/conversation/:id" element={<PrivateRoute><ConversationDetail /></PrivateRoute>} />
 
+    {/* Notifications */}
+    <Route path="/notifications" element={<PrivateRoute><NotificationsPage /></PrivateRoute>} />
+
+    {/* Reports */}
+    <Route path="/reports" element={<PrivateRoute><ReportsListPage /></PrivateRoute>} />
+    <Route path="/reports/:reportId" element={<PrivateRoute><ReportDetailPage /></PrivateRoute>} />
+
     {/* Exchange Routes */}
     <Route path="/exchange" element={<PrivateRoute><ExchangePage /></PrivateRoute>} />
     <Route path="/exchange/requests" element={<PrivateRoute><ExchangeRequests /></PrivateRoute>} />
@@ -81,6 +96,9 @@ const AppRouter = () => (
     <Route path="/exchange/:id" element={<PrivateRoute><ExchangeDetail /></PrivateRoute>} />
     <Route path="/exchange/suggestions" element={<PrivateRoute><ExchangeSuggestions /></PrivateRoute>} />
     <Route path="/exchange/create-request" element={<PrivateRoute><CreateExchangeRequest /></PrivateRoute>} />
+
+    {/* Admin Routes */}
+    <Route path="/admin/*" element={<AdminRoutes />} />
 
     {/* 404 */}
     <Route path="*" element={

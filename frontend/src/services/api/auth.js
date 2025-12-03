@@ -28,6 +28,11 @@ export const authService = {
         localStorage.setItem('refreshToken', response.data.refresh_token);
         localStorage.setItem('user', JSON.stringify(response.data.user));
         localStorage.setItem('isLoggedIn', 'true');
+        
+        // Lưu userRole cho admin check
+        if (response.data.user?.role) {
+          localStorage.setItem('userRole', response.data.user.role);
+        }
       }
 
       return response.data;
@@ -49,6 +54,7 @@ export const authService = {
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('user');
       localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('userRole');
 
       return response.data;
     } catch (error) {
@@ -57,6 +63,7 @@ export const authService = {
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('user');
       localStorage.removeItem('isLoggedIn');
+      localStorage.removeItem('userRole');
 
       throw error.response?.data || { message: 'Logout failed' };
     }

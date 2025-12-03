@@ -99,6 +99,27 @@ export const messagesService = {
   },
 
   /**
+   * 🆕 Create or get direct conversation with another user
+   * POST /api/v1/messages/conversations/direct
+   */
+  async createDirectConversation(receiverUserId) {
+    try {
+      const response = await api.post('/api/v1/messages/conversations/direct', {
+        receiver_user_id: receiverUserId
+      });
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data;
+      if (error.response?.status === 400) {
+        throw { message: 'Không thể nhắn tin với chính mình' };
+      } else if (error.response?.status === 404) {
+        throw { message: 'Người dùng không tồn tại' };
+      }
+      throw errorData || { message: 'Tạo hội thoại thất bại' };
+    }
+  },
+
+  /**
    * 6️⃣ Get messages in a conversation
    * GET /api/v1/messages/conversations/{conversationId}
    */
@@ -268,6 +289,35 @@ export const messagesService = {
     if (error?.message) return error.message;
     if (error?.response?.data?.message) return error.response.data.message;
     return 'Đã xảy ra lỗi không xác định';
+  },
+
+  /**
+   * 🆕 Upload file/image attachment
+   * POST /api/v1/messages/upload
+   */
+  async uploadAttachment(file, conversationId) {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (conversationId) {
+        formData.append('conversation_id', conversationId);
+      }
+
+      const response = await api.post('/api/v1/messages/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data;
+      if (error.response?.status === 400) {
+        throw { message: 'File không hợp lệ hoặc quá lớn' };
+      } else if (error.response?.status === 413) {
+        throw { message: 'File quá lớn (tối đa 10MB)' };
+      }
+      throw errorData || { message: 'Upload file thất bại' };
+    }
   }
 };
 

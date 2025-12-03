@@ -1,13 +1,14 @@
 // src/pages/reports/detail/[id].jsx
-import { AlertCircle, ArrowLeft, Calendar, FileText, User } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Calendar, FileText, User, Image as ImageIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Layout from '../../../components/layout/Layout';
 import { Badge, Button, Card, LoadingSpinner } from '../../../components/ui';
 import { useReports } from '../../../hooks/useReports';
+import ReportSeverityBadge from '../../../components/reports/ReportSeverityBadge';
 
 const ReportDetailPage = () => {
-  const { id } = useParams();
+  const { reportId } = useParams();  // Match route param name :reportId
   const navigate = useNavigate();
   const { getReportById, getReportTypeLabel, getStatusLabel, loading } =
     useReports();
@@ -17,15 +18,15 @@ const ReportDetailPage = () => {
 
   useEffect(() => {
     loadReportDetail();
-  }, [id]);
+  }, [reportId]);
 
   const loadReportDetail = async () => {
     try {
       setError('');
-      const data = await getReportById(id);
+      const data = await getReportById(reportId);
       setReport(data);
     } catch (err) {
-      console.error('Failed to load report detail:', err);
+      console.error('[ReportDetail] Failed to load:', err);
       setError(err.message || 'Không thể tải thông tin báo cáo');
     }
   };
@@ -129,6 +130,16 @@ const ReportDetailPage = () => {
                 </p>
               </div>
 
+              {/* Severity Level */}
+              {report.severity && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">
+                    Mức độ nghiêm trọng
+                  </label>
+                  <ReportSeverityBadge severity={report.severity} />
+                </div>
+              )}
+
               {report.description && (
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1">
@@ -202,6 +213,57 @@ const ReportDetailPage = () => {
               )}
             </div>
           </Card>
+
+          {/* Evidence Section */}
+          {report.evidence_urls && report.evidence_urls.length > 0 && (
+            <Card className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <ImageIcon className="w-6 h-6 text-purple-600" />
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Bằng chứng đính kèm ({report.evidence_urls.length})
+                </h2>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {report.evidence_urls.map((url, index) => (
+                  <a
+                    key={index}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block border-2 border-gray-200 rounded-lg overflow-hidden hover:border-blue-500 transition-all group"
+                  >
+                    <div className="relative">
+                      <img
+                        src={url}
+                        alt={`Bằng chứng ${index + 1}`}
+                        className="w-full h-48 object-cover group-hover:scale-105 transition-transform"
+                        onError={(e) => {
+                          e.target.parentElement.innerHTML = `
+                            <div class="w-full h-48 bg-gray-100 flex items-center justify-center">
+                              <div class="text-center text-gray-500">
+                                <svg class="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                <p class="text-sm">Tài liệu</p>
+                              </div>
+                            </div>
+                          `;
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                        <span className="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-medium">
+                          Xem chi tiết
+                        </span>
+                      </div>
+                    </div>
+                    <div className="p-2 bg-gray-50 text-xs text-gray-600 text-center">
+                      Bằng chứng #{index + 1}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </Card>
+          )}
 
           {/* Timeline */}
           <Card className="p-6">

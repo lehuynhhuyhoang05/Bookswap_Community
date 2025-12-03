@@ -188,4 +188,121 @@ export class TrustScoreService {
       }
     }
   }
+
+  // ============================================================
+  // TRUST SCORE RESTRICTIONS & WARNINGS
+  // ============================================================
+
+  // Trust Score thresholds (scale 0-100)
+  private readonly THRESHOLDS = {
+    CRITICAL: 0,      // = 0: Bị chặn hoàn toàn
+    VERY_LOW: 20,     // < 20: Không thể tạo exchange
+    LOW: 40,          // < 40: Cảnh báo, hạn chế hiển thị
+    NORMAL: 50,       // >= 50: Bình thường
+  };
+
+  /**
+   * Kiểm tra các hạn chế dựa trên Trust Score
+   */
+  getRestrictions(trustScore: number): {
+    canCreateExchange: boolean;
+    canSendMessages: boolean;
+    canPostBooks: boolean;
+    warningLevel: 'none' | 'low' | 'very_low' | 'critical';
+    warningMessage: string | null;
+  } {
+    const score = Number(trustScore) || 0;
+
+    if (score <= this.THRESHOLDS.CRITICAL) {
+      return {
+        canCreateExchange: false,
+        canSendMessages: false,
+        canPostBooks: false,
+        warningLevel: 'critical',
+        warningMessage: 'Tài khoản của bạn đã bị hạn chế hoàn toàn do điểm uy tín bằng 0. Vui lòng liên hệ admin.',
+      };
+    }
+
+    if (score < this.THRESHOLDS.VERY_LOW) {
+      return {
+        canCreateExchange: false,
+        canSendMessages: true,
+        canPostBooks: false,
+        warningLevel: 'very_low',
+        warningMessage: 'Điểm uy tín của bạn rất thấp. Bạn không thể tạo yêu cầu trao đổi hoặc đăng sách mới.',
+      };
+    }
+
+    if (score < this.THRESHOLDS.LOW) {
+      return {
+        canCreateExchange: true,
+        canSendMessages: true,
+        canPostBooks: true,
+        warningLevel: 'low',
+        warningMessage: 'Điểm uy tín của bạn thấp. Hãy hoàn thành các giao dịch thành công để cải thiện.',
+      };
+    }
+
+    return {
+      canCreateExchange: true,
+      canSendMessages: true,
+      canPostBooks: true,
+      warningLevel: 'none',
+      warningMessage: null,
+    };
+  }
+
+  /**
+   * Kiểm tra có nên hiển thị cảnh báo về người dùng này không (cho người khác xem)
+   */
+  shouldShowWarningToOthers(trustScore: number): { show: boolean; message: string | null } {
+    const score = Number(trustScore) || 0;
+
+    if (score <= this.THRESHOLDS.CRITICAL) {
+      return {
+        show: true,
+        message: '⚠️ Người dùng này có điểm uy tín bằng 0',
+      };
+    }
+
+    if (score < this.THRESHOLDS.VERY_LOW) {
+      return {
+        show: true,
+        message: '⚠️ Cảnh báo: Người dùng này có điểm uy tín rất thấp',
+      };
+    }
+
+    if (score < this.THRESHOLDS.LOW) {
+      return {
+        show: true,
+        message: '⚠️ Lưu ý: Người dùng này có điểm uy tín thấp',
+      };
+    }
+
+    return { show: false, message: null };
+  }
+
+  /**
+   * Get Trust Score badge info for display
+   */
+  getTrustBadge(trustScore: number): { label: string; color: string; icon: string } {
+    const score = Number(trustScore) || 0;
+
+    if (score >= 80) {
+      return { label: 'Rất đáng tin cậy', color: 'green', icon: '🌟' };
+    }
+    if (score >= 60) {
+      return { label: 'Đáng tin cậy', color: 'blue', icon: '✅' };
+    }
+    if (score >= 40) {
+      return { label: 'Bình thường', color: 'gray', icon: '👤' };
+    }
+    if (score >= 20) {
+      return { label: 'Cần cải thiện', color: 'yellow', icon: '⚠️' };
+    }
+    if (score > 0) {
+      return { label: 'Độ tin cậy thấp', color: 'orange', icon: '⚠️' };
+    }
+    return { label: 'Bị hạn chế', color: 'red', icon: '🚫' };
+  }
 }

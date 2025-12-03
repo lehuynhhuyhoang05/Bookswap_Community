@@ -43,6 +43,10 @@ COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/package*.json ./
 
+# Create uploads directory with proper permissions
+RUN mkdir -p /app/uploads/messages && \
+    chown -R nestjs:nodejs /app/uploads
+
 # Switch to non-root user
 USER nestjs
 

@@ -29,6 +29,8 @@ const ReportsManagement = () => {
   const [selectedReport, setSelectedReport] = useState(null);
   const [dismissReason, setDismissReason] = useState('');
   const [resolution, setResolution] = useState('');
+  const [penalty, setPenalty] = useState('WARNING');
+  const [trustScorePenalty, setTrustScorePenalty] = useState(5);
 
   useEffect(() => {
     loadReports();
@@ -99,14 +101,24 @@ const ReportsManagement = () => {
         selectedReport.report_id,
         'Resolution:',
         resolution,
+        'Penalty:',
+        penalty,
+        'Trust Score Penalty:',
+        trustScorePenalty,
       );
-      // API expects { resolution } object format
-      await resolveReport(selectedReport.report_id, { resolution: resolution });
+      // Gửi đầy đủ thông tin xử phạt
+      await resolveReport(selectedReport.report_id, {
+        resolution,
+        penalty,
+        trust_score_penalty: trustScorePenalty,
+      });
       console.log(
         '[ReportsManagement] Resolve successful, reloading reports...',
       );
       setShowResolveModal(false);
       setResolution('');
+      setPenalty('WARNING');
+      setTrustScorePenalty(5);
       setSelectedReport(null);
       await loadReports();
       alert('Đã xử lý báo cáo thành công');
@@ -543,30 +555,91 @@ const ReportsManagement = () => {
       {/* Resolve Modal */}
       {showResolveModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold mb-4 flex items-center text-green-600">
               <CheckCircle className="h-6 w-6 mr-2" />
-              Xử lý báo cáo
+              Xử lý báo cáo vi phạm
             </h3>
 
+            {/* Penalty Selection */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Hành động đã thực hiện *
+                Hình thức xử phạt *
+              </label>
+              <select
+                value={penalty}
+                onChange={(e) => setPenalty(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="NONE">Không xử phạt (chỉ ghi nhận)</option>
+                <option value="WARNING">⚠️ Cảnh cáo</option>
+                <option value="CONTENT_REMOVAL">🗑️ Xóa nội dung vi phạm</option>
+                <option value="TEMP_BAN">🔒 Khóa tài khoản 7 ngày</option>
+                <option value="PERMANENT_BAN">🚫 Khóa vĩnh viễn</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                {penalty === 'WARNING' && 'Gửi cảnh cáo đến người dùng vi phạm'}
+                {penalty === 'CONTENT_REMOVAL' && 'Xóa/ẩn nội dung vi phạm (sách, bài đăng...)'}
+                {penalty === 'TEMP_BAN' && 'Khóa tài khoản trong 7 ngày, người dùng không thể đăng nhập'}
+                {penalty === 'PERMANENT_BAN' && 'Khóa tài khoản vĩnh viễn, không thể khôi phục'}
+                {penalty === 'NONE' && 'Chỉ ghi nhận báo cáo, không áp dụng hình phạt'}
+              </p>
+            </div>
+
+            {/* Trust Score Penalty */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Trừ điểm uy tín (Trust Score)
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="0"
+                  max="20"
+                  value={trustScorePenalty}
+                  onChange={(e) => setTrustScorePenalty(Number(e.target.value))}
+                  className="flex-1"
+                />
+                <span className="text-lg font-bold text-red-600 min-w-[60px]">
+                  -{trustScorePenalty} điểm
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Điểm uy tín hiện tại sẽ bị trừ đi {trustScorePenalty} điểm
+              </p>
+            </div>
+
+            {/* Resolution Text */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Ghi chú xử lý *
               </label>
               <textarea
                 value={resolution}
                 onChange={(e) => setResolution(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                rows="4"
-                placeholder="Mô tả hành động đã thực hiện để xử lý vi phạm..."
+                rows="3"
+                placeholder="Mô tả chi tiết hành động đã thực hiện..."
               />
             </div>
+
+            {/* Warning for severe penalties */}
+            {(penalty === 'TEMP_BAN' || penalty === 'PERMANENT_BAN') && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-700 font-medium">
+                  ⚠️ Cảnh báo: Hành động này sẽ khóa tài khoản người dùng
+                  {penalty === 'PERMANENT_BAN' && ' VĨNH VIỄN'}!
+                </p>
+              </div>
+            )}
 
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => {
                   setShowResolveModal(false);
                   setResolution('');
+                  setPenalty('WARNING');
+                  setTrustScorePenalty(5);
                 }}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
@@ -574,9 +647,13 @@ const ReportsManagement = () => {
               </button>
               <button
                 onClick={handleResolve}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                className={`px-4 py-2 text-white rounded-lg ${
+                  penalty === 'PERMANENT_BAN' 
+                    ? 'bg-red-600 hover:bg-red-700' 
+                    : 'bg-green-600 hover:bg-green-700'
+                }`}
               >
-                Xác nhận xử lý
+                {penalty === 'PERMANENT_BAN' ? '🚫 Khóa vĩnh viễn' : 'Xác nhận xử lý'}
               </button>
             </div>
           </div>

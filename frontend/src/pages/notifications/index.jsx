@@ -142,6 +142,9 @@ const NotificationsPage = () => {
     { value: 'MESSAGE_RECEIVED', label: 'Tin nhắn mới' },
     { value: 'REVIEW_RECEIVED', label: 'Đánh giá mới' },
     { value: 'BOOK_MATCHED', label: 'Sách phù hợp' },
+    { value: 'REPORT_RESOLVED', label: 'Báo cáo đã xử lý' },
+    { value: 'REPORT_DISMISSED', label: 'Báo cáo không vi phạm' },
+    { value: 'REPORT_ACTION_TAKEN', label: 'Cảnh báo vi phạm' },
   ];
 
   const totalPages = Math.ceil(pagination.total / pagination.pageSize);

@@ -104,6 +104,38 @@ const NotificationItem = ({
           </p>
         );
 
+      case 'REPORT_RESOLVED':
+        return (
+          <p className="text-sm text-gray-700">
+            {payload.message || 'Báo cáo của bạn đã được xem xét và xử lý.'}
+            {payload.resolution && (
+              <span className="block mt-1 text-xs text-gray-500">
+                Kết quả: {payload.resolution}
+              </span>
+            )}
+          </p>
+        );
+
+      case 'REPORT_DISMISSED':
+        return (
+          <p className="text-sm text-gray-700">
+            {payload.message || 'Báo cáo của bạn đã được xem xét nhưng không phát hiện vi phạm.'}
+            {payload.reason && (
+              <span className="block mt-1 text-xs text-gray-500">
+                Lý do: {payload.reason}
+              </span>
+            )}
+          </p>
+        );
+
+      case 'REPORT_ACTION_TAKEN':
+        return (
+          <p className="text-sm text-orange-700">
+            <span className="font-medium">⚠️ Cảnh báo:</span>{' '}
+            {payload.message || 'Nội dung của bạn đã bị báo cáo và admin đã xem xét.'}
+          </p>
+        );
+
       default:
         return (
           <p className="text-sm text-gray-700">

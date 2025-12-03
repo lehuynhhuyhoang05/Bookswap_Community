@@ -4,13 +4,14 @@ import Layout from '../../../components/layout/Layout';
 import { Card, Button, LoadingSpinner, Badge, Avatar, Input, Textarea } from '../../../components/ui';
 import ReviewModal from '../../../components/review/ReviewModal';
 import { MeetingTimeline, MeetingScheduler, MeetingCard } from '../../../components/exchanges';
+import ReportIssueModal from '../../../components/exchange/ReportIssueModal';
 import { useExchanges } from '../../../hooks/useExchanges';
 import { useAuth } from '../../../hooks/useAuth';
 import { useMeeting } from '../../../hooks/useMeeting';
 import { reviewsService } from '../../../services/api/reviews';
 import { 
   ArrowLeft, Users, Book, Calendar, MapPin, MessageSquare, 
-  Check, X, Edit, AlertCircle, CheckCircle, Clock, Star, Play 
+  Check, X, Edit, AlertCircle, CheckCircle, Clock, Star, Play, AlertTriangle
 } from 'lucide-react';
 
 /**
@@ -53,6 +54,9 @@ const ExchangeDetailPage = () => {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [existingReview, setExistingReview] = useState(null);
   const [reviewTarget, setReviewTarget] = useState(null); // member to review
+
+  // Report issue modal state
+  const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
     loadExchangeDetail();
@@ -449,6 +453,18 @@ const ExchangeDetailPage = () => {
         {exchange.status !== 'CANCELLED' && exchange.status !== 'COMPLETED' && (
           <Card className="p-6">
             <div className="flex gap-3 justify-end flex-wrap">
+              {/* Report Issue Button - Available for IN_PROGRESS exchanges */}
+              {exchange.status === 'IN_PROGRESS' && (
+                <Button 
+                  variant="outline"
+                  onClick={() => setShowReportModal(true)}
+                  className="border-red-300 text-red-600 hover:bg-red-50"
+                >
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                  Báo cáo vấn đề
+                </Button>
+              )}
+              
               {canCancel && (
                 <Button 
                   variant="error"
@@ -630,6 +646,13 @@ const ExchangeDetailPage = () => {
             loading={reviewLoading}
           />
         )}
+
+        {/* Report Issue Modal */}
+        <ReportIssueModal
+          isOpen={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          exchange={exchange}
+        />
       </div>
     </Layout>
   );

@@ -37,6 +37,15 @@ export class Member {
   @Column({ default: false })
   is_verified: boolean;
 
+  @Column({ default: false })
+  is_online: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  last_seen_at: Date;
+
+  @Column({ type: 'json', nullable: true })
+  notification_settings: any;
+
   @Column({ type: 'timestamp', nullable: true })
   verification_date: Date;
 

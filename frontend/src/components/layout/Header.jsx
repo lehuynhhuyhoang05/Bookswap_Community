@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth'; // ✅ Thêm hook useAuth
+import messagesService from '../../services/api/messages';
+import NotificationBell from '../notifications/NotificationBell';
 
 // Header cho Guest (chưa đăng nhập)
 const HeaderGuest = () => {
@@ -142,11 +144,31 @@ const HeaderGuest = () => {
 const HeaderMember = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
 
   // ✅ Lấy thông tin user từ auth context
   const { user, logout } = useAuth();
+
+  // ✅ Fetch unread message count
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const result = await messagesService.getUnreadCount();
+        setUnreadMessageCount(result?.unread_count || result?.count || 0);
+      } catch (error) {
+        console.error('Failed to fetch unread count:', error);
+      }
+    };
+    
+    if (user) {
+      fetchUnreadCount();
+      // Refresh every 30 seconds
+      const interval = setInterval(fetchUnreadCount, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
 
   const navigation = [
     { name: 'Trang chủ', href: '/', current: location.pathname === '/' },
@@ -165,6 +187,11 @@ const HeaderMember = () => {
       href: '/messages',
       current: location.pathname.startsWith('/messages'),
     },
+    {
+      name: 'Thông báo',
+      href: '/notifications',
+      current: location.pathname.startsWith('/notifications'),
+    },
   ];
 
   const userNavigation = [
@@ -172,7 +199,10 @@ const HeaderMember = () => {
     { name: 'Thư viện của tôi', href: '/books/my-library' },
     { name: 'Sách muốn có', href: '/library/wanted-books' },
     { name: 'Lịch hẹn', href: '/exchange/meetings' },
+    { name: 'Báo cáo của tôi', href: '/reports' },
     { name: 'Cài đặt', href: '/settings' },
+    // Admin link - will be filtered if not admin
+    ...(user?.role === 'ADMIN' ? [{ name: '🔧 Quản trị Admin', href: '/admin', isAdmin: true }] : []),
   ];
 
   // ✅ Xử lý logout với auth service
@@ -221,9 +251,15 @@ const HeaderMember = () => {
                     item.current
                       ? 'border-blue-500 text-gray-900'
                       : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
+                  } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium relative`}
                 >
                   {item.name}
+                  {/* Unread badge for Messages */}
+                  {item.name === 'Tin nhắn' && unreadMessageCount > 0 && (
+                    <span className="ml-1.5 bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                      {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                    </span>
+                  )}
                 </Link>
               ))}
             </div>
@@ -239,30 +275,7 @@ const HeaderMember = () => {
             </Link>
 
             {/* Notification Bell */}
-            <button className="text-gray-500 hover:text-gray-700 p-1 relative">
-              <svg
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 17h5l-5 5-5-5h5z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8.5 14.5A2.5 2.5 0 0011 12V7a4 4 0 018 0v5a2.5 2.5 0 002.5 2.5"
-                />
-              </svg>
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 text-xs flex items-center justify-center">
-                3
-              </span>
-            </button>
+            <NotificationBell />
 
             {/* User dropdown */}
             <div className="relative">

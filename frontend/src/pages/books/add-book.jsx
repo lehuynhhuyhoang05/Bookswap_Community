@@ -3,12 +3,23 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/layout/Layout';
 import BookForm from '../../components/books/BookForm';
 import { useBooks } from '../../hooks/useBooks';
+import { useAuth } from '../../hooks/useAuth';
+import { TrustScoreWarning } from '../../components/common';
+import { AlertTriangle, ShieldX } from 'lucide-react';
 
 const AddBook = () => {
   const { addBook, loading, error } = useBooks();
+  const { getTrustRestrictions, canPerformAction } = useAuth();
   const navigate = useNavigate();
+  
+  const restrictions = getTrustRestrictions();
+  const canAddBook = canPerformAction('addBook');
 
   const handleSubmit = async (bookData) => {
+    if (!canAddBook) {
+      alert('Điểm tin cậy của bạn quá thấp để thêm sách mới. Vui lòng liên hệ quản trị viên.');
+      return;
+    }
     try {
       await addBook(bookData);
       navigate('/books/my-library');
@@ -28,16 +39,53 @@ const AddBook = () => {
             </p>
           </div>
 
+          {/* Trust Score Warning */}
+          <TrustScoreWarning restrictions={restrictions} />
+
+          {/* Blocked Message */}
+          {!canAddBook && (
+            <div className="bg-red-100 border-2 border-red-300 rounded-xl p-6 mb-6">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0">
+                  <ShieldX className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-red-800 mb-2">
+                    Không thể thêm sách
+                  </h3>
+                  <p className="text-red-700 mb-3">
+                    Điểm tin cậy của bạn hiện tại là <strong>{restrictions.trust_score}</strong>, 
+                    thấp hơn mức tối thiểu (20 điểm) để thêm sách mới.
+                  </p>
+                  <p className="text-sm text-red-600">
+                    Để khôi phục khả năng thêm sách, vui lòng liên hệ quản trị viên 
+                    hoặc cải thiện hành vi sử dụng nền tảng.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded mb-6">
               {error}
             </div>
           )}
 
-          <BookForm 
-            onSubmit={handleSubmit}
-            loading={loading}
-          />
+          {/* Only show form if user can add books */}
+          {canAddBook ? (
+            <BookForm 
+              onSubmit={handleSubmit}
+              loading={loading}
+            />
+          ) : (
+            <div className="bg-gray-100 rounded-xl p-8 text-center">
+              <AlertTriangle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500">
+                Form thêm sách bị khóa do điểm tin cậy thấp
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </Layout>

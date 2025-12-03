@@ -352,6 +352,33 @@ export class AuthService {
       });
     }
 
+    // Calculate Trust Score restrictions
+    let trustRestrictions: {
+      score: number;
+      canCreateExchange: boolean;
+      canPostBooks: boolean;
+      canSendMessages: boolean;
+      warningLevel: string;
+      warningMessage: string | null;
+    } | null = null;
+    if (memberProfile) {
+      const trustScore = Number(memberProfile.trust_score) || 0;
+      trustRestrictions = {
+        score: trustScore,
+        canCreateExchange: trustScore >= 20,
+        canPostBooks: trustScore >= 20,
+        canSendMessages: trustScore > 0,
+        warningLevel: trustScore === 0 ? 'critical' : trustScore < 20 ? 'very_low' : trustScore < 40 ? 'low' : 'none',
+        warningMessage: trustScore === 0 
+          ? 'Tài khoản của bạn đã bị hạn chế hoàn toàn do điểm uy tín bằng 0.'
+          : trustScore < 20 
+            ? 'Điểm uy tín của bạn rất thấp. Bạn không thể tạo yêu cầu trao đổi hoặc đăng sách mới.'
+            : trustScore < 40
+              ? 'Điểm uy tín của bạn thấp. Hãy hoàn thành các giao dịch thành công để cải thiện.'
+              : null,
+      };
+    }
+
     return {
       user_id: user.user_id,
       email: user.email,
@@ -363,6 +390,7 @@ export class AuthService {
       last_login_at: user.last_login_at,
       account_status: user.account_status,
       member: memberProfile,
+      trust_restrictions: trustRestrictions,
     };
   }
 

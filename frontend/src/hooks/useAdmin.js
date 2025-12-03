@@ -532,11 +532,15 @@ export const useAdminReports = () => {
     }
   }, []);
 
-  const resolveReport = useCallback(async (reportId, resolution) => {
+  const resolveReport = useCallback(async (reportId, data) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await resolveAdminReport(reportId, { resolution });
+      // data có thể là string (legacy) hoặc object {resolution, penalty, trust_score_penalty}
+      const payload = typeof data === 'string' 
+        ? { resolution: data } 
+        : data;
+      const result = await resolveAdminReport(reportId, payload);
       setReports((prev) =>
         prev.map((report) =>
           report.report_id === reportId

@@ -143,6 +143,28 @@ export const AuthProvider = ({ children }) => {
 
   const clearError = () => setError(null);
 
+  // Helper to get trust score restrictions
+  const getTrustRestrictions = () => {
+    return user?.trust_restrictions || null;
+  };
+
+  // Helper to check if user can perform action
+  const canPerformAction = (action) => {
+    const restrictions = user?.trust_restrictions;
+    if (!restrictions) return true; // No restrictions info = allow by default
+    
+    switch (action) {
+      case 'createExchange':
+        return restrictions.canCreateExchange;
+      case 'postBooks':
+        return restrictions.canPostBooks;
+      case 'sendMessages':
+        return restrictions.canSendMessages;
+      default:
+        return true;
+    }
+  };
+
   const value = {
     user,
     setUser,        // 👈 thêm setUser vào context
@@ -156,6 +178,8 @@ export const AuthProvider = ({ children }) => {
     resetPassword,
     clearError,
     refreshUser,    // 👈 thêm refreshUser vào context
+    getTrustRestrictions,
+    canPerformAction,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

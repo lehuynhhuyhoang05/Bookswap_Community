@@ -69,6 +69,15 @@ export class ExchangesService {
       throw new NotFoundException('Member profile not found');
     }
 
+    // 1.1 Check Trust Score - Block if too low (scale 0-100)
+    const trustScore = Number(requester.trust_score) || 0;
+    if (trustScore < 20) { // < 20 points: Cannot create exchange
+      throw new ForbiddenException(
+        'Điểm uy tín của bạn quá thấp để tạo yêu cầu trao đổi. ' +
+        'Vui lòng liên hệ admin để được hỗ trợ hoặc cải thiện điểm uy tín bằng cách hoàn thành các giao dịch thành công.'
+      );
+    }
+
     // 2. Validate receiver exists
     const receiver = await this.memberRepo.findOne({
       where: { member_id: dto.receiver_id },

@@ -337,6 +337,15 @@ export class BooksService {
       throw new NotFoundException('Member profile not found');
     }
 
+    // Check Trust Score - Block if too low (scale 0-100)
+    const trustScore = Number(member.trust_score) || 0;
+    if (trustScore < 20) { // < 20 points: Cannot post books
+      throw new ForbiddenException(
+        'Điểm uy tín của bạn quá thấp để đăng sách mới. ' +
+        'Vui lòng liên hệ admin để được hỗ trợ.'
+      );
+    }
+
     // Google Books integration – BỎ QUA nếu placeholder/invalid + hard-timeout
     const gbId = createBookDto.google_books_id?.trim();
     const shouldFetch =

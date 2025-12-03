@@ -29,8 +29,14 @@ const Login = () => {
     setError('');
 
     try {
-      await login(formData.email, formData.password);
-      navigate('/'); // Redirect to home after successful login
+      const response = await login(formData.email, formData.password);
+      
+      // Check user role and redirect accordingly
+      if (response?.user?.role === 'ADMIN') {
+        navigate('/admin'); // Redirect admin to admin panel
+      } else {
+        navigate('/'); // Redirect regular users to home
+      }
     } catch (err) {
       setError(err.message || 'Đăng nhập thất bại. Vui lòng thử lại.');
     } finally {

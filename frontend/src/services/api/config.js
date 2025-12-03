@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Base URL, bỏ dấu / ở cuối cho gọn
-const API_BASE_URL = 'http://localhost:3003';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 // Tạo instance axios
 const api = axios.create({

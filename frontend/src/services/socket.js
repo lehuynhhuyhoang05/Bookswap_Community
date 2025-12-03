@@ -1,18 +1,24 @@
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3003';
+const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 class SocketService {
   constructor() {
     this.socket = null;
     this.connected = false;
     this.listeners = new Map();
+    this.connectionCallbacks = [];
   }
 
   connect(token) {
     if (this.socket?.connected) {
       console.log('🔌 [SOCKET] Already connected');
       return this.socket;
+    }
+
+    // Disconnect existing socket if any
+    if (this.socket) {
+      this.socket.disconnect();
     }
 
     console.log('🔌 [SOCKET] Connecting to:', SOCKET_URL + '/messages');
@@ -22,24 +28,45 @@ class SocketService {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
+      timeout: 20000,
     });
 
     this.socket.on('connect', () => {
       console.log('✅ [SOCKET] Connected:', this.socket.id);
       this.connected = true;
+      // Notify all connection callbacks
+      this.connectionCallbacks.forEach(cb => cb(true));
     });
 
     this.socket.on('disconnect', (reason) => {
       console.log('❌ [SOCKET] Disconnected:', reason);
       this.connected = false;
+      // Notify all connection callbacks
+      this.connectionCallbacks.forEach(cb => cb(false));
     });
 
     this.socket.on('connect_error', (error) => {
       console.error('❌ [SOCKET] Connection error:', error.message);
+      this.connected = false;
     });
 
     return this.socket;
+  }
+
+  // Register a callback for connection status changes
+  onConnectionChange(callback) {
+    this.connectionCallbacks.push(callback);
+    // Immediately call with current status
+    callback(this.connected);
+    
+    // Return cleanup function
+    return () => {
+      const index = this.connectionCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.connectionCallbacks.splice(index, 1);
+      }
+    };
   }
 
   disconnect() {

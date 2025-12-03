@@ -4,6 +4,7 @@ import Layout from '../../../components/layout/Layout';
 import { Card, Button, LoadingSpinner, Badge, Avatar } from '../../../components/ui';
 import { useExchanges } from '../../../hooks/useExchanges';
 import { useAuth } from '../../../hooks/useAuth';
+import { useMessages } from '../../../hooks/useMessages';
 import { ArrowLeft, Send, Inbox, Check, X, Calendar, MessageSquare, CheckCircle } from 'lucide-react';
 
 /**
@@ -16,10 +17,12 @@ const ExchangeRequestDetailPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { getExchangeRequestDetail, cancelExchangeRequest, respondToExchangeRequest } = useExchanges();
+  const { sendMessage } = useMessages();
 
   const [request, setRequest] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [messageLoading, setMessageLoading] = useState(false);
 
   useEffect(() => {
     loadRequestDetail();
@@ -82,6 +85,23 @@ const ExchangeRequestDetailPage = () => {
       alert('Thất bại: ' + (error.message || 'Vui lòng thử lại'));
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleOpenChat = async () => {
+    setMessageLoading(true);
+    try {
+      // Gửi message đầu tiên để tạo conversation
+      await sendMessage({
+        exchange_request_id: id,
+        content: '👋 Xin chào! Tôi muốn thảo luận về yêu cầu trao đổi này.'
+      });
+      // Chuyển đến trang messages
+      navigate('/messages');
+    } catch (error) {
+      alert('Không thể mở chat: ' + (error.message || 'Vui lòng thử lại'));
+    } finally {
+      setMessageLoading(false);
     }
   };
 
@@ -261,6 +281,30 @@ const ExchangeRequestDetailPage = () => {
             </div>
           </Card>
         )}
+
+        {/* Message Button - Always show */}
+        <Card className="p-6 mb-6">
+          <div className="flex gap-3 justify-center">
+            <Button 
+              variant="primary"
+              onClick={handleOpenChat}
+              disabled={messageLoading}
+              className="min-w-[200px]"
+            >
+              {messageLoading ? (
+                <>
+                  <LoadingSpinner size="sm" className="mr-2" />
+                  Đang mở...
+                </>
+              ) : (
+                <>
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  💬 Nhắn tin với {isSender ? 'người nhận' : 'người yêu cầu'}
+                </>
+              )}
+            </Button>
+          </div>
+        </Card>
 
         {/* Actions */}
         {request.status === 'PENDING' && (

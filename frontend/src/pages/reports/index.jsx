@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/layout/Layout';
 import { Badge, Button, Card, LoadingSpinner } from '../../components/ui';
 import { useReports } from '../../hooks/useReports';
+import ReportSeverityBadge from '../../components/reports/ReportSeverityBadge';
 
 const ReportsListPage = () => {
   const navigate = useNavigate();
@@ -121,6 +122,9 @@ const ReportsListPage = () => {
                           {getReportTypeLabel(report.report_type)}
                         </h3>
                         {getStatusBadge(report.status)}
+                        {report.severity && (
+                          <ReportSeverityBadge severity={report.severity} />
+                        )}
                       </div>
 
                       <div className="space-y-1 text-sm text-gray-600">

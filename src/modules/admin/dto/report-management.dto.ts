@@ -3,7 +3,7 @@
 // DTOs cho Report System
 // ============================================================
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsEnum, IsOptional, IsInt, Min, Max, IsUUID } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsInt, Min, Max, IsUUID, IsNumber } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ReportStatus, ReportPriority } from '../../../infrastructure/database/entities/violation-report.entity';
 
@@ -47,11 +47,23 @@ export class QueryReportsDto {
 
 // DTO resolve report
 export class ResolveReportDto {
-  @ApiProperty({ example: 'Đã xử lý và xóa nội dung vi phạm. Removed inappropriate book and warned user.', description: 'Kết luận và hành động đã thực hiện' })
+  @ApiProperty({ example: 'Đã xử lý và xóa nội dung vi phạm.', description: 'Kết luận và hành động đã thực hiện' })
   @IsString()
   resolution: string;
 
-  // Removed action_taken vì DB schema không có column này
+  @ApiProperty({ 
+    example: 'WARNING', 
+    description: 'Hình thức xử phạt: WARNING (cảnh cáo), CONTENT_REMOVAL (xóa nội dung), TEMP_BAN (khóa 7 ngày), PERMANENT_BAN (khóa vĩnh viễn)',
+    enum: ['WARNING', 'CONTENT_REMOVAL', 'TEMP_BAN', 'PERMANENT_BAN', 'NONE']
+  })
+  @IsOptional()
+  @IsString()
+  penalty?: 'WARNING' | 'CONTENT_REMOVAL' | 'TEMP_BAN' | 'PERMANENT_BAN' | 'NONE';
+
+  @ApiPropertyOptional({ example: 5, description: 'Số điểm Trust Score bị trừ (0-20)' })
+  @IsOptional()
+  @IsNumber()
+  trust_score_penalty?: number;
 }
 
 // DTO dismiss report
