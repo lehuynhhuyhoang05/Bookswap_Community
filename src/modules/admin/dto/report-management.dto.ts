@@ -3,34 +3,20 @@
 // DTOs cho Report System
 // ============================================================
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsEnum, IsOptional, IsInt, Min, Max, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
-import {
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Max,
-  Min,
-} from 'class-validator';
-import {
-  ReportPriority,
-  ReportStatus,
-} from '../../../infrastructure/database/entities/violation-report.entity';
+import { ReportStatus, ReportPriority } from '../../../infrastructure/database/entities/violation-report.entity';
 
 // DTO query reports
 export class QueryReportsDto {
-  @ApiPropertyOptional({ example: 1, description: 'Trang hiện tại' })
+  @ApiPropertyOptional({ example: 1 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   page?: number = 1;
 
-  @ApiPropertyOptional({
-    example: 20,
-    description: 'Số lượng report mỗi trang',
-  })
+  @ApiPropertyOptional({ example: 20 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -38,36 +24,22 @@ export class QueryReportsDto {
   @Max(100)
   limit?: number = 20;
 
-  @ApiPropertyOptional({
-    example: 'PENDING',
-    enum: ['PENDING', 'IN_REVIEW', 'RESOLVED', 'DISMISSED'],
-    description: 'Lọc theo trạng thái report',
-  })
+  @ApiPropertyOptional({ example: 'PENDING', enum: ReportStatus, description: 'Lọc theo trạng thái' })
   @IsOptional()
   @IsEnum(ReportStatus)
   status?: ReportStatus;
 
-  @ApiPropertyOptional({
-    example: 'HIGH',
-    enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
-    description: 'Lọc theo độ ưu tiên',
-  })
+  @ApiPropertyOptional({ example: 'HIGH', enum: ReportPriority, description: 'Lọc theo độ ưu tiên' })
   @IsOptional()
   @IsEnum(ReportPriority)
   priority?: ReportPriority;
 
-  @ApiPropertyOptional({
-    example: 'SPAM',
-    description: 'Lọc theo loại vi phạm',
-  })
+  @ApiPropertyOptional({ example: 'SPAM', description: 'Lọc theo loại vi phạm (VARCHAR)' })
   @IsOptional()
   @IsString()
-  type?: string;
+  type?: string; // Changed from enum to string
 
-  @ApiPropertyOptional({
-    example: 'test-member-alice',
-    description: 'Lọc theo người báo cáo',
-  })
+  @ApiPropertyOptional({ example: 'test-member-alice', description: 'Lọc theo người báo cáo' })
   @IsOptional()
   @IsString()
   reportedBy?: string;
@@ -75,21 +47,16 @@ export class QueryReportsDto {
 
 // DTO resolve report
 export class ResolveReportDto {
-  @ApiProperty({
-    example:
-      'Đã xử lý và xóa nội dung vi phạm. Removed inappropriate book and warned user.',
-    description: 'Hành động đã thực hiện',
-  })
+  @ApiProperty({ example: 'Đã xử lý và xóa nội dung vi phạm. Removed inappropriate book and warned user.', description: 'Kết luận và hành động đã thực hiện' })
   @IsString()
   resolution: string;
+
+  // Removed action_taken vì DB schema không có column này
 }
 
 // DTO dismiss report
 export class DismissReportDto {
-  @ApiProperty({
-    example: 'Nội dung không vi phạm quy định',
-    description: 'Lý do bác bỏ',
-  })
+  @ApiProperty({ example: 'Nội dung không vi phạm quy định', description: 'Lý do từ chối' })
   @IsString()
   reason: string;
 }
@@ -104,24 +71,15 @@ export class CreateReportDto {
   @IsString()
   reported_item_type: string; // Changed from target_type
 
-  @ApiProperty({
-    example: 'book-uuid-123',
-    description: 'ID của đối tượng bị báo cáo',
-  })
+  @ApiProperty({ example: 'book-uuid-123', description: 'ID của đối tượng bị báo cáo' })
   @IsUUID()
   reported_item_id: string; // Changed from target_id
 
-  @ApiProperty({
-    example: 'test-member-bob',
-    description: 'Member ID của người bị report',
-  })
+  @ApiProperty({ example: 'test-member-bob', description: 'Member ID của người bị report' })
   @IsUUID()
   reported_member_id: string; // Added to match DB schema
 
-  @ApiProperty({
-    example: 'Sách này có nội dung spam và quảng cáo',
-    description: 'Mô tả chi tiết',
-  })
+  @ApiProperty({ example: 'Sách này có nội dung spam và quảng cáo', description: 'Mô tả chi tiết' })
   @IsString()
   description: string;
 }

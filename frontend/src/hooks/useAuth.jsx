@@ -17,24 +17,36 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // ✅ Hàm refresh user dùng lại được nhiều nơi (Profile, layout, v.v.)
+  const refreshUser = async () => {
+    try {
+      const token = authService.getToken();
+      const savedUser = authService.getCurrentUser();
+
+      if (!token || !savedUser) {
+        setUser(null);
+        setIsAuthenticated(false);
+        return;
+      }
+
+      // verify token bằng API getMe
+      const userData = await authService.getMe();
+      setUser(userData);
+      setIsAuthenticated(true);
+      setError(null);
+    } catch (err) {
+      console.error('Token validation / refresh user failed:', err);
+      authService.logout();
+      setUser(null);
+      setIsAuthenticated(false);
+    }
+  };
+
   // Khởi tạo auth state từ localStorage
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const token = authService.getToken();
-        const savedUser = authService.getCurrentUser();
-
-        if (token && savedUser) {
-          // Verify token bằng cách gọi API getMe
-          try {
-            const userData = await authService.getMe();
-            setUser(userData);
-            setIsAuthenticated(true);
-          } catch (error) {
-            console.error('Token validation failed:', error);
-            authService.logout();
-          }
-        }
+        await refreshUser();
       } catch (error) {
         console.error('Auth initialization error:', error);
       } finally {
@@ -55,15 +67,6 @@ export const AuthProvider = ({ children }) => {
       setUser(response.user);
       setIsAuthenticated(true);
 
-      // Log thông tin admin để debug
-      if (response.user?.is_admin || response.user?.role === 'ADMIN') {
-        console.log('✅ Admin logged in:', {
-          isAdmin: true,
-          role: response.user?.role,
-          adminLevel: response.user?.admin_level,
-        });
-      }
-
       return response;
     } catch (error) {
       setError(error.message || 'Login failed');
@@ -73,18 +76,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Register function - ✅ ĐÃ SỬA: Không set authenticated sau khi register
+  // Register function
   const register = async (userData) => {
     try {
       setError(null);
       setLoading(true);
 
-      // ✅ Chỉ gọi register service, KHÔNG set authenticated
       const response = await authService.register(userData);
-
-      // ❌ XÓA: Không set user và isAuthenticated
-      // setUser(response.user);
-      // setIsAuthenticated(true);
+      // Không tự login sau khi register
 
       return response;
     } catch (error) {
@@ -105,7 +104,6 @@ export const AuthProvider = ({ children }) => {
       setError(null);
     } catch (error) {
       console.error('Logout error:', error);
-      // Vẫn clear state dù API call thất bại
       setUser(null);
       setIsAuthenticated(false);
     } finally {
@@ -113,7 +111,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Forgot password function
   const forgotPassword = async (email) => {
     try {
       setError(null);
@@ -129,7 +126,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Reset password function
   const resetPassword = async (token, newPassword) => {
     try {
       setError(null);
@@ -145,12 +141,11 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Clear error
   const clearError = () => setError(null);
 
   const value = {
     user,
-    setUser,
+    setUser,        // 👈 thêm setUser vào context
     isAuthenticated,
     loading,
     error,
@@ -160,6 +155,7 @@ export const AuthProvider = ({ children }) => {
     forgotPassword,
     resetPassword,
     clearError,
+    refreshUser,    // 👈 thêm refreshUser vào context
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

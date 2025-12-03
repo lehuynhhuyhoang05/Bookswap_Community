@@ -56,6 +56,54 @@ export const exchangeService = {
   },
 
   /**
+   * 🆕 POST /exchanges/{id}/meeting/schedule
+   * Đặt lịch hẹn gặp mặt để trao đổi sách
+   */
+  async scheduleMeeting(id, data) {
+    try {
+      // Backend expects: meeting_location, meeting_time, meeting_notes, meeting_latitude, meeting_longitude
+      const payload = {
+        meeting_location: data.meeting_location,
+        meeting_time: data.meeting_time,
+        meeting_notes: data.meeting_notes || '',
+        meeting_latitude: data.meeting_latitude || null,
+        meeting_longitude: data.meeting_longitude || null
+      };
+      
+      const response = await api.post(`/exchanges/${id}/meeting/schedule`, payload);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Failed to schedule meeting' };
+    }
+  },
+
+  /**
+   * 🆕 PATCH /exchanges/{id}/meeting/confirm
+   * Xác nhận lịch hẹn (member xác nhận tham gia)
+   */
+  async confirmMeeting(id) {
+    try {
+      const response = await api.patch(`/exchanges/${id}/meeting/confirm`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Failed to confirm meeting' };
+    }
+  },
+
+  /**
+   * 🆕 PATCH /exchanges/{id}/start
+   * Bắt đầu trao đổi (khi cả hai có mặt tại buổi gặp)
+   */
+  async startExchange(id) {
+    try {
+      const response = await api.patch(`/exchanges/${id}/start`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Failed to start exchange' };
+    }
+  },
+
+  /**
    * ✅ PATCH /exchanges/{id}/cancel
    * Hủy giao dịch trao đổi
    */

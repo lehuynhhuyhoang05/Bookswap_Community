@@ -1,11 +1,12 @@
-import LoadingSpinner from '../ui/LoadingSpinner';
+import React from 'react';
 import ConversationItem from './ConversationItem';
+import LoadingSpinner from '../ui/LoadingSpinner';
 
-const ConversationList = ({
-  conversations,
-  loading,
+const ConversationList = ({ 
+  conversations, 
+  loading, 
   onSelectConversation,
-  selectedConversationId,
+  selectedConversationId 
 }) => {
   if (loading) {
     return (
@@ -27,9 +28,9 @@ const ConversationList = ({
     <div className="space-y-2">
       {conversations.map((conversation) => (
         <ConversationItem
-          key={conversation.conversation_id}
+          key={conversation.id}
           conversation={conversation}
-          isSelected={selectedConversationId === conversation.conversation_id}
+          isSelected={selectedConversationId === conversation.id}
           onSelect={onSelectConversation}
         />
       ))}

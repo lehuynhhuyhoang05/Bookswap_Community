@@ -2,19 +2,11 @@
 // src/modules/reports/reports.service.ts
 // Service xử lý reports từ users
 // ============================================================
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ViolationReport, ReportStatus, ReportPriority } from '../../infrastructure/database/entities/violation-report.entity';
 import { Member } from '../../infrastructure/database/entities/member.entity';
-import {
-  ReportPriority,
-  ReportStatus,
-  ViolationReport,
-} from '../../infrastructure/database/entities/violation-report.entity';
 import { CreateReportDto } from './dto/create-report.dto';
 import { QueryMyReportsDto } from './dto/query-reports.dto';
 
@@ -32,16 +24,16 @@ export class ReportsService {
    */
   async createReport(reporterMemberId: string, dto: CreateReportDto) {
     // Validate reporter tồn tại
-    const reporter = await this.memberRepo.findOne({
-      where: { member_id: reporterMemberId },
+    const reporter = await this.memberRepo.findOne({ 
+      where: { member_id: reporterMemberId } 
     });
     if (!reporter) {
       throw new NotFoundException('Reporter member not found');
     }
 
     // Validate reported member tồn tại
-    const reportedMember = await this.memberRepo.findOne({
-      where: { member_id: dto.reported_member_id },
+    const reportedMember = await this.memberRepo.findOne({ 
+      where: { member_id: dto.reported_member_id } 
     });
     if (!reportedMember) {
       throw new NotFoundException('Reported member not found');
@@ -59,8 +51,7 @@ export class ReportsService {
     report.reporter_id = reporterMemberId;
     report.reported_member_id = dto.reported_member_id;
     report.report_type = dto.report_type;
-    if (dto.reported_item_type)
-      report.reported_item_type = dto.reported_item_type;
+    if (dto.reported_item_type) report.reported_item_type = dto.reported_item_type;
     if (dto.reported_item_id) report.reported_item_id = dto.reported_item_id;
     report.description = dto.description;
     report.status = ReportStatus.PENDING;
@@ -104,16 +95,14 @@ export class ReportsService {
    */
   async getReportDetail(reportId: string, reporterMemberId: string) {
     const report = await this.reportRepo.findOne({
-      where: {
+      where: { 
         report_id: reportId,
         reporter_id: reporterMemberId, // Chỉ xem được report của mình
       },
     });
 
     if (!report) {
-      throw new NotFoundException(
-        'Report not found or you do not have permission to view it',
-      );
+      throw new NotFoundException('Report not found or you do not have permission to view it');
     }
 
     return report;

@@ -29,6 +29,8 @@ const ExchangeSuggestionsPage = () => {
     try {
       const result = await getExchangeSuggestions(20);
       // Backend returns object with 'suggestions' array
+      console.log('[Suggestions] Backend response:', result);
+      console.log('[Suggestions] First suggestion:', result?.suggestions?.[0]);
       setSuggestions(result?.suggestions || []);
     } catch (error) {
       console.error('[Suggestions] Failed to load:', error);
@@ -127,9 +129,26 @@ const ExchangeSuggestionsPage = () => {
         ) : (
           <div className="space-y-6">
             {suggestions.map((suggestion) => {
-              const otherUser = suggestion.member; // Backend returns 'member' not 'other_user'
+              const otherUser = suggestion.member;
               const matchScore = suggestion.match_score || 0;
               const matchPercentage = Math.round(matchScore * 100);
+              
+              // Get book counts - try multiple field names
+              const myBooksCount = suggestion.my_books_count 
+                || suggestion.matching_books?.they_want_from_me?.length 
+                || 0;
+              const theirBooksCount = suggestion.their_books_count 
+                || suggestion.matching_books?.i_want_from_them?.length 
+                || 0;
+              const totalMatching = suggestion.total_matching_books || 0;
+
+              console.log('[Suggestion Card]', {
+                suggestion_id: suggestion.suggestion_id,
+                myBooksCount,
+                theirBooksCount,
+                totalMatching,
+                matching_books: suggestion.matching_books
+              });
 
               return (
                 <Card key={suggestion.suggestion_id} className="p-6">
@@ -164,21 +183,29 @@ const ExchangeSuggestionsPage = () => {
                     <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                       <h5 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
                         <Send className="w-4 h-4 text-blue-600" />
-                        Tôi có thể đưa ({suggestion.matching_books?.they_want_from_me?.length || 0})
+                        Tôi có thể đưa ({myBooksCount})
                       </h5>
                       <div className="space-y-2">
-                        {suggestion.matching_books?.they_want_from_me?.map((item, idx) => {
-                          const book = item.my_book;
-                          return (
-                          <div key={book?.book_id || idx} className="bg-white p-3 rounded-lg shadow-sm">
-                            <div className="font-medium text-sm">{book?.title}</div>
-                            <div className="text-xs text-gray-600">{book?.author}</div>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Badge variant="outline" size="sm">{book?.condition}</Badge>
-                              {book?.category && <Badge variant="info" size="sm">{book?.category}</Badge>}
-                            </div>
-                          </div>
-                        )})}
+                        {suggestion.matching_books?.they_want_from_me && suggestion.matching_books.they_want_from_me.length > 0 ? (
+                          suggestion.matching_books.they_want_from_me.map((item, idx) => {
+                            const book = item.my_book;
+                            if (!book) return null;
+                            return (
+                              <div key={book.book_id || idx} className="bg-white p-3 rounded-lg shadow-sm">
+                                <div className="font-medium text-sm">{book.title}</div>
+                                <div className="text-xs text-gray-600">{book.author}</div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <Badge variant="outline" size="sm">{book.condition}</Badge>
+                                  {book.category && <Badge variant="info" size="sm">{book.category}</Badge>}
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : myBooksCount > 0 ? (
+                          <p className="text-sm text-gray-500 italic">Có {myBooksCount} cuốn sách phù hợp</p>
+                        ) : (
+                          <p className="text-sm text-gray-500 italic">Không có sách nào</p>
+                        )}
                       </div>
                     </div>
 
@@ -186,30 +213,38 @@ const ExchangeSuggestionsPage = () => {
                     <div className="bg-green-50 p-4 rounded-lg border border-green-200">
                       <h5 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
                         <Eye className="w-4 h-4 text-green-600" />
-                        Họ có thể đưa ({suggestion.matching_books?.i_want_from_them?.length || 0})
+                        Họ có thể đưa ({theirBooksCount})
                       </h5>
                       <div className="space-y-2">
-                        {suggestion.matching_books?.i_want_from_them?.map((item, idx) => {
-                          const book = item.their_book;
-                          return (
-                          <div key={book?.book_id || idx} className="bg-white p-3 rounded-lg shadow-sm">
-                            <div className="font-medium text-sm">{book?.title}</div>
-                            <div className="text-xs text-gray-600">{book?.author}</div>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Badge variant="outline" size="sm">{book?.condition}</Badge>
-                              {book?.category && <Badge variant="info" size="sm">{book?.category}</Badge>}
-                            </div>
-                          </div>
-                        )})}
+                        {suggestion.matching_books?.i_want_from_them && suggestion.matching_books.i_want_from_them.length > 0 ? (
+                          suggestion.matching_books.i_want_from_them.map((item, idx) => {
+                            const book = item.their_book;
+                            if (!book) return null;
+                            return (
+                              <div key={book.book_id || idx} className="bg-white p-3 rounded-lg shadow-sm">
+                                <div className="font-medium text-sm">{book.title}</div>
+                                <div className="text-xs text-gray-600">{book.author}</div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <Badge variant="outline" size="sm">{book.condition}</Badge>
+                                  {book.category && <Badge variant="info" size="sm">{book.category}</Badge>}
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : theirBooksCount > 0 ? (
+                          <p className="text-sm text-gray-500 italic">Có {theirBooksCount} cuốn sách phù hợp</p>
+                        ) : (
+                          <p className="text-sm text-gray-500 italic">Không có sách nào</p>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   {/* Match Info */}
-                  {suggestion.total_matching_books > 0 && (
+                  {totalMatching > 0 && (
                     <div className="bg-purple-50 p-3 rounded-lg mb-4 border border-purple-200">
                       <p className="text-sm text-purple-800">
-                        ✨ Có <strong>{suggestion.total_matching_books}</strong> sách phù hợp với mong muốn của cả hai
+                        ✨ Có <strong>{totalMatching}</strong> sách phù hợp với mong muốn của cả hai
                       </p>
                     </div>
                   )}

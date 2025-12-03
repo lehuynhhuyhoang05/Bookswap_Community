@@ -1,38 +1,35 @@
 // src/modules/exchanges/services/exchanges.service.ts
 import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Repository } from 'typeorm';
+import { Repository, In, IsNull } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  Book,
-  BookStatus,
-} from '../../../infrastructure/database/entities/book.entity';
-import { ExchangeBook } from '../../../infrastructure/database/entities/exchange-book.entity';
-import {
-  BookType,
-  ExchangeRequestBook,
-} from '../../../infrastructure/database/entities/exchange-request-book.entity';
+import { Member } from '../../../infrastructure/database/entities/member.entity';
+import { Book, BookStatus } from '../../../infrastructure/database/entities/book.entity';
 import {
   ExchangeRequest,
   ExchangeRequestStatus,
 } from '../../../infrastructure/database/entities/exchange-request.entity';
 import {
+  ExchangeRequestBook,
+  BookType,
+} from '../../../infrastructure/database/entities/exchange-request-book.entity';
+import {
   Exchange,
   ExchangeStatus,
 } from '../../../infrastructure/database/entities/exchange.entity';
-import { Member } from '../../../infrastructure/database/entities/member.entity';
+import { ExchangeBook } from '../../../infrastructure/database/entities/exchange-book.entity';
 import {
   CreateExchangeRequestDto,
+  RespondToRequestDto,
   QueryExchangeRequestsDto,
   QueryExchangesDto,
-  RespondToRequestDto,
 } from '../dto/exchange.dto';
 
 @Injectable()
@@ -57,7 +54,7 @@ export class ExchangesService {
 
     @InjectRepository(ExchangeBook)
     private exchangeBookRepo: Repository<ExchangeBook>,
-  ) {}
+  ) { }
 
   // ==================== CREATE EXCHANGE REQUEST ====================
   async createExchangeRequest(userId: string, dto: CreateExchangeRequestDto) {
@@ -84,9 +81,7 @@ export class ExchangesService {
 
     // 3. Cannot exchange with yourself
     if (requester.member_id === receiver.member_id) {
-      throw new BadRequestException(
-        'Cannot create exchange request with yourself',
-      );
+      throw new BadRequestException('Cannot create exchange request with yourself');
     }
 
     // 4. Validate offered books (must be owned by requester and available)
@@ -131,9 +126,7 @@ export class ExchangesService {
     });
 
     if (existingRequest) {
-      throw new ConflictException(
-        'You already have a pending request with this member',
-      );
+      throw new ConflictException('You already have a pending request with this member');
     }
 
     // 7. Create exchange request
@@ -206,9 +199,7 @@ export class ExchangesService {
 
   // ==================== LIST MY REQUESTS ====================
   async getMyRequests(userId: string, query: QueryExchangeRequestsDto) {
-    this.logger.log(
-      `[getMyRequests] userId=${userId}, query=${JSON.stringify(query)}`,
-    );
+    this.logger.log(`[getMyRequests] userId=${userId}, query=${JSON.stringify(query)}`);
 
     // Get ALL member records for this user (in case of duplicate/old records)
     const members = await this.memberRepo.find({
@@ -220,9 +211,7 @@ export class ExchangesService {
     }
 
     const memberIds = members.map((m) => m.member_id);
-    this.logger.log(
-      `[getMyRequests] Found ${memberIds.length} member records: ${memberIds.join(', ')}`,
-    );
+    this.logger.log(`[getMyRequests] Found ${memberIds.length} member records: ${memberIds.join(', ')}`);
 
     const { status, type = 'received', page = 1, limit = 20 } = query;
     const skip = (page - 1) * limit;
@@ -276,9 +265,7 @@ export class ExchangesService {
     requestId: string,
     dto: RespondToRequestDto,
   ) {
-    this.logger.log(
-      `[respondToRequest] requestId=${requestId}, action=${dto.action}`,
-    );
+    this.logger.log(`[respondToRequest] requestId=${requestId}, action=${dto.action}`);
 
     // 1. Get ALL member records for user
     const members = await this.memberRepo.find({
@@ -303,9 +290,7 @@ export class ExchangesService {
 
     // 3. Verify user is the receiver (check ALL member records)
     if (!memberIds.includes(request.receiver_id)) {
-      throw new ForbiddenException(
-        'You are not authorized to respond to this request',
-      );
+      throw new ForbiddenException('You are not authorized to respond to this request');
     }
 
     // 4. Check request is still pending
@@ -420,9 +405,7 @@ export class ExchangesService {
 
     // Can only cancel pending requests
     if (request.status !== ExchangeRequestStatus.PENDING) {
-      throw new BadRequestException(
-        'Cannot cancel a request that is not pending',
-      );
+      throw new BadRequestException('Cannot cancel a request that is not pending');
     }
 
     // Update status
@@ -465,9 +448,6 @@ export class ExchangesService {
       .leftJoinAndSelect('member_b.user', 'user_b')
       .leftJoinAndSelect('exchange.exchange_books', 'exchange_books')
       .leftJoinAndSelect('exchange_books.book', 'book')
-      .leftJoinAndSelect('exchange.reviews', 'reviews')
-      .leftJoinAndSelect('reviews.reviewer', 'reviewer')
-      .leftJoinAndSelect('reviewer.user', 'reviewer_user')
       .where('exchange.member_a_id IN (:...memberIds)', { memberIds })
       .orWhere('exchange.member_b_id IN (:...memberIds)', { memberIds });
 
@@ -481,20 +461,8 @@ export class ExchangesService {
       .take(limit)
       .getManyAndCount();
 
-    this.logger.debug(`[getMyExchanges] Found ${exchanges.length} exchanges`);
-    exchanges.forEach((ex, idx) => {
-      this.logger.debug(
-        `[getMyExchanges] Exchange ${idx}: id=${ex.exchange_id}, reviews count=${ex.reviews?.length || 0}, member_a_reviewed=${ex.member_a_reviewed}, member_b_reviewed=${ex.member_b_reviewed}`,
-      );
-    });
-
-    const formatted = exchanges.map((ex) => this.formatExchangeResponse(ex));
-    this.logger.debug(
-      `[getMyExchanges] Formatted response sample: ${JSON.stringify(formatted[0])}`,
-    );
-
     return {
-      items: formatted,
+      items: exchanges.map((ex) => this.formatExchangeResponse(ex)),
       total,
       page,
       limit,
@@ -523,6 +491,11 @@ export class ExchangesService {
 
     if (!exchange) {
       throw new NotFoundException('Exchange not found');
+    }
+
+    // Can only confirm exchanges that are IN_PROGRESS or MEETING_SCHEDULED
+    if (![ExchangeStatus.IN_PROGRESS, ExchangeStatus.MEETING_SCHEDULED, ExchangeStatus.PENDING].includes(exchange.status)) {
+      throw new BadRequestException('Can only confirm exchanges that are in progress');
     }
 
     // Verify user is part of exchange (check ALL member records)
@@ -572,14 +545,12 @@ export class ExchangesService {
           {
             owner_id: eb.to_member_id,
             status: BookStatus.AVAILABLE,
-            deleted_at: () => 'NULL', // Clear deleted_at to restore book
-          },
+            deleted_at: () => 'NULL'  // Clear deleted_at to restore book
+          }
         );
       }
 
-      this.logger.log(
-        `Transferred ownership of ${exchangeBooks.length} books for exchange ${exchangeId}`,
-      );
+      this.logger.log(`Transferred ownership of ${exchangeBooks.length} books for exchange ${exchangeId}`);
 
       // Update member stats
       await this.memberRepo.increment(
@@ -640,9 +611,7 @@ export class ExchangesService {
     }
 
     const totalSent = await this.requestRepo.count({
-      where: {
-        requester_id: memberIds.length === 1 ? memberIds[0] : undefined,
-      },
+      where: { requester_id: memberIds.length === 1 ? memberIds[0] : undefined },
     });
 
     const totalReceived = await this.requestRepo.count({
@@ -655,12 +624,8 @@ export class ExchangesService {
     let receivedCount = 0;
 
     for (const memberId of memberIds) {
-      sentCount += await requestRepo.count({
-        where: { requester_id: memberId },
-      });
-      receivedCount += await requestRepo.count({
-        where: { receiver_id: memberId },
-      });
+      sentCount += await requestRepo.count({ where: { requester_id: memberId } });
+      receivedCount += await requestRepo.count({ where: { receiver_id: memberId } });
     }
 
     let pendingCount = 0;
@@ -683,8 +648,7 @@ export class ExchangesService {
       });
     }
 
-    const successRate =
-      sentCount > 0 ? (completedExchanges / sentCount) * 100 : 0;
+    const successRate = sentCount > 0 ? (completedExchanges / sentCount) * 100 : 0;
 
     return {
       total_requests_sent: sentCount,
@@ -742,13 +706,94 @@ export class ExchangesService {
     };
   }
 
-  // ==================== UPDATE MEETING INFO ====================
-  async updateMeetingInfo(
+  // ==================== SCHEDULE MEETING ====================
+  async scheduleMeeting(
     userId: string,
     exchangeId: string,
-    dto: any, // UpdateMeetingInfoDto
+    dto: any, // ScheduleMeetingDto
   ) {
-    this.logger.log(`[updateMeetingInfo] exchangeId=${exchangeId}`);
+    this.logger.log(`[scheduleMeeting] exchangeId=${exchangeId}`);
+
+    // Get ALL member records for user
+    const members = await this.memberRepo.find({
+      where: { user_id: userId },
+    });
+
+    if (!members || members.length === 0) {
+      throw new NotFoundException('Member profile not found');
+    }
+
+    const memberIds = members.map((m) => m.member_id);
+    const currentMemberId = members[0].member_id;
+
+    const exchange = await this.exchangeRepo.findOne({
+      where: { exchange_id: exchangeId },
+    });
+
+    if (!exchange) {
+      throw new NotFoundException('Exchange not found');
+    }
+
+    // Verify user is part of exchange
+    let isPartOfExchange = false;
+    let userIsMemberA = false;
+    for (const memberId of memberIds) {
+      if (exchange.member_a_id === memberId) {
+        isPartOfExchange = true;
+        userIsMemberA = true;
+        break;
+      }
+      if (exchange.member_b_id === memberId) {
+        isPartOfExchange = true;
+        userIsMemberA = false;
+        break;
+      }
+    }
+
+    if (!isPartOfExchange) {
+      throw new ForbiddenException('You are not part of this exchange');
+    }
+
+    // Can only schedule meeting for PENDING exchanges
+    if (exchange.status !== ExchangeStatus.PENDING) {
+      throw new BadRequestException('Can only schedule meeting for pending exchanges');
+    }
+
+    // Validate meeting time is in the future
+    const meetingTime = new Date(dto.meeting_time);
+    if (meetingTime <= new Date()) {
+      throw new BadRequestException('Meeting time must be in the future');
+    }
+
+    // Update exchange with meeting details
+    exchange.meeting_location = dto.meeting_location;
+    exchange.meeting_time = meetingTime;
+    exchange.meeting_notes = dto.meeting_notes || null;
+    exchange.meeting_latitude = dto.meeting_latitude || null;
+    exchange.meeting_longitude = dto.meeting_longitude || null;
+    exchange.meeting_scheduled_at = new Date();
+    exchange.meeting_scheduled_by = currentMemberId;
+
+    // The person who schedules automatically confirms
+    if (userIsMemberA) {
+      exchange.meeting_confirmed_by_a = true;
+    } else {
+      exchange.meeting_confirmed_by_b = true;
+    }
+
+    // Status changes to MEETING_SCHEDULED once both confirm
+    // For now, it stays PENDING until the other person confirms
+
+    await this.exchangeRepo.save(exchange);
+
+    this.logger.log(`Meeting scheduled for exchange: ${exchangeId}`);
+
+    return this.getExchangeById(exchangeId);
+  }
+
+  // ==================== CONFIRM MEETING ====================
+  async confirmMeeting(userId: string, exchangeId: string) {
+    this.logger.log(`[confirmMeeting] exchangeId=${exchangeId}`);
 
     // Get ALL member records for user
     const members = await this.memberRepo.find({
@@ -771,11 +816,73 @@ export class ExchangesService {
 
     // Verify user is part of exchange
     let isPartOfExchange = false;
+    let userIsMemberA = false;
     for (const memberId of memberIds) {
-      if (
-        exchange.member_a_id === memberId ||
-        exchange.member_b_id === memberId
-      ) {
+      if (exchange.member_a_id === memberId) {
+        isPartOfExchange = true;
+        userIsMemberA = true;
+        break;
+      }
+      if (exchange.member_b_id === memberId) {
+        isPartOfExchange = true;
+        userIsMemberA = false;
+        break;
+      }
+    }
+
+    if (!isPartOfExchange) {
+      throw new ForbiddenException('You are not part of this exchange');
+    }
+
+    // Must have meeting scheduled first
+    if (!exchange.meeting_time || !exchange.meeting_location) {
+      throw new BadRequestException('No meeting has been scheduled yet');
+    }
+
+    // Update confirmation
+    if (userIsMemberA) {
+      exchange.meeting_confirmed_by_a = true;
+    } else {
+      exchange.meeting_confirmed_by_b = true;
+    }
+
+    // If both confirmed, update status to MEETING_SCHEDULED
+    if (exchange.meeting_confirmed_by_a && exchange.meeting_confirmed_by_b) {
+      exchange.status = ExchangeStatus.MEETING_SCHEDULED;
+      this.logger.log(`Meeting confirmed by both parties for exchange: ${exchangeId}`);
+    }
+
+    await this.exchangeRepo.save(exchange);
+
+    return this.getExchangeById(exchangeId);
+  }
+
+  // ==================== START EXCHANGE (After meeting) ====================
+  async startExchange(userId: string, exchangeId: string) {
+    this.logger.log(`[startExchange] exchangeId=${exchangeId}`);
+
+    const members = await this.memberRepo.find({
+      where: { user_id: userId },
+    });
+
+    if (!members || members.length === 0) {
+      throw new NotFoundException('Member profile not found');
+    }
+
+    const memberIds = members.map((m) => m.member_id);
+
+    const exchange = await this.exchangeRepo.findOne({
+      where: { exchange_id: exchangeId },
+    });
+
+    if (!exchange) {
+      throw new NotFoundException('Exchange not found');
+    }
+
+    // Verify user is part of exchange
+    let isPartOfExchange = false;
+    for (const memberId of memberIds) {
+      if (exchange.member_a_id === memberId || exchange.member_b_id === memberId) {
         isPartOfExchange = true;
         break;
       }
@@ -785,13 +892,70 @@ export class ExchangesService {
       throw new ForbiddenException('You are not part of this exchange');
     }
 
-    // Can only update meeting info for PENDING or ACCEPTED exchanges
-    if (
-      ![ExchangeStatus.PENDING, 'ACCEPTED'].includes(exchange.status as any)
-    ) {
-      throw new BadRequestException(
-        'Cannot update meeting info for this exchange status',
-      );
+    // Can only start from MEETING_SCHEDULED status
+    if (exchange.status !== ExchangeStatus.MEETING_SCHEDULED) {
+      throw new BadRequestException('Can only start exchange after meeting is scheduled and confirmed');
+    }
+
+    exchange.status = ExchangeStatus.IN_PROGRESS;
+    await this.exchangeRepo.save(exchange);
+
+    this.logger.log(`Exchange started: ${exchangeId}`);
+
+    return this.getExchangeById(exchangeId);
+  }
+
+  // ==================== UPDATE MEETING INFO ====================
+  async updateMeetingInfo(
+    userId: string,
+    exchangeId: string,
+    dto: any, // UpdateMeetingInfoDto
+  ) {
+    this.logger.log(`[updateMeetingInfo] exchangeId=${exchangeId}`);
+
+    // Get ALL member records for user
+    const members = await this.memberRepo.find({
+      where: { user_id: userId },
+    });
+
+    if (!members || members.length === 0) {
+      throw new NotFoundException('Member profile not found');
+    }
+
+    const memberIds = members.map((m) => m.member_id);
+    const currentMemberId = members[0].member_id;
+
+    const exchange = await this.exchangeRepo.findOne({
+      where: { exchange_id: exchangeId },
+    });
+
+    if (!exchange) {
+      throw new NotFoundException('Exchange not found');
+    }
+
+    // Verify user is part of exchange
+    let isPartOfExchange = false;
+    let userIsMemberA = false;
+    for (const memberId of memberIds) {
+      if (exchange.member_a_id === memberId) {
+        isPartOfExchange = true;
+        userIsMemberA = true;
+        break;
+      }
+      if (exchange.member_b_id === memberId) {
+        isPartOfExchange = true;
+        userIsMemberA = false;
+        break;
+      }
+    }
+
+    if (!isPartOfExchange) {
+      throw new ForbiddenException('You are not part of this exchange');
+    }
+
+    // Can only update meeting info for PENDING or MEETING_SCHEDULED exchanges
+    if (![ExchangeStatus.PENDING, ExchangeStatus.MEETING_SCHEDULED].includes(exchange.status)) {
+      throw new BadRequestException('Cannot update meeting info for this exchange status');
     }
 
     // Update meeting info
@@ -808,6 +972,30 @@ export class ExchangesService {
     if (dto.meeting_notes !== undefined) {
       exchange.meeting_notes = dto.meeting_notes;
     }
+    if (dto.meeting_latitude !== undefined) {
+      exchange.meeting_latitude = dto.meeting_latitude;
+    }
+    if (dto.meeting_longitude !== undefined) {
+      exchange.meeting_longitude = dto.meeting_longitude;
+    }
+
+    // Reset confirmations when meeting is updated (other person needs to re-confirm)
+    if (dto.meeting_location || dto.meeting_time) {
+      if (userIsMemberA) {
+        exchange.meeting_confirmed_by_a = true;
+        exchange.meeting_confirmed_by_b = false;
+      } else {
+        exchange.meeting_confirmed_by_a = false;
+        exchange.meeting_confirmed_by_b = true;
+      }
+      exchange.meeting_scheduled_by = currentMemberId;
+      exchange.meeting_scheduled_at = new Date();
+
+      // If status was MEETING_SCHEDULED, revert to PENDING
+      if (exchange.status === ExchangeStatus.MEETING_SCHEDULED) {
+        exchange.status = ExchangeStatus.PENDING;
+      }
+    }
 
     await this.exchangeRepo.save(exchange);
 
@@ -820,9 +1008,7 @@ export class ExchangesService {
     exchangeId: string,
     dto: any, // CancelExchangeDto
   ) {
-    this.logger.log(
-      `[cancelExchange] exchangeId=${exchangeId} reason=${dto.cancellation_reason}`,
-    );
+    this.logger.log(`[cancelExchange] exchangeId=${exchangeId} reason=${dto.cancellation_reason}`);
 
     // Get ALL member records for user
     const members = await this.memberRepo.find({
@@ -847,10 +1033,7 @@ export class ExchangesService {
     // Verify user is part of exchange
     let isPartOfExchange = false;
     for (const memberId of memberIds) {
-      if (
-        exchange.member_a_id === memberId ||
-        exchange.member_b_id === memberId
-      ) {
+      if (exchange.member_a_id === memberId || exchange.member_b_id === memberId) {
         isPartOfExchange = true;
         break;
       }
@@ -893,9 +1076,7 @@ export class ExchangesService {
 
     // Decrease trust score for cancellations (except ADMIN_CANCELLED)
     if (dto.cancellation_reason !== 'ADMIN_CANCELLED') {
-      const penaltyPoints = this.getCancellationPenalty(
-        dto.cancellation_reason,
-      );
+      const penaltyPoints = this.getCancellationPenalty(dto.cancellation_reason);
 
       await this.memberRepo.decrement(
         { member_id: exchange.member_a_id },
@@ -948,8 +1129,20 @@ export class ExchangesService {
       })),
       member_a_confirmed: exchange.member_a_confirmed,
       member_b_confirmed: exchange.member_b_confirmed,
-      member_a_reviewed: exchange.member_a_reviewed || false,
-      member_b_reviewed: exchange.member_b_reviewed || false,
+      // Meeting info
+      meeting: {
+        location: exchange.meeting_location,
+        latitude: exchange.meeting_latitude,
+        longitude: exchange.meeting_longitude,
+        time: exchange.meeting_time,
+        notes: exchange.meeting_notes,
+        scheduled_at: exchange.meeting_scheduled_at,
+        scheduled_by: exchange.meeting_scheduled_by,
+        confirmed_by_a: exchange.meeting_confirmed_by_a,
+        confirmed_by_b: exchange.meeting_confirmed_by_b,
+        is_confirmed: exchange.meeting_confirmed_by_a && exchange.meeting_confirmed_by_b,
+      },
+      // Legacy fields for backward compatibility
       meeting_location: exchange.meeting_location,
       meeting_time: exchange.meeting_time,
       meeting_notes: exchange.meeting_notes,
@@ -957,18 +1150,6 @@ export class ExchangesService {
       cancellation_details: exchange.cancellation_details,
       completed_at: exchange.completed_at,
       created_at: exchange.created_at,
-      reviews: exchange.reviews
-        ? exchange.reviews.map((r) => ({
-            review_id: r.review_id,
-            reviewer_id: r.reviewer_id,
-            reviewer_name: r.reviewer?.user?.full_name || 'Người dùng',
-            reviewee_id: r.reviewee_id,
-            rating: r.rating,
-            comment: r.comment,
-            created_at: r.created_at,
-            updated_at: r.updated_at,
-          }))
-        : [],
     };
   }
 }

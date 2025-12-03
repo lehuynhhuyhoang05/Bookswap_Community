@@ -1,8 +1,6 @@
-import { Search } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth'; // ✅ Thêm hook useAuth
-import NotificationBell from '../notifications/NotificationBell';
 
 // Header cho Guest (chưa đăng nhập)
 const HeaderGuest = () => {
@@ -171,10 +169,10 @@ const HeaderMember = () => {
 
   const userNavigation = [
     { name: 'Hồ sơ', href: '/profile' },
-    { name: 'Đánh giá', href: '/profile/reviews' },
-    { name: 'Báo cáo của tôi', href: '/reports' },
     { name: 'Thư viện của tôi', href: '/books/my-library' },
-    { name: 'Sách yêu cầu', href: '/library/wanted-books' },
+    { name: 'Sách muốn có', href: '/library/wanted-books' },
+    { name: 'Lịch hẹn', href: '/exchange/meetings' },
+    { name: 'Cài đặt', href: '/settings' },
   ];
 
   // ✅ Xử lý logout với auth service
@@ -233,17 +231,38 @@ const HeaderMember = () => {
 
           {/* Right side navigation - Member */}
           <div className="flex items-center space-x-4">
-            {/* Search Icon */}
             <Link
-              to="/books/search"
-              className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100"
-              title="Tìm kiếm sách"
+              to="/exchange/create-request"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
             >
-              <Search className="w-5 h-5" />
+              Tạo trao đổi
             </Link>
 
-            {/* Notification Bell Component */}
-            <NotificationBell />
+            {/* Notification Bell */}
+            <button className="text-gray-500 hover:text-gray-700 p-1 relative">
+              <svg
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 17h5l-5 5-5-5h5z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8.5 14.5A2.5 2.5 0 0011 12V7a4 4 0 018 0v5a2.5 2.5 0 002.5 2.5"
+                />
+              </svg>
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 text-xs flex items-center justify-center">
+                3
+              </span>
+            </button>
 
             {/* User dropdown */}
             <div className="relative">
