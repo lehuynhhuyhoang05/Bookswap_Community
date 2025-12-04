@@ -3,6 +3,33 @@ import api from './config';
 
 export const booksService = {
   /**
+   * 📌 0. POST /books/upload-photos — Upload book photos
+   * @param {File[]} photos - Array of photo files to upload
+   * @returns {Promise<{urls: string[], message: string}>}
+   */
+  async uploadBookPhotos(photos) {
+    try {
+      const formData = new FormData();
+      photos.forEach((photo) => {
+        formData.append('photos', photo);
+      });
+
+      const response = await api.post('/books/upload-photos', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data;
+      if (error.response?.status === 400) {
+        throw { message: errorData?.message || 'Invalid file type or too many files' };
+      }
+      throw errorData || { message: 'Failed to upload photos' };
+    }
+  },
+
+  /**
    * 📌 1. POST /books — Add a New Book
    */
   async addBook(bookData) {

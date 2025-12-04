@@ -122,5 +122,7 @@ export class Exchange {
 
   @OneToMany(() => Review, (review) => review.exchange)
   reviews: Review[];
+
+  @Column('varchar', { length: 36, nullable: true })
   cancelled_by: string;
 }

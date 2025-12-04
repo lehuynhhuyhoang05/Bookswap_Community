@@ -40,7 +40,7 @@ const EditWantedBook = () => {
       
       await updateWantedBook(id, bookData);
       
-      navigate('/library/wanted-books', { 
+      navigate('/books/my-library?tab=wanted', { 
         state: { message: 'Đã cập nhật sách mong muốn thành công!' }
       });
       
@@ -53,7 +53,7 @@ const EditWantedBook = () => {
   };
 
   const handleCancel = () => {
-    navigate('/library/wanted-books');
+    navigate('/books/my-library?tab=wanted');
   };
 
   if (loading) {

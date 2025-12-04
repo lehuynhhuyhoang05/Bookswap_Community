@@ -148,6 +148,24 @@ export class ExchangesController {
     return this.exchangesService.getExchangeStats(req.user.userId);
   }
 
+  // ==================== PUBLIC MEMBER EXCHANGE HISTORY ====================
+  
+  @Get('member/:memberId/history')
+  @ApiOperation({ 
+    summary: 'Get public exchange history for a member',
+    description: 'Returns completed exchanges for a member - useful for checking trustworthiness'
+  })
+  @ApiParam({ name: 'memberId', description: 'Member ID (UUID)', schema: { type: 'string', format: 'uuid' } })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Max results (default: 10)' })
+  @ApiResponse({ status: 200, description: 'Member exchange history' })
+  async getMemberPublicHistory(
+    @Param('memberId', new ParseUUIDPipe({ version: '4' })) memberId: string,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+  ) {
+    this.logger.log(`[getMemberPublicHistory] memberId=${memberId} limit=${limit}`);
+    return this.exchangesService.getMemberPublicExchangeHistory(memberId, limit);
+  }
+
   // ==================== SUGGESTIONS (STATIC ROUTES FIRST) ====================
 
   @Post('suggestions/generate')

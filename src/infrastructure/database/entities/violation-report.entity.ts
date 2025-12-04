@@ -29,6 +29,12 @@ export enum ReportPriority {
   CRITICAL = 'CRITICAL',
 }
 
+export enum ReportSeverity {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+}
+
 @Entity('violation_reports')
 @Index('idx_report_status', ['status', 'priority', 'created_at'])
 @Index('idx_report_target', ['reported_item_type', 'reported_item_id'])
@@ -60,6 +66,10 @@ export class ViolationReport {
   @Column('text')
   description: string;
 
+  // Evidence URLs (JSON array)
+  @Column('json', { nullable: true })
+  evidence_urls: string[];
+
   @Column({
     type: 'enum',
     enum: ReportStatus,
@@ -73,6 +83,15 @@ export class ViolationReport {
     default: ReportPriority.MEDIUM,
   })
   priority: ReportPriority;
+
+  // Severity level from reporter
+  @Column({
+    type: 'enum',
+    enum: ReportSeverity,
+    default: ReportSeverity.MEDIUM,
+    nullable: true,
+  })
+  severity: ReportSeverity;
 
   @Column('varchar', { length: 36, nullable: true })
   resolved_by: string; // admin_id (DB schema dùng resolved_by không phải assigned_to)

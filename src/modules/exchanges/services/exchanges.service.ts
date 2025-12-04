@@ -8,8 +8,9 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, IsNull } from 'typeorm';
+import { Repository, In, IsNull, LessThan } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { Member } from '../../../infrastructure/database/entities/member.entity';
 import { Book, BookStatus } from '../../../infrastructure/database/entities/book.entity';
 import {
@@ -55,6 +56,54 @@ export class ExchangesService {
     @InjectRepository(ExchangeBook)
     private exchangeBookRepo: Repository<ExchangeBook>,
   ) { }
+
+  // ==================== CRON: AUTO-EXPIRE REQUESTS ====================
+  /**
+   * Run every hour to expire pending requests that have passed their expiration date
+   */
+  @Cron(CronExpression.EVERY_HOUR)
+  async handleExpiredRequests() {
+    this.logger.log('[CRON] Checking for expired exchange requests...');
+
+    try {
+      // Find all PENDING requests that have expired
+      const expiredRequests = await this.requestRepo.find({
+        where: {
+          status: ExchangeRequestStatus.PENDING,
+          expires_at: LessThan(new Date()),
+        },
+        relations: ['request_books'],
+      });
+
+      if (expiredRequests.length === 0) {
+        this.logger.log('[CRON] No expired requests found');
+        return;
+      }
+
+      this.logger.log(`[CRON] Found ${expiredRequests.length} expired requests`);
+
+      for (const request of expiredRequests) {
+        // Update status to CANCELLED (expired)
+        request.status = ExchangeRequestStatus.CANCELLED;
+        await this.requestRepo.save(request);
+
+        // Release books back to AVAILABLE
+        const bookIds = request.request_books.map((rb) => rb.book_id);
+        if (bookIds.length > 0) {
+          await this.bookRepo.update(
+            { book_id: In(bookIds) },
+            { status: BookStatus.AVAILABLE },
+          );
+        }
+
+        this.logger.log(`[CRON] Expired request ${request.request_id} - released ${bookIds.length} books`);
+      }
+
+      this.logger.log(`[CRON] Successfully expired ${expiredRequests.length} requests`);
+    } catch (error) {
+      this.logger.error('[CRON] Error expiring requests:', error);
+    }
+  }
 
   // ==================== CREATE EXCHANGE REQUEST ====================
   async createExchangeRequest(userId: string, dto: CreateExchangeRequestDto) {
@@ -138,13 +187,17 @@ export class ExchangesService {
       throw new ConflictException('You already have a pending request with this member');
     }
 
-    // 7. Create exchange request
+    // 7. Create exchange request with expiration (14 days)
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 14); // Request expires in 14 days
+
     const request = this.requestRepo.create({
       request_id: uuidv4(),
       requester_id: requester.member_id,
       receiver_id: receiver.member_id,
       status: ExchangeRequestStatus.PENDING,
       message: dto.message,
+      expires_at: expiresAt,
     });
 
     await this.requestRepo.save(request);
@@ -305,6 +358,22 @@ export class ExchangesService {
     // 4. Check request is still pending
     if (request.status !== ExchangeRequestStatus.PENDING) {
       throw new BadRequestException('Request has already been responded to');
+    }
+
+    // 4.1 Check if request has expired
+    if (request.expires_at && new Date() > new Date(request.expires_at)) {
+      // Auto-expire the request
+      request.status = ExchangeRequestStatus.CANCELLED;
+      await this.requestRepo.save(request);
+
+      // Release books back to AVAILABLE
+      const bookIds = request.request_books.map((rb) => rb.book_id);
+      await this.bookRepo.update(
+        { book_id: In(bookIds) },
+        { status: BookStatus.AVAILABLE },
+      );
+
+      throw new BadRequestException('This request has expired. The books have been released.');
     }
 
     // 5. Accept or Reject
@@ -712,6 +781,8 @@ export class ExchangesService {
       rejection_reason: request.rejection_reason,
       created_at: request.created_at,
       responded_at: request.responded_at,
+      expires_at: request.expires_at, // Add expiration date
+      is_expired: request.expires_at ? new Date() > new Date(request.expires_at) : false,
     };
   }
 
@@ -1057,10 +1128,22 @@ export class ExchangesService {
       throw new BadRequestException('Cannot cancel a completed exchange');
     }
 
+    // Determine which member is cancelling
+    let cancellingMemberId: string | null = null;
+    for (const memberId of memberIds) {
+      if (exchange.member_a_id === memberId || exchange.member_b_id === memberId) {
+        cancellingMemberId = memberId;
+        break;
+      }
+    }
+
     // Update exchange status
     exchange.status = ExchangeStatus.CANCELLED;
     exchange.cancellation_reason = dto.cancellation_reason;
     exchange.cancellation_details = dto.cancellation_details || null;
+    if (cancellingMemberId) {
+      exchange.cancelled_by = cancellingMemberId; // Track who cancelled
+    }
 
     await this.exchangeRepo.save(exchange);
 
@@ -1071,32 +1154,26 @@ export class ExchangesService {
       { status: BookStatus.AVAILABLE },
     );
 
-    // Update member stats for cancellations (trust score impact)
-    await this.memberRepo.increment(
-      { member_id: exchange.member_a_id },
-      'cancelled_exchanges',
-      1,
-    );
-    await this.memberRepo.increment(
-      { member_id: exchange.member_b_id },
-      'cancelled_exchanges',
-      1,
-    );
+    // Only increment cancelled_exchanges for the person who cancelled
+    if (cancellingMemberId) {
+      await this.memberRepo.increment(
+        { member_id: cancellingMemberId },
+        'cancelled_exchanges',
+        1,
+      );
+    }
 
-    // Decrease trust score for cancellations (except ADMIN_CANCELLED)
-    if (dto.cancellation_reason !== 'ADMIN_CANCELLED') {
+    // Decrease trust score ONLY for the person who cancelled (except ADMIN_CANCELLED)
+    if (dto.cancellation_reason !== 'ADMIN_CANCELLED' && cancellingMemberId) {
       const penaltyPoints = this.getCancellationPenalty(dto.cancellation_reason);
 
       await this.memberRepo.decrement(
-        { member_id: exchange.member_a_id },
+        { member_id: cancellingMemberId },
         'trust_score',
         penaltyPoints,
       );
-      await this.memberRepo.decrement(
-        { member_id: exchange.member_b_id },
-        'trust_score',
-        penaltyPoints,
-      );
+
+      this.logger.log(`Trust score decreased by ${penaltyPoints} for member ${cancellingMemberId} due to cancellation`);
     }
 
     this.logger.log(`Exchange cancelled: ${exchange.exchange_id}`);
@@ -1114,6 +1191,83 @@ export class ExchangesService {
       ADMIN_CANCELLED: 0,
     };
     return penalties[reason] || 2;
+  }
+
+  // ==================== GET PUBLIC MEMBER EXCHANGE HISTORY ====================
+  /**
+   * Get completed exchanges for a member (public - for profile view)
+   * Only shows completed exchanges with limited info
+   */
+  async getMemberPublicExchangeHistory(memberId: string, limit = 10) {
+    this.logger.log(`[getMemberPublicExchangeHistory] memberId=${memberId} limit=${limit}`);
+
+    // Get completed exchanges where member participated
+    const exchanges = await this.exchangeRepo.find({
+      where: [
+        { member_a_id: memberId, status: ExchangeStatus.COMPLETED },
+        { member_b_id: memberId, status: ExchangeStatus.COMPLETED },
+      ],
+      relations: [
+        'member_a',
+        'member_a.user',
+        'member_b',
+        'member_b.user',
+        'exchange_books',
+        'exchange_books.book',
+      ],
+      order: { completed_at: 'DESC' },
+      take: limit,
+    });
+
+    // Get total count
+    const totalCompleted = await this.exchangeRepo.count({
+      where: [
+        { member_a_id: memberId, status: ExchangeStatus.COMPLETED },
+        { member_b_id: memberId, status: ExchangeStatus.COMPLETED },
+      ],
+    });
+
+    return {
+      exchanges: exchanges.map((e) => this.formatPublicExchangeResponse(e, memberId)),
+      total_completed: totalCompleted,
+      shown: exchanges.length,
+    };
+  }
+
+  /**
+   * Format exchange for public view (limited info)
+   */
+  private formatPublicExchangeResponse(exchange: Exchange, viewerMemberId: string) {
+    // Determine if this member was member_a or member_b
+    const isPartnerMemberA = exchange.member_a_id !== viewerMemberId;
+    const partner = isPartnerMemberA ? exchange.member_a : exchange.member_b;
+
+    // Get books exchanged
+    const booksReceived = exchange.exchange_books
+      .filter((eb) => eb.to_member_id === viewerMemberId)
+      .map((eb) => ({
+        title: eb.book.title,
+        author: eb.book.author,
+      }));
+
+    const booksGiven = exchange.exchange_books
+      .filter((eb) => eb.from_member_id === viewerMemberId)
+      .map((eb) => ({
+        title: eb.book.title,
+        author: eb.book.author,
+      }));
+
+    return {
+      exchange_id: exchange.exchange_id,
+      completed_at: exchange.completed_at,
+      partner: {
+        member_id: partner.member_id,
+        full_name: partner.user?.full_name || 'Thành viên',
+        avatar_url: partner.user?.avatar_url,
+      },
+      books_received: booksReceived,
+      books_given: booksGiven,
+    };
   }
 
   private formatExchangeResponse(exchange: Exchange) {

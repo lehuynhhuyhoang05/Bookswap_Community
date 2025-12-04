@@ -123,7 +123,7 @@ export class ReviewsService {
       .where('r.reviewee_id = :memberId', { memberId })
       .getRawOne();
 
-    const trustBase = 0.5; // as design note earlier; but existing member.trust_score may be legacy. We'll apply sum to 0.5
+    const trustBase = 50; // Base trust score on 0-100 scale
     const totalDelta = Number(sum || 0) + 0; // sum of impacts
     const newTrust = this.clampTrust(trustBase + totalDelta);
 
@@ -142,6 +142,30 @@ export class ReviewsService {
       take: pageSize,
     });
     return { items, total, page, pageSize };
+  }
+
+  /**
+   * Get reviews written by a member (as reviewer)
+   */
+  async findByReviewer(reviewerId: string, page = 1, pageSize = 20) {
+    const [items, total] = await this.reviewRepo.findAndCount({
+      where: { reviewer_id: reviewerId },
+      order: { created_at: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    
+    const totalPages = Math.ceil(total / pageSize);
+    
+    return { 
+      items, 
+      pagination: {
+        total, 
+        page, 
+        pageSize,
+        totalPages
+      }
+    };
   }
 
   async findByExchange(exchangeId: string) {

@@ -27,18 +27,13 @@ const ConditionBadge = ({ condition }) => {
     
     switch (normalizedCondition) {
       case 'LIKE_NEW':
-      case 'LIKE_NEW':
         return 'bg-green-100 text-green-800 border border-green-200';
-      case 'VERY_GOOD':
       case 'VERY_GOOD':
         return 'bg-blue-100 text-blue-800 border border-blue-200';
       case 'GOOD':
-      case 'GOOD':
         return 'bg-emerald-100 text-emerald-800 border border-emerald-200';
       case 'FAIR':
-      case 'FAIR':
         return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
-      case 'POOR':
       case 'POOR':
         return 'bg-red-100 text-red-800 border border-red-200';
       default:

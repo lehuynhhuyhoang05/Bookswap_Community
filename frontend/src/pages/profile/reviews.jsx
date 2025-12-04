@@ -1,11 +1,133 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useReviews } from '../../hooks/useReviews';
 import { reviewsService } from '../../services/api/reviews';
-import { Card, Button, RatingStars, Avatar, Pagination, LoadingSpinner, Tabs, Badge } from '../../components/ui';
+import { Card, Button, RatingStars, Avatar, Pagination, LoadingSpinner, Tabs, Badge, Modal } from '../../components/ui';
 import Layout from '../../components/layout/Layout';
+import EditReviewModal from '../exchange/EditReviewModal';
 
 const ProfileReviews = () => {
   const { user } = useAuth();
+  // member_id is nested in user.member object from /auth/me API
+  const memberId = user?.member?.member_id || user?.member_id || user?.user_id;
+  
+  // Tab state: 'received' | 'given'
+  const [activeTab, setActiveTab] = useState('received');
+  
+  // Given reviews (reviews written by current user)
+  const [givenReviews, setGivenReviews] = useState([]);
+  const [givenPagination, setGivenPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    totalPages: 1,
+    total: 0,
+  });
+  const [loadingGiven, setLoadingGiven] = useState(false);
+  
+  // Edit/Delete modal state
+  const [editingReview, setEditingReview] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  
+  // Use hook for received reviews
+  const { 
+    stats, 
+    reviews: receivedReviews, 
+    pagination: receivedPagination, 
+    loadingReviews: loadingReceived, 
+    loadReviews: loadReceivedReviews,
+    loadStats,
+    refresh,
+    error 
+  } = useReviews(memberId);
+
+  // Tabs configuration
+  const tabs = [
+    { id: 'received', name: 'Đánh giá nhận được', count: stats?.total_reviews || 0 },
+    { id: 'given', name: 'Đánh giá đã viết', count: givenPagination.total || 0 },
+  ];
+
+  // Load reviews written by current user
+  const loadGivenReviews = useCallback(async (page = 1) => {
+    if (!memberId) return;
+    setLoadingGiven(true);
+    try {
+      const response = await reviewsService.getReviewsByReviewer(memberId, { page, pageSize: 10 });
+      const data = response.data;
+      setGivenReviews(data.items || []);
+      setGivenPagination({
+        page: data.pagination?.page || page,
+        pageSize: data.pagination?.pageSize || 10,
+        totalPages: data.pagination?.totalPages || 1,
+        total: data.pagination?.total || data.items?.length || 0,
+      });
+    } catch (err) {
+      console.error('Error loading given reviews:', err);
+      setGivenReviews([]);
+    } finally {
+      setLoadingGiven(false);
+    }
+  }, [memberId]);
+
+  // Initial load
+  useEffect(() => {
+    if (memberId) {
+      loadGivenReviews(1);
+    }
+  }, [memberId, loadGivenReviews]);
+
+  // Calculate rating distribution for sidebar
+  const getRatingDistribution = () => {
+    const totalReviews = stats?.total_reviews || 0;
+    const ratingsCount = stats?.ratings_count || stats?.distribution || { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    
+    return [5, 4, 3, 2, 1].map((rating) => {
+      const count = ratingsCount[rating] || 0;
+      const percentage = totalReviews > 0 ? (count / totalReviews) * 100 : 0;
+      return { rating, count, percentage };
+    });
+  };
+
+  // Handle page change
+  const handlePageChange = (newPage) => {
+    if (activeTab === 'received') {
+      loadReceivedReviews(newPage);
+    } else {
+      loadGivenReviews(newPage);
+    }
+  };
+
+  // Handle delete review
+  const handleDeleteReview = async () => {
+    if (!deleteConfirm) return;
+    
+    setDeleting(true);
+    try {
+      await reviewsService.deleteReview(deleteConfirm.review_id);
+      setDeleteConfirm(null);
+      // Refresh data
+      await loadGivenReviews(givenPagination.page);
+      await loadStats();
+      alert('Đã xóa đánh giá thành công!');
+    } catch (err) {
+      console.error('Error deleting review:', err);
+      alert('Lỗi khi xóa đánh giá: ' + (err?.message || 'Vui lòng thử lại'));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Handle review updated (from EditReviewModal)
+  const handleReviewUpdated = async () => {
+    await loadGivenReviews(givenPagination.page);
+    await loadStats();
+  };
+
+  // Get current tab data
+  const currentReviews = activeTab === 'received' ? receivedReviews : givenReviews;
+  const currentPagination = activeTab === 'received' ? receivedPagination : givenPagination;
+  const loading = activeTab === 'received' ? loadingReceived : loadingGiven;
+
   if (!user) {
     return (
       <Layout>
@@ -72,20 +194,22 @@ const ProfileReviews = () => {
               <Card className="p-6 mt-6">
                 <h4 className="text-sm font-medium text-gray-900 mb-4">Thống kê nhanh</h4>
                 <div className="space-y-3">
-                  <>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">Tổng đánh giá</span>
-                      <Badge variant="primary">{stats?.total_reviews || 0}</Badge>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">Điểm trung bình</span>
-                      <Badge variant="success">{stats?.average_rating?.toFixed(1) || '0.0'}</Badge>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">5 sao</span>
-                      <Badge>{stats?.rating_breakdown?.[5] || 0}</Badge>
-                    </div>
-                  </>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Đánh giá nhận được</span>
+                    <Badge variant="primary">{stats?.total_reviews || 0}</Badge>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Đánh giá đã viết</span>
+                    <Badge variant="secondary">{givenPagination.total || 0}</Badge>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Điểm trung bình</span>
+                    <Badge variant="success">{stats?.average_rating?.toFixed(1) || '0.0'}</Badge>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">5 sao</span>
+                    <Badge>{stats?.ratings_count?.[5] || stats?.distribution?.[5] || 0}</Badge>
+                  </div>
                 </div>
               </Card>
             </div>
@@ -96,7 +220,7 @@ const ProfileReviews = () => {
                 <Tabs 
                   tabs={tabs} 
                   activeTab={activeTab} 
-                  onTabChange={setActiveTab}
+                  onTabChange={(tabId) => setActiveTab(tabId)}
                 />
 
                 <div className="mt-6">
@@ -104,7 +228,7 @@ const ProfileReviews = () => {
                     <div className="flex justify-center py-8">
                       <LoadingSpinner />
                     </div>
-                  ) : reviews.length === 0 ? (
+                  ) : currentReviews.length === 0 ? (
                     <div className="text-center py-12">
                       <div className="text-gray-400 mb-4">
                         <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -120,25 +244,26 @@ const ProfileReviews = () => {
                           : 'Bạn chưa viết đánh giá nào cho thành viên khác.'
                         }
                       </p>
-                      {activeTab === 'given' && (
-                        <Button>
-                          Viết đánh giá đầu tiên
-                        </Button>
-                      )}
                     </div>
                   ) : (
                     <>
                       <div className="space-y-4">
-                        {reviews.map((review) => (
-                          <ReviewCard key={review.review_id} review={review} />
+                        {currentReviews.map((review) => (
+                          <ReviewCard 
+                            key={review.review_id} 
+                            review={review} 
+                            isGiven={activeTab === 'given'}
+                            onEdit={() => setEditingReview(review)}
+                            onDelete={() => setDeleteConfirm(review)}
+                          />
                         ))}
                       </div>
 
-                      {pagination.totalPages > 1 && (
+                      {currentPagination.totalPages > 1 && (
                         <div className="mt-6">
                           <Pagination
-                            currentPage={pagination.page}
-                            totalPages={pagination.totalPages}
+                            currentPage={currentPagination.page}
+                            totalPages={currentPagination.totalPages}
                             onPageChange={handlePageChange}
                           />
                         </div>
@@ -151,24 +276,75 @@ const ProfileReviews = () => {
           </div>
         </div>
       </div>
+
+      {/* Edit Review Modal */}
+      {editingReview && (
+        <EditReviewModal
+          review={editingReview}
+          onClose={() => setEditingReview(null)}
+          onUpdated={handleReviewUpdated}
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!deleteConfirm}
+        onClose={() => !deleting && setDeleteConfirm(null)}
+        title="Xác nhận xóa đánh giá"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-600">
+            Bạn có chắc chắn muốn xóa đánh giá này? Hành động này không thể hoàn tác.
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteConfirm(null)}
+              disabled={deleting}
+            >
+              Hủy
+            </Button>
+            <Button
+              variant="danger"
+              onClick={handleDeleteReview}
+              disabled={deleting}
+              loading={deleting}
+            >
+              {deleting ? 'Đang xóa...' : 'Xóa đánh giá'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </Layout>
 );
 }
 
 // Component Review Card
-const ReviewCard = ({ review }) => {
+const ReviewCard = ({ review, isGiven = false, onEdit, onDelete }) => {
   const displayDate = new Date(review.created_at).toLocaleDateString('vi-VN', {
     year: 'numeric',
     month: 'long',
     day: 'numeric'
   });
 
+  // Determine which user info to show
+  const displayUser = isGiven 
+    ? { 
+        name: review.reviewee_name || review.reviewee?.full_name || 'Người được đánh giá', 
+        avatar: review.reviewee_avatar || review.reviewee?.avatar 
+      }
+    : { 
+        name: review.reviewer_name || review.reviewer?.full_name || 'Người đánh giá', 
+        avatar: review.reviewer_avatar || review.reviewer?.avatar 
+      };
+
   return (
     <Card className="p-4">
       <div className="flex items-start space-x-4">
         <Avatar 
-          src={review.reviewer_avatar} 
-          alt={review.reviewer_name}
+          src={displayUser.avatar} 
+          alt={displayUser.name}
           size="lg"
         />
         
@@ -176,7 +352,7 @@ const ReviewCard = ({ review }) => {
           <div className="flex items-center justify-between mb-2">
             <div>
               <h4 className="font-medium text-gray-900">
-                {review.reviewer_name}
+                {isGiven ? `Đánh giá cho: ${displayUser.name}` : displayUser.name}
               </h4>
               <div className="flex items-center space-x-2 mt-1">
                 <RatingStars rating={review.rating} size="sm" />
@@ -184,11 +360,37 @@ const ReviewCard = ({ review }) => {
               </div>
             </div>
             
-            {review.exchange_id && (
-              <Badge variant="outline" className="text-xs">
-                Từ trao đổi
-              </Badge>
-            )}
+            <div className="flex items-center space-x-2">
+              {review.exchange_id && (
+                <Badge variant="outline" className="text-xs">
+                  Từ trao đổi
+                </Badge>
+              )}
+              
+              {/* Edit/Delete buttons for given reviews */}
+              {isGiven && (
+                <div className="flex items-center space-x-1">
+                  <button
+                    onClick={onEdit}
+                    className="p-1 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                    title="Sửa đánh giá"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={onDelete}
+                    className="p-1 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                    title="Xóa đánh giá"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           
           {review.comment && (

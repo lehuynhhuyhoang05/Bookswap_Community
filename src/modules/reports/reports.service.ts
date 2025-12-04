@@ -5,7 +5,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ViolationReport, ReportStatus, ReportPriority } from '../../infrastructure/database/entities/violation-report.entity';
+import { ViolationReport, ReportStatus, ReportPriority, ReportSeverity } from '../../infrastructure/database/entities/violation-report.entity';
 import { Member } from '../../infrastructure/database/entities/member.entity';
 import { CreateReportDto } from './dto/create-report.dto';
 import { QueryMyReportsDto } from './dto/query-reports.dto';
@@ -44,8 +44,10 @@ export class ReportsService {
       throw new BadRequestException('Cannot report yourself');
     }
 
-    // Tạo report với priority mặc định dựa vào loại vi phạm
-    const priority = this.calculatePriority(dto.report_type);
+    // Tạo report với priority mặc định dựa vào loại vi phạm hoặc severity
+    const priority = dto.severity 
+      ? this.severityToPriority(dto.severity)
+      : this.calculatePriority(dto.report_type);
 
     const report = this.reportRepo.create();
     report.reporter_id = reporterMemberId;
@@ -56,6 +58,12 @@ export class ReportsService {
     report.description = dto.description;
     report.status = ReportStatus.PENDING;
     report.priority = priority;
+    
+    // New fields: severity and evidence
+    if (dto.severity) report.severity = dto.severity as unknown as ReportSeverity;
+    if (dto.evidence_urls && dto.evidence_urls.length > 0) {
+      report.evidence_urls = dto.evidence_urls;
+    }
 
     await this.reportRepo.save(report);
 
@@ -121,6 +129,21 @@ export class ReportsService {
         return ReportPriority.MEDIUM;
       case 'FAKE_PROFILE':
       case 'OTHER':
+      default:
+        return ReportPriority.LOW;
+    }
+  }
+
+  /**
+   * Chuyển severity thành priority
+   */
+  private severityToPriority(severity: string): ReportPriority {
+    switch (severity) {
+      case 'HIGH':
+        return ReportPriority.HIGH;
+      case 'MEDIUM':
+        return ReportPriority.MEDIUM;
+      case 'LOW':
       default:
         return ReportPriority.LOW;
     }

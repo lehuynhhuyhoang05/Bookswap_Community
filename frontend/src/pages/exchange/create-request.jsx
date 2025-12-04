@@ -7,6 +7,7 @@ import { useBooks } from '../../hooks/useBooks';
 import { useAuth } from '../../hooks/useAuth';
 import { TrustScoreWarning } from '../../components/common';
 import { ArrowLeft, Send, User, BookOpen, X, Search, Plus, ShieldX, AlertTriangle } from 'lucide-react';
+import { toDisplayScore } from '../../utils/trustScore';
 
 /**
  * Create Exchange Request Page
@@ -162,7 +163,7 @@ const CreateExchangeRequestPage = () => {
                     Không thể tạo yêu cầu trao đổi
                   </h3>
                   <p className="text-red-700 mb-3">
-                    Điểm tin cậy của bạn hiện tại là <strong>{restrictions.trust_score}</strong>, 
+                    Điểm tin cậy của bạn hiện tại là <strong>{restrictions.score}</strong>, 
                     thấp hơn mức tối thiểu (20 điểm) để tạo yêu cầu trao đổi.
                   </p>
                   <p className="text-sm text-red-600">
@@ -190,7 +191,7 @@ const CreateExchangeRequestPage = () => {
                     </h3>
                     <p className="text-sm text-gray-600">{receiverInfo.region || 'Khu vực không xác định'}</p>
                     <Badge variant="info" size="sm" className="mt-1">
-                      ⭐ {receiverInfo.trust_score || 0}
+                      ⭐ {toDisplayScore(receiverInfo.trust_score)}
                     </Badge>
                   </div>
                 </div>

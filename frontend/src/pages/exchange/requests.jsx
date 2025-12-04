@@ -5,6 +5,7 @@ import { Card, Button, LoadingSpinner, Badge, Avatar, Tabs } from '../../compone
 import { useExchanges } from '../../hooks/useExchanges';
 import { useAuth } from '../../hooks/useAuth';
 import { ArrowLeft, Send, Inbox, AlertCircle, Check, X, Eye } from 'lucide-react';
+import { toDisplayScore } from '../../utils/trustScore';
 
 /**
  * Exchange Requests Page
@@ -161,7 +162,7 @@ const ExchangeRequestsPage = () => {
                       <div>
                         <h4 className="font-semibold text-gray-900">{other.full_name}</h4>
                         <p className="text-sm text-gray-600">{other.region}</p>
-                        <Badge variant="outline" size="sm">⭐ {other.trust_score}</Badge>
+                        <Badge variant="outline" size="sm">⭐ {toDisplayScore(other.trust_score)}</Badge>
                       </div>
                     </div>
                     <div className="text-right">

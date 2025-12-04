@@ -1,11 +1,19 @@
 // src/pages/reports/index.jsx
-import { AlertCircle, ChevronRight, Eye, FileText } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AlertCircle, ChevronRight, Eye, FileText, Filter, Clock, CheckCircle, XCircle, Search } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/layout/Layout';
 import { Badge, Button, Card, LoadingSpinner } from '../../components/ui';
 import { useReports } from '../../hooks/useReports';
 import ReportSeverityBadge from '../../components/reports/ReportSeverityBadge';
+
+const STATUS_TABS = [
+  { key: 'ALL', label: 'Tất cả', icon: FileText, color: 'gray' },
+  { key: 'PENDING', label: 'Chờ xử lý', icon: Clock, color: 'yellow' },
+  { key: 'IN_REVIEW', label: 'Đang xem xét', icon: Search, color: 'blue' },
+  { key: 'RESOLVED', label: 'Đã xử lý', icon: CheckCircle, color: 'green' },
+  { key: 'DISMISSED', label: 'Đã từ chối', icon: XCircle, color: 'red' },
+];
 
 const ReportsListPage = () => {
   const navigate = useNavigate();
@@ -13,6 +21,8 @@ const ReportsListPage = () => {
     useReports();
 
   const [reports, setReports] = useState([]);
+  const [allReports, setAllReports] = useState([]);
+  const [activeTab, setActiveTab] = useState('ALL');
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
@@ -29,14 +39,14 @@ const ReportsListPage = () => {
       setError('');
       const data = await getMyReports({
         page: pagination.page,
-        limit: pagination.limit,
+        limit: 100, // Load nhiều hơn để filter client-side
       });
 
       // Handle both response formats
       const reportsList = data.reports || data.items || [];
       const total = data.total || 0;
 
-      setReports(reportsList);
+      setAllReports(reportsList);
       setPagination((prev) => ({
         ...prev,
         total: total,
@@ -46,6 +56,23 @@ const ReportsListPage = () => {
       setError(err.message || 'Không thể tải danh sách báo cáo');
     }
   };
+
+  // Filter reports by status
+  const filteredReports = useMemo(() => {
+    if (activeTab === 'ALL') return allReports;
+    return allReports.filter(r => r.status === activeTab);
+  }, [allReports, activeTab]);
+
+  // Stats for each status
+  const statusCounts = useMemo(() => {
+    const counts = { ALL: allReports.length };
+    STATUS_TABS.forEach(tab => {
+      if (tab.key !== 'ALL') {
+        counts[tab.key] = allReports.filter(r => r.status === tab.key).length;
+      }
+    });
+    return counts;
+  }, [allReports]);
 
   const getStatusBadge = (status) => {
     const config = {
@@ -58,7 +85,7 @@ const ReportsListPage = () => {
     return <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>;
   };
 
-  const totalPages = Math.ceil(pagination.total / pagination.limit);
+  const totalPages = Math.ceil(filteredReports.length / pagination.limit);
 
   return (
     <Layout>
@@ -68,16 +95,42 @@ const ReportsListPage = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                Báo cáo của tôi
+                📢 Báo cáo của tôi
               </h1>
               <p className="text-gray-600">
                 Quản lý các báo cáo vi phạm bạn đã gửi
               </p>
             </div>
-            <Badge variant="info" className="text-lg px-4 py-2">
-              {pagination.total} báo cáo
-            </Badge>
           </div>
+        </div>
+
+        {/* Stats Summary Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+          {STATUS_TABS.map(tab => {
+            const Icon = tab.icon;
+            const count = statusCounts[tab.key] || 0;
+            const isActive = activeTab === tab.key;
+            
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`p-4 rounded-xl transition-all ${
+                  isActive 
+                    ? 'bg-blue-600 text-white shadow-lg scale-105' 
+                    : 'bg-white hover:bg-gray-50 text-gray-700 border'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Icon className={`w-5 h-5 ${isActive ? 'text-white' : `text-${tab.color}-500`}`} />
+                  <span className="text-2xl font-bold">{count}</span>
+                </div>
+                <p className={`text-sm ${isActive ? 'text-blue-100' : 'text-gray-500'}`}>
+                  {tab.label}
+                </p>
+              </button>
+            );
+          })}
         </div>
 
         {/* Error Message */}
@@ -95,21 +148,23 @@ const ReportsListPage = () => {
           <div className="flex justify-center py-16">
             <LoadingSpinner size="lg" />
           </div>
-        ) : reports.length === 0 ? (
+        ) : filteredReports.length === 0 ? (
           <Card className="p-12 text-center">
             <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Chưa có báo cáo nào
+              {activeTab === 'ALL' ? 'Chưa có báo cáo nào' : `Không có báo cáo "${STATUS_TABS.find(t => t.key === activeTab)?.label}"`}
             </h3>
             <p className="text-gray-600 mb-6">
-              Bạn chưa gửi báo cáo vi phạm nào
+              {activeTab === 'ALL' 
+                ? 'Bạn chưa gửi báo cáo vi phạm nào'
+                : 'Không tìm thấy báo cáo nào với trạng thái này'}
             </p>
           </Card>
         ) : (
           <>
             {/* Reports List */}
             <div className="space-y-4">
-              {reports.map((report) => (
+              {filteredReports.map((report) => (
                 <Card
                   key={report.report_id}
                   className="p-6 hover:shadow-lg transition-shadow cursor-pointer"
@@ -132,7 +187,7 @@ const ReportsListPage = () => {
                           <span className="font-medium">
                             Thành viên bị báo cáo:
                           </span>{' '}
-                          {report.reported_member_id}
+                          {report.reported_member_name || report.reported_member_id}
                         </p>
                         {report.reported_item_type && (
                           <p>
@@ -140,8 +195,13 @@ const ReportsListPage = () => {
                             {report.reported_item_type}
                           </p>
                         )}
+                        {report.description && (
+                          <p className="line-clamp-2 text-gray-500 italic">
+                            "{report.description}"
+                          </p>
+                        )}
                         <p className="text-gray-500">
-                          Ngày tạo:{' '}
+                          📅 Ngày tạo:{' '}
                           {new Date(report.created_at).toLocaleString('vi-VN', {
                             day: '2-digit',
                             month: '2-digit',

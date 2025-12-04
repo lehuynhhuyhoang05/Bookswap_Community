@@ -180,21 +180,29 @@ const Books = () => {
   return (
     <Layout>
       <div className="container mx-auto px-4 py-8">
-        {/* Header Section */}
-        <div className="mb-8">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
-            <div className="mb-4 md:mb-0">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Khám phá sách</h1>
-              <p className="text-gray-600">
-                Tìm kiếm và khám phá hàng ngàn cuốn sách từ cộng đồng BookSwap
+        {/* Hero Header Section */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 md:p-8 mb-8 text-white">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold mb-3 flex items-center gap-3">
+                📚 Khám phá sách
+              </h1>
+              <p className="text-blue-100 text-lg max-w-xl">
+                Tìm kiếm và khám phá hàng ngàn cuốn sách từ cộng đồng BookSwap. 
+                Trao đổi sách dễ dàng, kết nối người yêu sách!
               </p>
+              {meta.total > 0 && (
+                <p className="mt-3 text-blue-200 text-sm">
+                  🔢 Hiện có <span className="font-semibold text-white">{meta.total}</span> cuốn sách đang được chia sẻ
+                </p>
+              )}
             </div>
             
             <Link
               to="/books/add-book"
-              className="inline-flex items-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors w-fit"
+              className="inline-flex items-center bg-white text-blue-600 hover:bg-blue-50 px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl w-fit gap-2"
             >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
               </svg>
               Thêm sách mới
@@ -202,12 +210,15 @@ const Books = () => {
           </div>
           
           {/* Search Bar */}
-          <div className="max-w-xl">
-            <SearchBar 
-              placeholder="Tìm sách theo tên, tác giả, ISBN..." 
-              onSearch={handleSearch}
-              delay={300}
-            />
+          <div className="mt-6">
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-1">
+              <SearchBar 
+                placeholder="🔍 Tìm sách theo tên, tác giả, ISBN..." 
+                onSearch={handleSearch}
+                delay={300}
+                className="bg-white rounded-lg"
+              />
+            </div>
           </div>
         </div>
 

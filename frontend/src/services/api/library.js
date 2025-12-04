@@ -206,6 +206,12 @@ export const libraryService = {
     if (bookData.priority && (bookData.priority < 1 || bookData.priority > 10)) {
       errors.push('Độ ưu tiên phải từ 1 đến 10');
     }
+
+    // Validate preferred_condition
+    const validConditions = ['ANY', 'FAIR_UP', 'GOOD_UP', 'VERY_GOOD_UP', 'LIKE_NEW'];
+    if (bookData.preferred_condition && !validConditions.includes(bookData.preferred_condition)) {
+      errors.push('Tình trạng mong muốn không hợp lệ');
+    }
     
     return errors;
   },
@@ -214,14 +220,27 @@ export const libraryService = {
    * 🆕 Format and clean wanted book data before sending
    */
   formatWantedBookData(bookData) {
-    return {
+    const formatted = {
       title: bookData.title?.trim() || null,
       author: bookData.author?.trim() || null,
       isbn: bookData.isbn?.replace(/[-\s]/g, '') || null,
+      google_books_id: bookData.google_books_id || null,
       category: bookData.category || 'General',
+      cover_image_url: bookData.cover_image_url || null,
+      preferred_condition: bookData.preferred_condition || 'ANY',
+      language: bookData.language || null,
       priority: bookData.priority ? parseInt(bookData.priority) : 5,
       notes: bookData.notes?.trim() || ''
     };
+
+    // Remove null/empty fields to avoid sending unnecessary data
+    Object.keys(formatted).forEach(key => {
+      if (formatted[key] === null || formatted[key] === '') {
+        delete formatted[key];
+      }
+    });
+
+    return formatted;
   },
 
   /**

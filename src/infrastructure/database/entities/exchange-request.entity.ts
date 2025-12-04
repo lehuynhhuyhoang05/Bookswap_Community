@@ -49,6 +49,9 @@ export class ExchangeRequest {
   @Column('timestamp', { nullable: true })
   responded_at: Date;
 
+  @Column('timestamp', { nullable: true })
+  expires_at: Date;
+
   @CreateDateColumn()
   created_at: Date;
 

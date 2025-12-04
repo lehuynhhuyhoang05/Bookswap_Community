@@ -8,13 +8,14 @@ import { ViolationReport } from '../../infrastructure/database/entities/violatio
 import { Member } from '../../infrastructure/database/entities/member.entity';
 import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
+import { StorageService } from '../../common/services/storage.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([ViolationReport, Member]),
   ],
   controllers: [ReportsController],
-  providers: [ReportsService],
+  providers: [ReportsService, StorageService],
   exports: [ReportsService],
 })
 export class ReportsModule {}

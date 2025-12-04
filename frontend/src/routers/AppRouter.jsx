@@ -17,6 +17,8 @@ import AddBook from '../pages/books/add-book';
 import EditBook from '../pages/books/edit-book/[id]';
 import BookDetail from '../pages/books/detail/[id]';
 import SearchBooks from '../pages/books/search';
+import BookDiscovery from '../pages/books/discover';
+import BookCatalog from '../pages/books/catalog';
 
 // Library
 import WantedBooks from '../pages/library/wanted-books';
@@ -26,6 +28,7 @@ import EditWantedBook from '../pages/library/edit-wanted/[id]';
 // Profile
 import Profile from '../pages/profile/index';
 import ProfileReviews from '../pages/profile/reviews';
+import MemberProfile from '../pages/profile/member/[id]';
 
 // Messages
 import Messages from '../pages/messages/index';
@@ -58,6 +61,8 @@ const AppRouter = () => (
     <Route path="/auth/forgot-password" element={<ForgotPassword />} />
     <Route path="/books" element={<Books />} />
     <Route path="/books/search" element={<SearchBooks />} />
+    <Route path="/books/discover" element={<PrivateRoute><BookDiscovery /></PrivateRoute>} />
+    <Route path="/books/catalog" element={<PrivateRoute><BookCatalog /></PrivateRoute>} />
     <Route path="/books/detail/:id" element={<BookDetail />} />
     <Route path="/login" element={<Navigate to="/auth/login" replace />} />
 
@@ -75,6 +80,7 @@ const AppRouter = () => (
     {/* Profile */}
     <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
     <Route path="/profile/reviews" element={<PrivateRoute><ProfileReviews /></PrivateRoute>} />
+    <Route path="/profile/:id" element={<MemberProfile />} />
 
     {/* Messages */}
     <Route path="/messages" element={<PrivateRoute><Messages /></PrivateRoute>} />

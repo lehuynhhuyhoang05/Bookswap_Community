@@ -37,21 +37,27 @@ export const useReviews = (memberId) => {
     try {
       setLoadingStats(true);
       const response = await reviewsService.getMemberStats(memberId);
-      console.log('Stats response:', response.data);
+      console.log('Stats response:', response);
+      
+      // Handle response safely - response could be the data directly or wrapped in .data
+      const data = response?.data || response || {};
       
       // Cập nhật state với dữ liệu từ API
       setStats(prev => ({
         ...prev,
-        ...response.data,
+        member_id: data.member_id || memberId,
+        total_reviews: data.total_reviews || 0,
+        average_rating: data.average_rating || 0,
         // Đảm bảo ratings_count có dữ liệu từ distribution nếu ratings_count rỗng
-        ratings_count: response.data.ratings_count && Object.values(response.data.ratings_count).some(val => val > 0) 
-          ? response.data.ratings_count 
-          : response.data.distribution || { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
+        ratings_count: (data.ratings_count && Object.values(data.ratings_count).some(val => val > 0))
+          ? data.ratings_count 
+          : data.distribution || prev.ratings_count || { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+        distribution: data.distribution || prev.distribution || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
       }));
       
       setError(null);
     } catch (err) {
-      setError(err.message);
+      setError(err?.message || 'Failed to load stats');
       console.error('Error loading stats:', err);
     } finally {
       setLoadingStats(false);
@@ -67,24 +73,28 @@ export const useReviews = (memberId) => {
       try {
         setLoadingReviews(true);
         const response = await reviewsService.getMemberReviews(memberId, { page, pageSize });
-        const items = normalizeReviewsList(response.data.items || []);
+        
+        // getMemberReviews trả về { data: items[], meta: {...} }
+        const rawItems = response?.data || [];
+        const items = normalizeReviewsList(rawItems);
         setReviews(items);
 
-        const pag = response.data.pagination || {};
-        const totalPages = pag.totalPages || 1;
-        const total = pag.total || items.length;
+        // Lấy meta từ response
+        const meta = response?.meta || {};
+        const totalPages = meta.totalPages || 1;
+        const total = meta.total || items.length;
 
         setPagination({
-          page: pag.page || page,
-          pageSize: pag.pageSize || pageSize,
+          page: meta.page || page,
+          pageSize: meta.pageSize || pageSize,
           totalPages,
           total,
         });
 
-        currentPageRef.current = pag.page || page;
+        currentPageRef.current = meta.page || page;
         setError(null);
       } catch (err) {
-        setError(err.message);
+        setError(err?.message || 'Failed to load reviews');
         setReviews([]);
         setPagination(prev => ({ ...prev, totalPages: 1, total: 0 }));
         console.error('Error loading reviews:', err);

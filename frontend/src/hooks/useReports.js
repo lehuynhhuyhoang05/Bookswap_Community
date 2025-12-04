@@ -105,6 +105,17 @@ export const useReports = () => {
   );
 
   /**
+   * 📌 4. Upload evidence files
+   *
+   * @param {File[]} files - Array of files to upload
+   * @returns {Promise<Object>} { urls: string[], message: string }
+   */
+  const uploadEvidence = useCallback(
+    (files) => apiCall(reportsService.uploadEvidence, files),
+    [apiCall],
+  );
+
+  /**
    * 🛠️ Helper: Validate report data
    *
    * @param {Object} reportData - Dữ liệu cần validate
@@ -139,6 +150,7 @@ export const useReports = () => {
     createReport,
     getMyReports,
     getReportById,
+    uploadEvidence,
 
     // Helper Methods
     validateReportData,

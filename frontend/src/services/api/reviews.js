@@ -12,20 +12,29 @@ export const reviewsService = {
       const response = await api.get(
         `${API_PREFIX}/reviews/member/${memberId}/stats`
       );
-      return response.data;
+      const data = response.data || {};
+      
+      // Normalize response để đảm bảo có đủ fields
+      return {
+        member_id: data.member_id || memberId,
+        average_rating: data.average_rating || 0,
+        total_reviews: data.total_reviews || 0,
+        ratings_count: data.ratings_count || data.distribution || {
+          5: 0, 4: 0, 3: 0, 2: 0, 1: 0,
+        },
+        distribution: data.distribution || data.ratings_count || {
+          1: 0, 2: 0, 3: 0, 4: 0, 5: 0,
+        },
+      };
     } catch (error) {
+      console.error('getMemberReviewStats error:', error);
       // Nếu chưa có review hoặc lỗi -> trả về thống kê rỗng
       return {
         member_id: memberId,
         average_rating: 0,
         total_reviews: 0,
-        rating_breakdown: {
-          5: 0,
-          4: 0,
-          3: 0,
-          2: 0,
-          1: 0,
-        },
+        ratings_count: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+        distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
       };
     }
   },
@@ -145,4 +154,62 @@ export const reviewsService = {
       throw error.response?.data || { message: 'Failed to delete review' };
     }
   },
+
+  /**
+   * Lấy danh sách review mà member đã viết (as reviewer)
+   */
+  async getReviewsByReviewer(reviewerId, params = {}) {
+    try {
+      const response = await api.get(
+        `${API_PREFIX}/reviews/reviewer/${reviewerId}`,
+        { params }
+      );
+
+      const payload = response.data || {};
+      return {
+        data: {
+          items: payload.items || [],
+          pagination: payload.pagination || {
+            page: params.page || 1,
+            pageSize: params.pageSize || 10,
+            total: payload.items?.length || 0,
+            totalPages: 1,
+          }
+        }
+      };
+    } catch (error) {
+      console.error('Error fetching reviews by reviewer:', error);
+      return {
+        data: {
+          items: [],
+          pagination: {
+            page: params.page || 1,
+            pageSize: params.pageSize || 10,
+            total: 0,
+            totalPages: 0,
+          }
+        }
+      };
+    }
+  },
+
+  /**
+   * Alias: getMemberStats  
+   */
+  async getMemberStats(memberId) {
+    return this.getMemberReviewStats(memberId);
+  },
 };
+
+// Normalize reviews list with additional info
+export const normalizeReviewsList = (reviews) => {
+  return reviews.map(review => ({
+    ...review,
+    reviewer_name: review.reviewer?.full_name || review.reviewer_name || 'Người đánh giá',
+    reviewer_avatar: review.reviewer?.avatar || review.reviewer_avatar,
+    reviewee_name: review.reviewee?.full_name || review.reviewee_name || 'Người được đánh giá',
+    reviewee_avatar: review.reviewee?.avatar || review.reviewee_avatar,
+  }));
+};
+
+export default reviewsService;

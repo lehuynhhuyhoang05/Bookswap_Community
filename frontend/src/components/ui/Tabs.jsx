@@ -10,9 +10,16 @@ const Tabs = ({ tabs, activeTab, onTabChange }) => {
               activeTab === tab.id
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
           >
-            {tab.name}
+            {tab.name || tab.label}
+            {tab.count !== undefined && tab.count > 0 && (
+              <span className={`${
+                activeTab === tab.id ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'
+              } px-2 py-0.5 rounded-full text-xs`}>
+                {tab.count}
+              </span>
+            )}
           </button>
         ))}
       </nav>

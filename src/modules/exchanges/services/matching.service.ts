@@ -5,8 +5,8 @@ import { Repository, IsNull, In, MoreThan, Not } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 
 import { Member } from '../../../infrastructure/database/entities/member.entity';
-import { Book, BookStatus } from '../../../infrastructure/database/entities/book.entity';
-import { BookWanted } from '../../../infrastructure/database/entities/book-wanted.entity';
+import { Book, BookStatus, BookCondition } from '../../../infrastructure/database/entities/book.entity';
+import { BookWanted, PreferredCondition } from '../../../infrastructure/database/entities/book-wanted.entity';
 import { ExchangeSuggestion } from '../../../infrastructure/database/entities/exchange-suggestion.entity';
 import { BookMatchPair } from '../../../infrastructure/database/entities/book-match-pair.entity';
 import { ExchangeRequest, ExchangeRequestStatus } from '../../../infrastructure/database/entities/exchange-request.entity';
@@ -624,61 +624,123 @@ export class MatchingService {
 
   // ========== Minimal implementations to compile ==========
 
+  /**
+   * Helper: Check if book condition meets preferred condition requirement
+   */
+  private conditionMeetsPreference(bookCondition: BookCondition, preferredCondition: PreferredCondition): boolean {
+    if (!preferredCondition || preferredCondition === PreferredCondition.ANY) {
+      return true;
+    }
+
+    const conditionRank: Record<BookCondition, number> = {
+      [BookCondition.LIKE_NEW]: 5,
+      [BookCondition.VERY_GOOD]: 4,
+      [BookCondition.GOOD]: 3,
+      [BookCondition.FAIR]: 2,
+      [BookCondition.POOR]: 1,
+    };
+
+    const minRequiredRank: Record<PreferredCondition, number> = {
+      [PreferredCondition.ANY]: 0,
+      [PreferredCondition.FAIR_UP]: 2,
+      [PreferredCondition.GOOD_UP]: 3,
+      [PreferredCondition.VERY_GOOD_UP]: 4,
+      [PreferredCondition.LIKE_NEW]: 5,
+    };
+
+    const bookRank = conditionRank[bookCondition] || 0;
+    const requiredRank = minRequiredRank[preferredCondition] || 0;
+
+    return bookRank >= requiredRank;
+  }
+
   private async findBooksMatchingWant(myWant: BookWanted, excludeOwnerId: string): Promise<Book[]> {
-    // Use raw query for debugging to bypass TypeORM issues
-    this.logger.debug(`[findBooksMatchingWant] Searching for: "${myWant.title}" by "${myWant.author}", excluding owner: ${excludeOwnerId}`);
+    this.logger.debug(`[findBooksMatchingWant] Searching for: "${myWant.title}" by "${myWant.author}", ISBN: "${myWant.isbn}", google_books_id: "${myWant.google_books_id}"`);
     
-    if (myWant.title && myWant.author) {
-      const titlePattern = `%${myWant.title.toLowerCase()}%`;
-      const authorPattern = `%${myWant.author.toLowerCase()}%`;
-      
-      this.logger.debug(`[findBooksMatchingWant] Raw query params: status=${BookStatus.AVAILABLE}, title LIKE ${titlePattern}, author LIKE ${authorPattern}`);
-      
-      const rawResults = await this.bookRepo.query(
+    let results: Book[] = [];
+
+    // 1. PRIORITY 1: Match by ISBN (most accurate)
+    if (myWant.isbn) {
+      this.logger.debug(`[findBooksMatchingWant] Trying ISBN match: ${myWant.isbn}`);
+      const isbnResults = await this.bookRepo.query(
         `SELECT * FROM books 
          WHERE status = ? 
          AND deleted_at IS NULL 
          AND owner_id != ?
-         AND LOWER(title) LIKE ?
-         AND LOWER(author) LIKE ?
-         LIMIT 100`,
-        [
-          BookStatus.AVAILABLE,
-          excludeOwnerId,
-          titlePattern,
-          authorPattern,
-        ]
+         AND isbn = ?
+         LIMIT 50`,
+        [BookStatus.AVAILABLE, excludeOwnerId, myWant.isbn]
       );
       
-      this.logger.debug(`[findBooksMatchingWant] Raw query returned ${rawResults.length} results`);
-      if (rawResults.length > 0) {
-        this.logger.debug(`[findBooksMatchingWant] First result: book_id=${rawResults[0].book_id}, title="${rawResults[0].title}", author="${rawResults[0].author}", owner=${rawResults[0].owner_id}`);
+      if (isbnResults.length > 0) {
+        this.logger.debug(`[findBooksMatchingWant] ISBN match found: ${isbnResults.length} results`);
+        results = isbnResults.map(raw => this.bookRepo.create(raw));
       }
+    }
+
+    // 2. PRIORITY 2: Match by Google Books ID
+    if (results.length === 0 && myWant.google_books_id) {
+      this.logger.debug(`[findBooksMatchingWant] Trying Google Books ID match: ${myWant.google_books_id}`);
+      const gbResults = await this.bookRepo.query(
+        `SELECT * FROM books 
+         WHERE status = ? 
+         AND deleted_at IS NULL 
+         AND owner_id != ?
+         AND google_books_id = ?
+         LIMIT 50`,
+        [BookStatus.AVAILABLE, excludeOwnerId, myWant.google_books_id]
+      );
       
-      // Map raw results to Book entities
-      const books = rawResults.map(raw => this.bookRepo.create(raw));
-      return books;
+      if (gbResults.length > 0) {
+        this.logger.debug(`[findBooksMatchingWant] Google Books ID match found: ${gbResults.length} results`);
+        results = gbResults.map(raw => this.bookRepo.create(raw));
+      }
     }
 
-    // Fallback to QueryBuilder for other cases
-    const qb = this.bookRepo
-      .createQueryBuilder('b')
-      .where('b.status = :status', { status: BookStatus.AVAILABLE })
-      .andWhere('b.deleted_at IS NULL')
-      .andWhere('b.owner_id <> :me', { me: excludeOwnerId });
+    // 3. PRIORITY 3: Fuzzy match by title + author
+    if (results.length === 0 && myWant.title) {
+      this.logger.debug(`[findBooksMatchingWant] Trying fuzzy title/author match`);
+      
+      const titlePattern = `%${myWant.title.toLowerCase()}%`;
+      let query = `SELECT * FROM books 
+         WHERE status = ? 
+         AND deleted_at IS NULL 
+         AND owner_id != ?
+         AND LOWER(title) LIKE ?`;
+      const params: any[] = [BookStatus.AVAILABLE, excludeOwnerId, titlePattern];
 
-    if (myWant.title) {
-      qb.andWhere('LOWER(b.title) LIKE :title', { title: `%${myWant.title.toLowerCase()}%` });
+      // Add author filter if available
+      if (myWant.author) {
+        const authorPattern = `%${myWant.author.toLowerCase()}%`;
+        query += ` AND LOWER(author) LIKE ?`;
+        params.push(authorPattern);
+      }
+
+      query += ` LIMIT 100`;
+
+      const rawResults = await this.bookRepo.query(query, params);
+      this.logger.debug(`[findBooksMatchingWant] Fuzzy match returned ${rawResults.length} results`);
+      results = rawResults.map(raw => this.bookRepo.create(raw));
     }
-    if (myWant.author) {
-      qb.andWhere('LOWER(b.author) LIKE :author', { author: `%${myWant.author.toLowerCase()}%` });
+
+    // 4. Filter by preferred_condition
+    if (myWant.preferred_condition && myWant.preferred_condition !== PreferredCondition.ANY) {
+      const beforeFilter = results.length;
+      results = results.filter(book => 
+        this.conditionMeetsPreference(book.book_condition, myWant.preferred_condition)
+      );
+      this.logger.debug(`[findBooksMatchingWant] Condition filter: ${beforeFilter} -> ${results.length} (preferred: ${myWant.preferred_condition})`);
     }
-    if (myWant.category) {
-      qb.andWhere('b.category = :cat', { cat: myWant.category });
+
+    // 5. Filter by language if specified
+    if (myWant.language) {
+      const beforeFilter = results.length;
+      results = results.filter(book => 
+        !book.language || book.language.toLowerCase() === myWant.language.toLowerCase()
+      );
+      this.logger.debug(`[findBooksMatchingWant] Language filter: ${beforeFilter} -> ${results.length} (preferred: ${myWant.language})`);
     }
-    
-    const results = await qb.take(100).getMany();
-    this.logger.debug(`[findBooksMatchingWant] QueryBuilder returned ${results.length} results`);
+
     return results;
   }
 

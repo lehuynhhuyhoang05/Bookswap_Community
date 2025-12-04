@@ -6,6 +6,7 @@ import { useExchanges } from '../../../hooks/useExchanges';
 import { useAuth } from '../../../hooks/useAuth';
 import { useMessages } from '../../../hooks/useMessages';
 import { ArrowLeft, Send, Inbox, Check, X, Calendar, MessageSquare, CheckCircle } from 'lucide-react';
+import { toDisplayScore } from '../../../utils/trustScore';
 
 /**
  * Exchange Request Detail Page
@@ -179,7 +180,7 @@ const ExchangeRequestDetailPage = () => {
               <h3 className="text-xl font-semibold text-gray-900">{otherUser?.full_name || 'Người dùng'}</h3>
               <p className="text-sm text-gray-600 mt-1">📍 {otherUser?.region || 'Khu vực không xác định'}</p>
               <div className="flex items-center gap-2 mt-2">
-                <Badge variant="outline" size="sm">⭐ Độ tin cậy: {otherUser?.trust_score || 0}</Badge>
+                <Badge variant="outline" size="sm">⭐ Độ tin cậy: {toDisplayScore(otherUser?.trust_score)}</Badge>
               </div>
             </div>
             <div className="text-right text-sm text-gray-500">

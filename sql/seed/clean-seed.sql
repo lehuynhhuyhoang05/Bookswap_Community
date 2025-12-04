@@ -69,13 +69,13 @@ INSERT INTO admins (admin_id, user_id, admin_level, permissions, admin_since, cr
 -- 3. MEMBERS (Profile info for each user)
 -- =====================================================
 INSERT INTO members (member_id, user_id, region, phone, address, bio, trust_score, average_rating, is_verified, verification_date, total_exchanges, completed_exchanges, cancelled_exchanges, created_at) VALUES
-('member-001', 'user-001', 'Ho Chi Minh City', '0901234001', '123 Nguyen Hue, District 1, HCMC', 'Bookworm who loves sci-fi and fantasy novels. Always looking for new reads!', 4.50, 4.8, 1, NOW() - INTERVAL 80 DAY, 15, 12, 1, NOW() - INTERVAL 90 DAY),
-('member-002', 'user-002', 'Ho Chi Minh City', '0901234002', '456 Le Loi, District 3, HCMC', 'Tech enthusiast and avid reader. Prefer programming books and non-fiction.', 3.80, 4.2, 1, NOW() - INTERVAL 75 DAY, 10, 8, 2, NOW() - INTERVAL 85 DAY),
-('member-003', 'user-003', 'Hanoi', '0901234003', '789 Hoan Kiem, Hanoi', 'Literature lover from Hanoi. Looking to exchange classic novels.', 4.70, 4.9, 1, NOW() - INTERVAL 50 DAY, 20, 18, 0, NOW() - INTERVAL 60 DAY),
-('member-004', 'user-004', 'Da Nang', '0901234004', '321 Bach Dang, Da Nang', 'New to book swapping! Mostly into self-help and business books.', 3.20, 3.5, 0, NULL, 5, 3, 1, NOW() - INTERVAL 45 DAY),
-('member-005', 'user-005', 'Ho Chi Minh City', '0901234005', '654 Vo Van Tan, District 3, HCMC', 'Manga and light novel collector. Open to exchange!', 3.60, 4.0, 1, NOW() - INTERVAL 25 DAY, 8, 6, 1, NOW() - INTERVAL 30 DAY),
-('member-006', 'user-006', 'Can Tho', '0901234006', '987 Ninh Kieu, Can Tho', 'Medical student interested in science and health books.', 0.00, 0.0, 0, NULL, 0, 0, 0, NOW() - INTERVAL 15 DAY),
-('member-007', 'user-007', 'Ho Chi Minh City', '0901234007', '111 Le Van Sy, District 3, HCMC', 'Account locked for violations.', 1.50, 1.5, 0, NULL, 3, 1, 2, NOW() - INTERVAL 100 DAY),
+('member-001', 'user-001', 'Ho Chi Minh City', '0901234001', '123 Nguyen Hue, District 1, HCMC', 'Bookworm who loves sci-fi and fantasy novels. Always looking for new reads!', 90.00, 4.8, 1, NOW() - INTERVAL 80 DAY, 15, 12, 1, NOW() - INTERVAL 90 DAY),
+('member-002', 'user-002', 'Ho Chi Minh City', '0901234002', '456 Le Loi, District 3, HCMC', 'Tech enthusiast and avid reader. Prefer programming books and non-fiction.', 76.00, 4.2, 1, NOW() - INTERVAL 75 DAY, 10, 8, 2, NOW() - INTERVAL 85 DAY),
+('member-003', 'user-003', 'Hanoi', '0901234003', '789 Hoan Kiem, Hanoi', 'Literature lover from Hanoi. Looking to exchange classic novels.', 94.00, 4.9, 1, NOW() - INTERVAL 50 DAY, 20, 18, 0, NOW() - INTERVAL 60 DAY),
+('member-004', 'user-004', 'Da Nang', '0901234004', '321 Bach Dang, Da Nang', 'New to book swapping! Mostly into self-help and business books.', 64.00, 3.5, 0, NULL, 5, 3, 1, NOW() - INTERVAL 45 DAY),
+('member-005', 'user-005', 'Ho Chi Minh City', '0901234005', '654 Vo Van Tan, District 3, HCMC', 'Manga and light novel collector. Open to exchange!', 72.00, 4.0, 1, NOW() - INTERVAL 25 DAY, 8, 6, 1, NOW() - INTERVAL 30 DAY),
+('member-006', 'user-006', 'Can Tho', '0901234006', '987 Ninh Kieu, Can Tho', 'Medical student interested in science and health books.', 50.00, 0.0, 0, NULL, 0, 0, 0, NOW() - INTERVAL 15 DAY),
+('member-007', 'user-007', 'Ho Chi Minh City', '0901234007', '111 Le Van Sy, District 3, HCMC', 'Account locked for violations.', 15.00, 1.5, 0, NULL, 3, 1, 2, NOW() - INTERVAL 100 DAY),
 ('member-008', 'user-008', 'Hanoi', '0901234008', '222 Hang Bong, Hanoi', 'Account suspended.', 0.50, 1.0, 0, NULL, 2, 0, 2, NOW() - INTERVAL 120 DAY);
 
 -- =====================================================

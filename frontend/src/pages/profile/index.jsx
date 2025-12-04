@@ -32,6 +32,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { authService } from '../../services/api/auth';
 import { reviewsService } from '../../services/api/reviews';
 import TrustScoreWarning from '../../components/common/TrustScoreWarning';
+import { toDisplayScore, getTrustBadgeConfig } from '../../utils/trustScore';
 
 const ProfilePage = () => {
   const { user, setUser, getTrustRestrictions } = useAuth();
@@ -54,7 +55,9 @@ const ProfilePage = () => {
   const loadReviewStats = async () => {
     if (!user) return;
     try {
-      const stats = await reviewsService.getMemberReviewStats(user.user_id);
+      // Use member_id from user.member object, not user_id
+      const memberId = user.member?.member_id || user.member_id || user.user_id;
+      const stats = await reviewsService.getMemberReviewStats(memberId);
       setReviewStats(stats);
     } catch (error) {
       console.error('Failed to load review stats:', error);
@@ -82,21 +85,12 @@ const ProfilePage = () => {
   }
 
   const trustRestrictions = getTrustRestrictions ? getTrustRestrictions() : null;
-  const trustScore = user?.member?.trust_score || 0;
+  // Convert from DB scale (0-1) to display scale (0-100)
+  const trustScore = toDisplayScore(user?.member?.trust_score);
   const averageRating = reviewStats?.average_rating || user?.member?.average_rating || 0;
 
-  // Trust Score badge config
-  const getTrustBadge = (score) => {
-    const numScore = Number(score) || 0;
-    if (numScore >= 80) return { label: 'Xuất sắc', color: 'bg-green-500', icon: '🌟' };
-    if (numScore >= 60) return { label: 'Tốt', color: 'bg-blue-500', icon: '✅' };
-    if (numScore >= 40) return { label: 'Khá', color: 'bg-gray-500', icon: '👤' };
-    if (numScore >= 20) return { label: 'Cần cải thiện', color: 'bg-yellow-500', icon: '⚠️' };
-    if (numScore > 0) return { label: 'Thấp', color: 'bg-orange-500', icon: '⚠️' };
-    return { label: 'Bị hạn chế', color: 'bg-red-500', icon: '🚫' };
-  };
-
-  const trustBadge = getTrustBadge(trustScore);
+  // Trust Score badge config using utility
+  const trustBadge = getTrustBadgeConfig(trustScore);
 
   return (
     <Layout>
@@ -177,9 +171,9 @@ const ProfilePage = () => {
                     <span className="text-sm font-medium text-gray-600">Điểm uy tín</span>
                   </div>
                   <div className="flex items-center justify-center gap-2">
-                    <span className="text-2xl font-bold text-gray-900">{Math.round(trustScore)}</span>
-                    <span className={`text-xs px-2 py-1 rounded-full text-white ${trustBadge.color}`}>
-                      {trustBadge.icon} {trustBadge.label}
+                    <span className="text-2xl font-bold text-gray-900">{trustScore}</span>
+                    <span className={`text-xs px-2 py-1 rounded-full text-white ${trustBadge.badgeColor}`}>
+                      {trustBadge.shortLabel}
                     </span>
                   </div>
                 </div>
@@ -372,9 +366,9 @@ const MemberTab = ({ user, trustBadge, trustScore }) => {
             </div>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-bold text-gray-900">{Math.round(trustScore)}</div>
-            <span className={`text-xs px-3 py-1 rounded-full text-white ${trustBadge.color}`}>
-              {trustBadge.icon} {trustBadge.label}
+            <div className="text-3xl font-bold text-gray-900">{trustScore}</div>
+            <span className={`text-xs px-3 py-1 rounded-full text-white ${trustBadge.badgeColor}`}>
+              {trustBadge.shortLabel}
             </span>
           </div>
         </div>
@@ -387,7 +381,7 @@ const MemberTab = ({ user, trustBadge, trustScore }) => {
           </div>
           <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
             <div
-              className={`h-full ${trustBadge.color} transition-all duration-500`}
+              className={`h-full ${trustBadge.badgeColor} transition-all duration-500`}
               style={{ width: `${Math.min(100, trustScore)}%` }}
             />
           </div>
@@ -465,23 +459,35 @@ const MemberTab = ({ user, trustBadge, trustScore }) => {
 // REVIEWS TAB
 const ReviewsTab = ({ user }) => {
   const [reviews, setReviews] = useState([]);
+  const [givenReviews, setGivenReviews] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [subTab, setSubTab] = useState('received'); // 'received' | 'given'
 
   useEffect(() => {
-    const loadReviews = async () => {
+    const loadAllReviews = async () => {
       if (!user) return;
       try {
-        const res = await reviewsService.getMemberReviews(user.user_id, {
+        const memberId = user.member?.member_id || user.member_id || user.user_id;
+        
+        // Load received reviews
+        const receivedRes = await reviewsService.getMemberReviews(memberId, {
           page: 1,
           pageSize: 10,
         });
-        setReviews(res.data || []);
+        setReviews(receivedRes.data || []);
+        
+        // Load given reviews
+        const givenRes = await reviewsService.getReviewsByReviewer(memberId, {
+          page: 1,
+          pageSize: 10,
+        });
+        setGivenReviews(givenRes.data?.items || []);
       } catch (err) {
         console.error('Failed load reviews:', err);
       }
       setLoading(false);
     };
-    loadReviews();
+    loadAllReviews();
   }, [user]);
 
   if (loading) {
@@ -492,33 +498,74 @@ const ReviewsTab = ({ user }) => {
     );
   }
 
+  const currentReviews = subTab === 'received' ? reviews : givenReviews;
+
   return (
     <div>
-      <div className="mb-6">
-        <h3 className="text-lg font-semibold text-gray-900">Đánh giá nhận được</h3>
-        <p className="text-sm text-gray-500">Đánh giá từ các thành viên khác về bạn</p>
+      {/* Sub-tabs for received/given */}
+      <div className="flex gap-4 mb-6 border-b border-gray-200">
+        <button
+          onClick={() => setSubTab('received')}
+          className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+            subTab === 'received'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Đánh giá nhận được ({reviews.length})
+        </button>
+        <button
+          onClick={() => setSubTab('given')}
+          className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+            subTab === 'given'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Đánh giá đã viết ({givenReviews.length})
+        </button>
       </div>
 
-      {reviews.length === 0 ? (
+      <div className="mb-4">
+        <p className="text-sm text-gray-500">
+          {subTab === 'received' 
+            ? 'Đánh giá từ các thành viên khác về bạn' 
+            : 'Đánh giá bạn đã viết cho các thành viên khác'}
+        </p>
+      </div>
+
+      {currentReviews.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-xl">
           <Star className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900">Chưa có đánh giá</h3>
+          <h3 className="text-lg font-medium text-gray-900">
+            {subTab === 'received' ? 'Chưa có đánh giá' : 'Chưa viết đánh giá nào'}
+          </h3>
           <p className="text-gray-500 mt-2">
-            Hoàn thành các giao dịch để nhận đánh giá từ người khác
+            {subTab === 'received' 
+              ? 'Hoàn thành các giao dịch để nhận đánh giá từ người khác'
+              : 'Hãy đánh giá sau khi hoàn thành giao dịch'}
           </p>
         </div>
       ) : (
         <div className="space-y-4">
-          {reviews.map((rev) => (
+          {currentReviews.map((rev) => (
             <div
               key={rev.review_id}
               className="p-4 bg-gray-50 rounded-xl border border-gray-100 hover:border-blue-200 transition-colors"
             >
               <div className="flex items-start gap-4">
-                <Avatar src={rev.reviewer_avatar} size="md" />
+                <Avatar 
+                  src={subTab === 'received' ? rev.reviewer_avatar : rev.reviewee_avatar} 
+                  size="md" 
+                />
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-gray-900">{rev.reviewer_name}</h4>
+                    <h4 className="font-medium text-gray-900">
+                      {subTab === 'received' 
+                        ? (rev.reviewer_name || 'Người đánh giá')
+                        : `Đánh giá cho: ${rev.reviewee_name || rev.reviewee?.full_name || 'Người dùng'}`
+                      }
+                    </h4>
                     <span className="text-xs text-gray-500">
                       {new Date(rev.created_at).toLocaleDateString('vi-VN')}
                     </span>

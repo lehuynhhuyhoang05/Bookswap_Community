@@ -113,6 +113,36 @@ export const reportsService = {
   },
 
   /**
+   * 📌 4. POST /reports/upload-evidence — Upload evidence files
+   *
+   * @param {File[]} files - Array of files to upload
+   * @returns {Promise<Object>} { urls: string[], message: string }
+   *
+   * Example:
+   * ```js
+   * const urls = await reportsService.uploadEvidence(files);
+   * // Result: { urls: ['/uploads/reports/uuid1.jpg'], message: 'Files uploaded successfully' }
+   * ```
+   */
+  async uploadEvidence(files) {
+    try {
+      const formData = new FormData();
+      files.forEach((file) => {
+        formData.append('files', file);
+      });
+
+      const response = await api.post('/reports/upload-evidence', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Failed to upload evidence files' };
+    }
+  },
+
+  /**
    * 🛠️ Helper: Lấy text mô tả cho report_type
    *
    * @param {string} reportType - Loại report

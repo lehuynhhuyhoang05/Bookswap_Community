@@ -14,7 +14,7 @@ const AddWantedBook = () => {
       clearError();
       await addWantedBook(bookData);
       
-      navigate('/library/wanted-books', { 
+      navigate('/books/my-library?tab=wanted', { 
         state: { message: 'Đã thêm sách mong muốn thành công!' }
       });
       
@@ -24,7 +24,7 @@ const AddWantedBook = () => {
   };
 
   const handleCancel = () => {
-    navigate('/library/wanted-books');
+    navigate('/books/my-library?tab=wanted');
   };
 
   return (

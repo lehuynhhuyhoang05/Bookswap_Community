@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/layout/Layout';
 import BookForm from '../../components/books/BookForm';
@@ -6,6 +6,7 @@ import { useBooks } from '../../hooks/useBooks';
 import { useAuth } from '../../hooks/useAuth';
 import { TrustScoreWarning } from '../../components/common';
 import { AlertTriangle, ShieldX } from 'lucide-react';
+import { toDisplayScore } from '../../utils/trustScore';
 
 const AddBook = () => {
   const { addBook, loading, error } = useBooks();
@@ -14,6 +15,24 @@ const AddBook = () => {
   
   const restrictions = getTrustRestrictions();
   const canAddBook = canPerformAction('addBook');
+
+  // Check for prefilled data from discover page
+  const [prefillData, setPrefillData] = useState(null);
+
+  useEffect(() => {
+    const storedData = sessionStorage.getItem('prefill_book_data');
+    console.log('📖 Raw prefill data from sessionStorage:', storedData);
+    if (storedData) {
+      try {
+        const parsed = JSON.parse(storedData);
+        console.log('📖 Parsed prefill data:', parsed);
+        setPrefillData(parsed);
+        sessionStorage.removeItem('prefill_book_data');
+      } catch (e) {
+        console.error('Failed to parse prefill data:', e);
+      }
+    }
+  }, []);
 
   const handleSubmit = async (bookData) => {
     if (!canAddBook) {
@@ -54,7 +73,7 @@ const AddBook = () => {
                     Không thể thêm sách
                   </h3>
                   <p className="text-red-700 mb-3">
-                    Điểm tin cậy của bạn hiện tại là <strong>{restrictions.trust_score}</strong>, 
+                    Điểm tin cậy của bạn hiện tại là <strong>{restrictions.score}</strong>, 
                     thấp hơn mức tối thiểu (20 điểm) để thêm sách mới.
                   </p>
                   <p className="text-sm text-red-600">
@@ -77,6 +96,7 @@ const AddBook = () => {
             <BookForm 
               onSubmit={handleSubmit}
               loading={loading}
+              initialData={prefillData}
             />
           ) : (
             <div className="bg-gray-100 rounded-xl p-8 text-center">

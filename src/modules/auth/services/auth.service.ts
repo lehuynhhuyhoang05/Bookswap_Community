@@ -362,7 +362,9 @@ export class AuthService {
       warningMessage: string | null;
     } | null = null;
     if (memberProfile) {
-      const trustScore = Number(memberProfile.trust_score) || 0;
+      // Convert from DB scale (0-1) to display scale (0-100)
+      const trustScoreRaw = Number(memberProfile.trust_score) || 0;
+      const trustScore = trustScoreRaw <= 1 ? Math.round(trustScoreRaw * 100) : Math.round(trustScoreRaw);
       trustRestrictions = {
         score: trustScore,
         canCreateExchange: trustScore >= 20,

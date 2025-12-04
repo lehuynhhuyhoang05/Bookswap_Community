@@ -1,74 +1,29 @@
 // src/components/common/TrustScoreBadge.jsx
 // Component hiển thị badge Trust Score
+// Accepts score in DB format (0-1) and converts to display format (0-100)
 
 import { Shield, ShieldCheck, ShieldAlert, ShieldX, Star } from 'lucide-react';
+import { toDisplayScore, getTrustBadgeConfig } from '../../utils/trustScore';
 
 const TrustScoreBadge = ({ score, showLabel = true, size = 'md' }) => {
-  const trustScore = Number(score) || 0;
+  // Convert from DB scale (0-1) to display scale (0-100)
+  const displayScore = toDisplayScore(score);
+  const config = getTrustBadgeConfig(displayScore);
 
-  const getBadgeConfig = () => {
-    if (trustScore >= 80) {
-      return {
-        icon: Star,
-        label: 'Rất đáng tin cậy',
-        bgColor: 'bg-green-100',
-        textColor: 'text-green-800',
-        iconColor: 'text-green-600',
-        borderColor: 'border-green-200',
-      };
+  // Get icon based on level
+  const getIcon = () => {
+    switch (config.level) {
+      case 'excellent': return Star;
+      case 'good': return ShieldCheck;
+      case 'normal': return Shield;
+      case 'warning': return ShieldAlert;
+      case 'low': return ShieldAlert;
+      case 'blocked': return ShieldX;
+      default: return Shield;
     }
-    if (trustScore >= 60) {
-      return {
-        icon: ShieldCheck,
-        label: 'Đáng tin cậy',
-        bgColor: 'bg-blue-100',
-        textColor: 'text-blue-800',
-        iconColor: 'text-blue-600',
-        borderColor: 'border-blue-200',
-      };
-    }
-    if (trustScore >= 40) {
-      return {
-        icon: Shield,
-        label: 'Bình thường',
-        bgColor: 'bg-gray-100',
-        textColor: 'text-gray-700',
-        iconColor: 'text-gray-500',
-        borderColor: 'border-gray-200',
-      };
-    }
-    if (trustScore >= 20) {
-      return {
-        icon: ShieldAlert,
-        label: 'Cần cải thiện',
-        bgColor: 'bg-yellow-100',
-        textColor: 'text-yellow-800',
-        iconColor: 'text-yellow-600',
-        borderColor: 'border-yellow-200',
-      };
-    }
-    if (trustScore > 0) {
-      return {
-        icon: ShieldAlert,
-        label: 'Độ tin cậy thấp',
-        bgColor: 'bg-orange-100',
-        textColor: 'text-orange-800',
-        iconColor: 'text-orange-600',
-        borderColor: 'border-orange-200',
-      };
-    }
-    return {
-      icon: ShieldX,
-      label: 'Bị hạn chế',
-      bgColor: 'bg-red-100',
-      textColor: 'text-red-800',
-      iconColor: 'text-red-600',
-      borderColor: 'border-red-200',
-    };
   };
 
-  const config = getBadgeConfig();
-  const Icon = config.icon;
+  const Icon = getIcon();
 
   const sizeClasses = {
     sm: {
@@ -90,11 +45,11 @@ const TrustScoreBadge = ({ score, showLabel = true, size = 'md' }) => {
   return (
     <div
       className={`inline-flex items-center gap-1.5 rounded-full border ${config.bgColor} ${config.borderColor} ${config.textColor} ${sizes.container}`}
-      title={`Điểm uy tín: ${trustScore}/100`}
+      title={`Điểm uy tín: ${displayScore}/100 - ${config.label}`}
     >
       <Icon className={`${config.iconColor} ${sizes.icon}`} />
       {showLabel && <span className="font-medium">{config.label}</span>}
-      <span className="font-bold">{trustScore}</span>
+      <span className="font-bold">{displayScore}</span>
     </div>
   );
 };

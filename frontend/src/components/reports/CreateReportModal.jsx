@@ -1,13 +1,13 @@
 // src/components/reports/CreateReportModal.jsx
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, X, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { useReports } from '../../hooks/useReports';
-import { Button, Card } from '../ui';
+import { Button, Card, LoadingSpinner } from '../ui';
 import ReportSeverityBadge from './ReportSeverityBadge';
 import EvidenceUpload from './EvidenceUpload';
 
 const CreateReportModal = ({ isOpen, onClose, reportedMember, reportedItem = null }) => {
-  const { createReport, loading } = useReports();
+  const { createReport, uploadEvidence, loading } = useReports();
   const [formData, setFormData] = useState({
     report_type: 'SPAM',
     severity: 'MEDIUM',
@@ -16,10 +16,11 @@ const CreateReportModal = ({ isOpen, onClose, reportedMember, reportedItem = nul
   const [evidenceFiles, setEvidenceFiles] = useState([]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
 
   const reportTypes = [
     { value: 'SPAM', label: 'Spam / Quảng cáo' },
-    { value: 'INAPPROPRIATE', label: 'Nội dung không phù hợp' },
+    { value: 'INAPPROPRIATE_CONTENT', label: 'Nội dung không phù hợp' },
     { value: 'HARASSMENT', label: 'Quấy rối / Bắt nạt' },
     { value: 'FRAUD', label: 'Lừa đảo / Gian lận' },
     { value: 'FAKE_PROFILE', label: 'Tài khoản giả mạo' },
@@ -30,8 +31,8 @@ const CreateReportModal = ({ isOpen, onClose, reportedMember, reportedItem = nul
     e.preventDefault();
     setError('');
 
-    if (!formData.description.trim()) {
-      setError('Vui lòng mô tả lý do báo cáo');
+    if (!formData.description.trim() || formData.description.trim().length < 10) {
+      setError('Vui lòng mô tả lý do báo cáo (ít nhất 10 ký tự)');
       return;
     }
 
@@ -40,8 +41,7 @@ const CreateReportModal = ({ isOpen, onClose, reportedMember, reportedItem = nul
         report_type: formData.report_type,
         reported_member_id: reportedMember.member_id || reportedMember.id,
         description: formData.description,
-        // TODO: Uncomment when backend supports severity field
-        // severity: formData.severity,
+        severity: formData.severity,
       };
 
       // Add optional item info if provided
@@ -50,15 +50,21 @@ const CreateReportModal = ({ isOpen, onClose, reportedMember, reportedItem = nul
         reportData.reported_item_id = reportedItem.id;
       }
 
-      // TODO: Upload evidence files when backend supports
-      // For now, we'll need to either:
-      // 1. Upload files first, get URLs, then include in reportData.evidence_urls
-      // 2. Use FormData to send everything together (multipart/form-data)
-      // Example:
-      // if (evidenceFiles.length > 0) {
-      //   const uploadedUrls = await uploadReportEvidence(evidenceFiles);
-      //   reportData.evidence_urls = uploadedUrls;
-      // }
+      // Upload evidence files first if any
+      if (evidenceFiles.length > 0) {
+        setUploadingEvidence(true);
+        try {
+          const uploadResult = await uploadEvidence(evidenceFiles);
+          if (uploadResult.urls && uploadResult.urls.length > 0) {
+            reportData.evidence_urls = uploadResult.urls;
+          }
+        } catch (uploadErr) {
+          console.error('Evidence upload failed:', uploadErr);
+          // Continue without evidence if upload fails
+        } finally {
+          setUploadingEvidence(false);
+        }
+      }
 
       await createReport(reportData);
       setSuccess(true);
@@ -67,7 +73,8 @@ const CreateReportModal = ({ isOpen, onClose, reportedMember, reportedItem = nul
       setTimeout(() => {
         onClose();
         setSuccess(false);
-        setFormData({ report_type: 'SPAM', description: '' });
+        setFormData({ report_type: 'SPAM', severity: 'MEDIUM', description: '' });
+        setEvidenceFiles([]);
       }, 2000);
     } catch (err) {
       setError(err.message || 'Không thể gửi báo cáo. Vui lòng thử lại.');

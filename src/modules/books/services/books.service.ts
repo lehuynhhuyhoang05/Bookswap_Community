@@ -68,6 +68,8 @@ export class BooksService {
         'book.language',
         'book.page_count',
         'book.cover_image_url',
+        'book.user_photos',
+        'book.condition_notes',
         'book.book_condition',
         'book.status',
         'book.views',
@@ -163,6 +165,8 @@ export class BooksService {
         'book.language',
         'book.page_count',
         'book.cover_image_url',
+        'book.user_photos',
+        'book.condition_notes',
         'book.book_condition',
         'book.status',
         'book.views',
@@ -339,12 +343,17 @@ export class BooksService {
 
     // Check Trust Score - Block if too low (scale 0-100)
     const trustScore = Number(member.trust_score) || 0;
+    this.logger.log(`[createBook] userId=${userId}, member_id=${member.member_id}, trust_score=${trustScore} (raw=${member.trust_score}, type=${typeof member.trust_score})`);
+    
     if (trustScore < 20) { // < 20 points: Cannot post books
+      this.logger.warn(`[createBook] Trust score too low: ${trustScore} < 20`);
       throw new ForbiddenException(
         'Điểm uy tín của bạn quá thấp để đăng sách mới. ' +
         'Vui lòng liên hệ admin để được hỗ trợ.'
       );
     }
+    
+    this.logger.log(`[createBook] Trust score OK: ${trustScore} >= 20, proceeding...`);
 
     // Google Books integration – BỎ QUA nếu placeholder/invalid + hard-timeout
     const gbId = createBookDto.google_books_id?.trim();
@@ -396,6 +405,7 @@ export class BooksService {
     this.logger.error('[createBook] ERROR', err?.stack || err);
     if (err instanceof UnauthorizedException) throw err;
     if (err instanceof NotFoundException) throw err;
+    if (err instanceof ForbiddenException) throw err;
     throw new InternalServerErrorException('Cannot create book');
   }
 }
@@ -414,6 +424,7 @@ export class BooksService {
         'book.isbn', 'book.google_books_id', 'book.publisher',
         'book.publish_date', 'book.description', 'book.category',
         'book.language', 'book.page_count', 'book.cover_image_url',
+        'book.user_photos', 'book.condition_notes',
         'book.book_condition', 'book.status', 'book.views',
         'book.deleted_at', 'book.created_at', 'book.updated_at',
         'owner.member_id', 'owner.user_id', 'owner.region',

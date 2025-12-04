@@ -13,19 +13,26 @@ import {
   HttpCode,
   HttpStatus,
   Req,
+  UseInterceptors,
+  UploadedFiles,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ReportsService } from './reports.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { QueryMyReportsDto } from './dto/query-reports.dto';
+import { StorageService } from '../../common/services/storage.service';
 
 @ApiTags('Reports')
 @ApiBearerAuth()
 @Controller('reports')
 @UseGuards(JwtAuthGuard)
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService) {}
+  constructor(
+    private readonly reportsService: ReportsService,
+    private readonly storageService: StorageService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -76,5 +83,52 @@ export class ReportsController {
       throw new Error('Member ID not found in JWT payload');
     }
     return this.reportsService.getReportDetail(reportId, reporterMemberId);
+  }
+
+  @Post('upload-evidence')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FilesInterceptor('files', 5)) // Max 5 files
+  @ApiOperation({ summary: 'Upload evidence files for report' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        files: {
+          type: 'array',
+          items: {
+            type: 'string',
+            format: 'binary',
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Files uploaded successfully',
+    schema: {
+      example: {
+        urls: ['/uploads/reports/uuid1.jpg', '/uploads/reports/uuid2.png'],
+        message: 'Files uploaded successfully'
+      }
+    }
+  })
+  async uploadEvidence(@UploadedFiles() files: Express.Multer.File[]) {
+    if (!files || files.length === 0) {
+      return { urls: [], message: 'No files uploaded' };
+    }
+
+    const urls: string[] = [];
+    for (const file of files) {
+      // Upload to reports subfolder
+      const url = await this.storageService.uploadFile(file, 'reports');
+      urls.push(url);
+    }
+
+    return {
+      urls,
+      message: `${urls.length} file(s) uploaded successfully`,
+    };
   }
 }

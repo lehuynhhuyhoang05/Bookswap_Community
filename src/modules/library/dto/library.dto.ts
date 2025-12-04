@@ -16,8 +16,10 @@ import {
   IsEnum,
   IsArray,
   ArrayMinSize,
+  IsUrl,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { PreferredCondition } from '../../../infrastructure/database/entities/book-wanted.entity';
 
 // ==================== CREATE WANTED BOOK ====================
 export class CreateWantedBookDto {
@@ -70,14 +72,43 @@ export class CreateWantedBookDto {
   category?: string;
 
   @ApiPropertyOptional({
-    example: 9,
-    description: 'Priority level (0-10, higher is more important)',
-    minimum: 0,
+    example: 'https://books.google.com/books/content?id=xxx',
+    description: 'Cover image URL from Google Books',
+    maxLength: 500,
+  })
+  @IsString({ message: 'cover_image_url must be a string' })
+  @IsOptional()
+  @MaxLength(500, { message: 'cover_image_url must not exceed 500 characters' })
+  cover_image_url?: string;
+
+  @ApiPropertyOptional({
+    example: 'GOOD_UP',
+    description: 'Minimum acceptable book condition',
+    enum: PreferredCondition,
+  })
+  @IsOptional()
+  @IsEnum(PreferredCondition, { message: 'preferred_condition must be a valid PreferredCondition enum' })
+  preferred_condition?: PreferredCondition = PreferredCondition.ANY;
+
+  @ApiPropertyOptional({
+    example: 'vi',
+    description: 'Preferred language',
+    maxLength: 50,
+  })
+  @IsString({ message: 'language must be a string' })
+  @IsOptional()
+  @MaxLength(50, { message: 'language must not exceed 50 characters' })
+  language?: string;
+
+  @ApiPropertyOptional({
+    example: 8,
+    description: 'Priority level (1-10, higher is more important)',
+    minimum: 1,
     maximum: 10,
   })
   @IsInt({ message: 'priority must be an integer' })
   @IsOptional()
-  @Min(0, { message: 'priority must be at least 0' })
+  @Min(1, { message: 'priority must be at least 1' })
   @Max(10, { message: 'priority must not exceed 10' })
   @Type(() => Number)
   priority?: number = 5;

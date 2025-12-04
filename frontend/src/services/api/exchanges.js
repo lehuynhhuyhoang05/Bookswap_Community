@@ -203,6 +203,22 @@ export const exchangeService = {
     }
   },
 
+  /**
+   * 📊 GET /exchanges/member/:memberId/history
+   * Lấy lịch sử trao đổi công khai của một thành viên
+   * Dùng để kiểm tra độ uy tín trước khi trao đổi
+   */
+  async getMemberPublicExchangeHistory(memberId, limit = 10) {
+    try {
+      const response = await api.get(`/exchanges/member/${memberId}/history`, {
+        params: { limit }
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Failed to fetch member exchange history' };
+    }
+  },
+
   // 📘 EXCHANGE SUGGESTIONS - GỢI Ý TRAO ĐỔI
 
   /**
