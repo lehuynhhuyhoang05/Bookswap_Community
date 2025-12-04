@@ -461,11 +461,12 @@ export class MatchingService {
   }
 
   private calculateTrustScore(member: Member): number {
+    // Trust score is now on 0-100 scale
     const trust = Number(member.trust_score as any);
-    if (trust >= 4.5) return 0.15;
-    if (trust >= 4.0) return 0.1;
-    if (trust >= 3.5) return 0.05;
-    if (trust < 3.0) return -0.05;
+    if (trust >= 90) return 0.15;  // Excellent: 90-100
+    if (trust >= 80) return 0.1;   // Very good: 80-89
+    if (trust >= 70) return 0.05;  // Good: 70-79
+    if (trust < 60) return -0.05;  // Below average: < 60
     return 0;
   }
 

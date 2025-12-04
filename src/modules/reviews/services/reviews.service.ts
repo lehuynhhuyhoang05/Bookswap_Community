@@ -17,23 +17,25 @@ export class ReviewsService {
   ) {}
 
   private clampTrust(v: number) {
+    // Clamp trust score to 0-100 range
     if (v < 0) return 0;
-    if (v > 5) return 5;
+    if (v > 100) return 100;
     return Number(v.toFixed(2));
   }
 
   private trustDeltaFromRating(rating: number) {
+    // Trust score impact on 0-100 scale
     switch (rating) {
       case 5:
-        return 0.1;
+        return 1.0;  // +1 point for 5-star review
       case 4:
-        return 0.05;
+        return 0.5;  // +0.5 point for 4-star review
       case 3:
-        return 0.0;
+        return 0.0;  // No change for 3-star review
       case 2:
-        return -0.05;
+        return -0.5; // -0.5 point for 2-star review
       case 1:
-        return -0.1;
+        return -1.0; // -1 point for 1-star review
       default:
         return 0;
     }
