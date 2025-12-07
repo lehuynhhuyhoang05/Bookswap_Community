@@ -1,5 +1,7 @@
 import {
+  AlertTriangle,
   ArrowLeftRight,
+  BarChart3,
   BookOpen,
   FileText,
   LayoutDashboard,
@@ -50,6 +52,16 @@ const AdminPanel = () => {
       name: 'Báo cáo vi phạm',
       path: '/admin/reports',
       icon: FileText,
+    },
+    {
+      name: 'Phát hiện Spam',
+      path: '/admin/spam-detection',
+      icon: AlertTriangle,
+    },
+    {
+      name: 'Báo cáo hệ thống',
+      path: '/admin/system-reports',
+      icon: BarChart3,
     },
   ];
 

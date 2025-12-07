@@ -13,6 +13,8 @@ import { Message } from '../../infrastructure/database/entities/message.entity';
 import { MessageReaction } from '../../infrastructure/database/entities/message-reaction.entity';
 import { Member } from '../../infrastructure/database/entities/member.entity';
 import { ExchangeRequest } from '../../infrastructure/database/entities/exchange-request.entity';
+import { ActivityLogService } from '../../common/services/activity-log.service';
+import { UserActivityLog } from '../../infrastructure/database/entities/user-activity-log.entity';
 
 @Module({
   imports: [
@@ -22,6 +24,7 @@ import { ExchangeRequest } from '../../infrastructure/database/entities/exchange
       MessageReaction,
       Member,
       ExchangeRequest,
+      UserActivityLog,
     ]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -38,7 +41,7 @@ import { ExchangeRequest } from '../../infrastructure/database/entities/exchange
     }),
   ],
   controllers: [MessagesController],
-  providers: [MessagesService, MessagesGateway, StorageService],
+  providers: [MessagesService, MessagesGateway, StorageService, ActivityLogService],
   exports: [MessagesService, MessagesGateway],
 })
 export class MessagesModule {}

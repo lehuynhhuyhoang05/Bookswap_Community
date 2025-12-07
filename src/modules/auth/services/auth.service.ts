@@ -25,11 +25,14 @@ import { PasswordResetToken } from '../../../infrastructure/database/entities/pa
 import { EmailVerificationToken } from '../../../infrastructure/database/entities/email-verification-token.entity';
 import { TokenBlacklist } from '../../../infrastructure/database/entities/token-blacklist.entity';
 import { EmailService } from '../../../infrastructure/external-services/email/email.service';
+import { ActivityLogService } from '../../../common/services/activity-log.service';
+import { UserActivityAction } from '../../../infrastructure/database/entities/user-activity-log.entity';
 import {
   RegisterDto,
   LoginDto,
   ForgotPasswordDto,
   ResetPasswordDto,
+  UpdateProfileDto,
 } from '../dto/auth.dto';
 
 type JwtClaims = { sub: string; email: string; role: UserRole; memberId?: string };
@@ -58,6 +61,7 @@ export class AuthService {
   constructor(
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Member) private memberRepository: Repository<Member>,
+    private activityLogService: ActivityLogService,
     @InjectRepository(PasswordResetToken) private resetTokenRepository: Repository<PasswordResetToken>,
     @InjectRepository(EmailVerificationToken) private emailVerifyRepo: Repository<EmailVerificationToken>,
     @InjectRepository(TokenBlacklist) private tokenBlacklistRepo: Repository<TokenBlacklist>,
@@ -218,6 +222,13 @@ export class AuthService {
 
     user.last_login_at = new Date();
     await this.userRepository.save(user);
+
+    // Log login activity
+    await this.activityLogService.logActivity({
+      user_id: user.user_id,
+      action: UserActivityAction.LOGIN,
+      metadata: { method: 'email' },
+    });
 
     const payload: JwtClaims = { sub: user.user_id, email: user.email, role: user.role };
     // attach memberId when available to avoid a DB lookup in JwtStrategy
@@ -394,6 +405,49 @@ export class AuthService {
       member: memberProfile,
       trust_restrictions: trustRestrictions,
     };
+  }
+
+  // =========================================================
+  // PATCH /auth/profile
+  // =========================================================
+  async updateProfile(userId: string, updateData: UpdateProfileDto) {
+    const user = await this.userRepository.findOne({
+      where: { user_id: userId },
+      relations: ['member'],
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Update user table fields
+    if (updateData.full_name !== undefined) {
+      user.full_name = updateData.full_name;
+    }
+    if (updateData.avatar_url !== undefined) {
+      user.avatar_url = updateData.avatar_url;
+    }
+    await this.userRepository.save(user);
+
+    // Update member table fields if user is a MEMBER and has member profile
+    if (user.role === UserRole.MEMBER && user.member) {
+      if (updateData.phone !== undefined) {
+        user.member.phone = updateData.phone;
+      }
+      if (updateData.address !== undefined) {
+        user.member.address = updateData.address;
+      }
+      if (updateData.bio !== undefined) {
+        user.member.bio = updateData.bio;
+      }
+      if (updateData.region !== undefined) {
+        user.member.region = updateData.region;
+      }
+      await this.memberRepository.save(user.member);
+    }
+
+    // Return updated profile
+    return this.getProfile(userId);
   }
 
   // =========================================================

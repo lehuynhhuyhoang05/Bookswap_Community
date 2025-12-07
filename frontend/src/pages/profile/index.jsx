@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Award,
   BadgeCheck,
@@ -33,12 +34,15 @@ import { authService } from '../../services/api/auth';
 import { reviewsService } from '../../services/api/reviews';
 import TrustScoreWarning from '../../components/common/TrustScoreWarning';
 import { toDisplayScore, getTrustBadgeConfig } from '../../utils/trustScore';
+import ProfileEditModal from '../../components/profile/ProfileEditModal';
 
 const ProfilePage = () => {
+  const navigate = useNavigate();
   const { user, setUser, getTrustRestrictions } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
   const [loading, setLoading] = useState(true);
   const [reviewStats, setReviewStats] = useState(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
 
   const refreshUser = async () => {
     setLoading(true);
@@ -153,7 +157,11 @@ const ProfilePage = () => {
                     </div>
 
                     <div className="mt-4 md:mt-0 flex gap-2">
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setEditModalOpen(true)}
+                      >
                         <Edit3 className="w-4 h-4 mr-2" />
                         Chỉnh sửa
                       </Button>
@@ -258,6 +266,14 @@ const ProfilePage = () => {
           </Card>
         </div>
       </div>
+
+      {/* Edit Profile Modal */}
+      <ProfileEditModal
+        isOpen={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        onSuccess={refreshUser}
+        initialData={user}
+      />
     </Layout>
   );
 };

@@ -107,7 +107,7 @@ const LibraryBookCard = ({ book, onDelete, viewMode = 'grid' }) => {
           {/* Hover Overlay */}
           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-2">
             <Link
-              to={`/books/detail/${bookId}`}
+              to={`/library/book/${bookId}`}
               className="p-2 bg-white rounded-full hover:bg-blue-50 transition-colors"
               title="Xem chi tiết"
             >
@@ -202,7 +202,7 @@ const LibraryBookCard = ({ book, onDelete, viewMode = 'grid' }) => {
 
         <div className="flex items-center gap-2 mt-3">
           <Link
-            to={`/books/detail/${bookId}`}
+            to={`/library/book/${bookId}`}
             className="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
           >
             Xem chi tiết

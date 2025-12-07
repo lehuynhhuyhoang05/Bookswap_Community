@@ -91,6 +91,39 @@ export class UpdateUserRoleDto {
   reason?: string;
 }
 
+// DTO update user info by admin
+export class UpdateUserInfoDto {
+  @ApiPropertyOptional({ example: 'John Doe', description: 'Tên đầy đủ' })
+  @IsOptional()
+  @IsString()
+  full_name?: string;
+
+  @ApiPropertyOptional({ example: 'john@example.com', description: 'Email' })
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @ApiPropertyOptional({ example: '0901234567', description: 'Số điện thoại' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional({ example: 'Ho Chi Minh', description: 'Khu vực' })
+  @IsOptional()
+  @IsString()
+  region?: string;
+
+  @ApiPropertyOptional({ example: 'Bio của user', description: 'Giới thiệu' })
+  @IsOptional()
+  @IsString()
+  bio?: string;
+
+  @ApiPropertyOptional({ example: 'Update thông tin theo yêu cầu user', description: 'Lý do cập nhật' })
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
 // Response DTO
 export class UserDetailResponseDto {
   user_id: string;

@@ -13,6 +13,9 @@ import { BookMatchPair } from '../../infrastructure/database/entities/book-match
 import { ExchangesController } from './controllers/exchanges.controller';
 import { ExchangesService } from './services/exchanges.service';
 import { MatchingService } from './services/matching.service';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { ActivityLogService } from '../../common/services/activity-log.service';
+import { UserActivityLog } from '../../infrastructure/database/entities/user-activity-log.entity';
 
 @Module({
   imports: [
@@ -26,10 +29,12 @@ import { MatchingService } from './services/matching.service';
       ExchangeBook,
       ExchangeSuggestion,
       BookMatchPair,
+      UserActivityLog,
     ]),
+    NotificationsModule, // Import NotificationsModule
   ],
   controllers: [ExchangesController],
-  providers: [ExchangesService, MatchingService],
+  providers: [ExchangesService, MatchingService, ActivityLogService],
   exports: [ExchangesService, MatchingService],
 })
 export class ExchangesModule {}

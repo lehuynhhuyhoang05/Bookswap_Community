@@ -227,11 +227,17 @@ export const notificationsService = {
    * @returns {string} Formatted time string
    */
   formatNotificationTime(dateString) {
+    // Parse the date string as UTC and convert to local time
     const date = new Date(dateString);
     const now = new Date();
-    const diffInSeconds = Math.floor((now - date) / 1000);
+    
+    // Calculate difference in seconds (both dates are now in local timezone)
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-    if (diffInSeconds < 60) {
+    if (diffInSeconds < 0) {
+      // Future date (shouldn't happen, but handle gracefully)
+      return 'Vừa xong';
+    } else if (diffInSeconds < 60) {
       return 'Vừa xong';
     } else if (diffInSeconds < 3600) {
       const minutes = Math.floor(diffInSeconds / 60);

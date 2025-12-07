@@ -114,10 +114,20 @@ const ExchangeManagement = () => {
         text: 'text-yellow-800',
         label: 'Chờ xác nhận',
       },
-      CONFIRMED: {
+      ACCEPTED: {
         bg: 'bg-blue-100',
         text: 'text-blue-800',
-        label: 'Đã xác nhận',
+        label: 'Đã chấp nhận',
+      },
+      MEETING_SCHEDULED: {
+        bg: 'bg-purple-100',
+        text: 'text-purple-800',
+        label: 'Đã hẹn gặp',
+      },
+      IN_PROGRESS: {
+        bg: 'bg-indigo-100',
+        text: 'text-indigo-800',
+        label: 'Đang tiến hành',
       },
       COMPLETED: {
         bg: 'bg-green-100',
@@ -146,7 +156,7 @@ const ExchangeManagement = () => {
 
         {/* Statistics Overview */}
         {showStats && statistics && statistics.overview && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
             <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg">
               <div className="flex items-center justify-between">
                 <div>
@@ -176,7 +186,10 @@ const ExchangeManagement = () => {
                 <div>
                   <p className="text-sm opacity-90">Đang xử lý</p>
                   <p className="text-2xl font-bold">
-                    {statistics.overview.pending || 0}
+                    {statistics.overview.processing || 0}
+                  </p>
+                  <p className="text-xs opacity-75">
+                    (Chờ: {statistics.overview.pending || 0}, Chấp nhận: {statistics.overview.accepted || 0})
                   </p>
                 </div>
                 <Clock className="h-8 w-8 opacity-75" />
@@ -194,11 +207,23 @@ const ExchangeManagement = () => {
                 <TrendingUp className="h-8 w-8 opacity-75" />
               </div>
             </div>
+
+            <div className="bg-gradient-to-r from-red-500 to-red-600 text-white p-4 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm opacity-90">Đã hủy</p>
+                  <p className="text-2xl font-bold">
+                    {statistics.overview.cancelled || 0}
+                  </p>
+                </div>
+                <XCircle className="h-8 w-8 opacity-75" />
+              </div>
+            </div>
           </div>
         )}
 
         {/* Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
           <select
             value={filters.status}
             onChange={(e) =>
@@ -207,8 +232,11 @@ const ExchangeManagement = () => {
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Tất cả trạng thái</option>
-            <option value="COMPLETED">Hoàn thành</option>
             <option value="PENDING">Chờ xác nhận</option>
+            <option value="ACCEPTED">Đã chấp nhận</option>
+            <option value="MEETING_SCHEDULED">Đã hẹn gặp</option>
+            <option value="IN_PROGRESS">Đang tiến hành</option>
+            <option value="COMPLETED">Hoàn thành</option>
             <option value="CANCELLED">Đã hủy</option>
           </select>
 
@@ -231,6 +259,12 @@ const ExchangeManagement = () => {
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               placeholder="Đến ngày"
             />
+            <button
+              onClick={loadExchanges}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Lọc
+            </button>
           </div>
 
           <div className="flex gap-2">
@@ -454,16 +488,17 @@ const ExchangeManagement = () => {
       {/* Detail Modal */}
       {showDetailModal && currentExchange && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold text-gray-900 mb-4">
               Chi tiết giao dịch
             </h3>
 
             <div className="space-y-4">
+              {/* Basic Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-gray-600">Exchange ID</p>
-                  <p className="font-medium">{currentExchange.exchange_id}</p>
+                  <p className="font-medium font-mono text-sm">{currentExchange.exchange_id}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Trạng thái</p>
@@ -473,65 +508,191 @@ const ExchangeManagement = () => {
                 </div>
               </div>
 
+              {/* Members Info */}
               <div className="border-t pt-4">
                 <h4 className="font-medium text-gray-900 mb-2">
-                  Thông tin người tham gia
+                  👥 Thông tin người tham gia
                 </h4>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-gray-50 p-3 rounded">
-                    <p className="text-sm text-gray-600">Member A</p>
-                    <p className="font-medium">
-                      {currentExchange.memberA_name ||
-                        currentExchange.member_a?.user?.full_name ||
-                        'Tên không xác định'}
+                  <div className="bg-blue-50 p-3 rounded border border-blue-100">
+                    <p className="text-sm text-blue-600 font-medium">Member A (Người yêu cầu)</p>
+                    <p className="font-medium mt-1">
+                      {currentExchange.member_a?.user?.full_name || 'N/A'}
                     </p>
                     <p className="text-sm text-gray-500">
-                      {currentExchange.memberA_email}
+                      {currentExchange.member_a?.user?.email}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Trust Score: {currentExchange.member_a?.trust_score || 'N/A'}
                     </p>
                   </div>
-                  <div className="bg-gray-50 p-3 rounded">
-                    <p className="text-sm text-gray-600">Member B</p>
-                    <p className="font-medium">
-                      {currentExchange.memberB_name ||
-                        currentExchange.member_b?.user?.full_name ||
-                        'Tên không xác định'}
+                  <div className="bg-green-50 p-3 rounded border border-green-100">
+                    <p className="text-sm text-green-600 font-medium">Member B (Người nhận)</p>
+                    <p className="font-medium mt-1">
+                      {currentExchange.member_b?.user?.full_name || 'N/A'}
                     </p>
                     <p className="text-sm text-gray-500">
-                      {currentExchange.memberB_email}
+                      {currentExchange.member_b?.user?.email}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Trust Score: {currentExchange.member_b?.trust_score || 'N/A'}
                     </p>
                   </div>
                 </div>
               </div>
 
+              {/* Books Info */}
+              {currentExchange.exchange_books && currentExchange.exchange_books.length > 0 && (
+                <div className="border-t pt-4">
+                  <h4 className="font-medium text-gray-900 mb-2">
+                    📚 Sách trao đổi ({currentExchange.exchange_books.length} cuốn)
+                  </h4>
+                  <div className="space-y-2">
+                    {currentExchange.exchange_books.map((eb, index) => (
+                      <div key={index} className="bg-gray-50 p-3 rounded flex items-center gap-3">
+                        {eb.book?.cover_image && (
+                          <img
+                            src={eb.book.cover_image}
+                            alt={eb.book?.title}
+                            className="w-12 h-16 object-cover rounded"
+                          />
+                        )}
+                        <div className="flex-1">
+                          <p className="font-medium">{eb.book?.title || 'Không xác định'}</p>
+                          <p className="text-sm text-gray-500">
+                            {eb.book?.author} • {eb.book?.category}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            Từ: {eb.from_member_id === currentExchange.member_a_id ? 'Member A' : 'Member B'}
+                          </p>
+                        </div>
+                        <span className={`px-2 py-1 text-xs rounded ${
+                          eb.book?.status === 'AVAILABLE' ? 'bg-green-100 text-green-700' :
+                          eb.book?.status === 'EXCHANGING' ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {eb.book?.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Meeting Info */}
+              {(currentExchange.meeting_location || currentExchange.meeting_time) && (
+                <div className="border-t pt-4">
+                  <h4 className="font-medium text-gray-900 mb-2">
+                    📍 Thông tin hẹn gặp
+                  </h4>
+                  <div className="bg-purple-50 p-3 rounded border border-purple-100">
+                    {currentExchange.meeting_location && (
+                      <div className="mb-2">
+                        <p className="text-sm text-gray-600">Địa điểm:</p>
+                        <p className="font-medium">{currentExchange.meeting_location}</p>
+                      </div>
+                    )}
+                    {currentExchange.meeting_time && (
+                      <div className="mb-2">
+                        <p className="text-sm text-gray-600">Thời gian:</p>
+                        <p className="font-medium">
+                          {new Date(currentExchange.meeting_time).toLocaleString('vi-VN')}
+                        </p>
+                      </div>
+                    )}
+                    {currentExchange.meeting_notes && (
+                      <div>
+                        <p className="text-sm text-gray-600">Ghi chú:</p>
+                        <p className="text-sm">{currentExchange.meeting_notes}</p>
+                      </div>
+                    )}
+                    <div className="mt-2 flex gap-4 text-xs">
+                      <span className={currentExchange.meeting_confirmed_by_a ? 'text-green-600' : 'text-gray-400'}>
+                        {currentExchange.meeting_confirmed_by_a ? '✓' : '○'} Member A xác nhận
+                      </span>
+                      <span className={currentExchange.meeting_confirmed_by_b ? 'text-green-600' : 'text-gray-400'}>
+                        {currentExchange.meeting_confirmed_by_b ? '✓' : '○'} Member B xác nhận
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Timeline */}
               <div className="border-t pt-4">
                 <h4 className="font-medium text-gray-900 mb-2">
-                  Thông tin thời gian
+                  🕐 Timeline
                 </h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-gray-600">Ngày tạo</p>
-                    <p>
-                      {new Date(currentExchange.created_at).toLocaleString(
-                        'vi-VN',
-                      )}
-                    </p>
+                    <p>{new Date(currentExchange.created_at).toLocaleString('vi-VN')}</p>
                   </div>
                   <div>
-                    <p className="text-gray-600">Cập nhật</p>
-                    <p>
-                      {new Date(currentExchange.updated_at).toLocaleString(
-                        'vi-VN',
-                      )}
+                    <p className="text-gray-600">Cập nhật cuối</p>
+                    <p>{new Date(currentExchange.updated_at).toLocaleString('vi-VN')}</p>
+                  </div>
+                  {currentExchange.confirmed_by_a_at && (
+                    <div>
+                      <p className="text-gray-600">Member A xác nhận</p>
+                      <p>{new Date(currentExchange.confirmed_by_a_at).toLocaleString('vi-VN')}</p>
+                    </div>
+                  )}
+                  {currentExchange.confirmed_by_b_at && (
+                    <div>
+                      <p className="text-gray-600">Member B xác nhận</p>
+                      <p>{new Date(currentExchange.confirmed_by_b_at).toLocaleString('vi-VN')}</p>
+                    </div>
+                  )}
+                  {currentExchange.completed_at && (
+                    <div className="col-span-2">
+                      <p className="text-gray-600">Hoàn thành</p>
+                      <p className="text-green-600 font-medium">
+                        {new Date(currentExchange.completed_at).toLocaleString('vi-VN')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Confirmation Status */}
+              <div className="border-t pt-4">
+                <h4 className="font-medium text-gray-900 mb-2">
+                  ✅ Trạng thái xác nhận
+                </h4>
+                <div className="flex gap-4">
+                  <div className={`flex-1 p-3 rounded ${currentExchange.member_a_confirmed ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}`}>
+                    <p className="text-sm font-medium">Member A</p>
+                    <p className={currentExchange.member_a_confirmed ? 'text-green-600' : 'text-gray-400'}>
+                      {currentExchange.member_a_confirmed ? '✓ Đã xác nhận' : '○ Chưa xác nhận'}
+                    </p>
+                  </div>
+                  <div className={`flex-1 p-3 rounded ${currentExchange.member_b_confirmed ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}`}>
+                    <p className="text-sm font-medium">Member B</p>
+                    <p className={currentExchange.member_b_confirmed ? 'text-green-600' : 'text-gray-400'}>
+                      {currentExchange.member_b_confirmed ? '✓ Đã xác nhận' : '○ Chưa xác nhận'}
                     </p>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end">
+            <div className="mt-6 flex justify-between">
+              {currentExchange.status !== 'CANCELLED' && currentExchange.status !== 'COMPLETED' && (
+                <button
+                  onClick={() => {
+                    setShowDetailModal(false);
+                    setSelectedExchange(currentExchange);
+                    setShowCancelModal(true);
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                >
+                  Hủy giao dịch
+                </button>
+              )}
               <button
                 onClick={() => setShowDetailModal(false)}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 ml-auto"
               >
                 Đóng
               </button>

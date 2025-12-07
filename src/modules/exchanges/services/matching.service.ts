@@ -96,10 +96,8 @@ export class MatchingService {
     });
 
     this.logger.debug(`[findMatchingSuggestions] Found ${myAvailableBooks.length} available books to offer`);
-    if (myAvailableBooks.length === 0) {
-      this.logger.debug('[findMatchingSuggestions] No available books to offer');
-      return { suggestions: [], total: 0 };
-    }
+    // HIGH #3: Allow browsing even with 0 books (for new users to explore)
+    // Users can see what books others want, helping them decide what to add to library
 
     // 6) Pre-collect potential owner IDs
     const potentialOwnerIds = new Set<string>();
@@ -178,42 +176,47 @@ export class MatchingService {
           }
         }
 
-        // If they want at least 1 book from me → valid two-way match
-        if (myBooksTheyWant.length > 0) {
-          // I want from them
-          const comprehensiveScore = this.calculateComprehensiveScore(
-            bookIWant,
-            myWant,
-            otherMember, // owner of bookIWant
-            member, // requester (me)
-          );
+        // HIGH #2: ONE-WAY SUGGESTIONS - Show if I want their books (even if they don't want mine)
+        // This allows users to browse and send requests freely
+        
+        // I want from them (always add)
+        const comprehensiveScore = this.calculateComprehensiveScore(
+          bookIWant,
+          myWant,
+          otherMember, // owner of bookIWant
+          member, // requester (me)
+        );
 
-          theirBooksIWant.push({
-            theirBook: bookIWant,
-            myWant,
-            score: comprehensiveScore,
-          });
+        theirBooksIWant.push({
+          theirBook: bookIWant,
+          myWant,
+          score: comprehensiveScore,
+        });
 
-          // Total score & aggregated breakdown (average)
-          const totalScore =
-            myBooksTheyWant.reduce((sum, m) => sum + m.score.score, 0) +
-            theirBooksIWant.reduce((sum, m) => sum + m.score.score, 0);
+        // Check if two-way match exists (for bonus scoring)
+        const isTwoWayMatch = myBooksTheyWant.length > 0;
+        
+        // Total score (if no two-way, only count theirBooksIWant)
+        const totalScore = isTwoWayMatch
+          ? myBooksTheyWant.reduce((sum, m) => sum + m.score.score, 0) +
+            theirBooksIWant.reduce((sum, m) => sum + m.score.score, 0)
+          : theirBooksIWant.reduce((sum, m) => sum + m.score.score, 0);
 
-          const scoreBreakdown = this.aggregateScoreBreakdown([
-            ...myBooksTheyWant.map((m) => m.score.breakdown),
-            ...theirBooksIWant.map((m) => m.score.breakdown),
-          ]);
+        const scoreBreakdown = this.aggregateScoreBreakdown([
+          ...myBooksTheyWant.map((m) => m.score.breakdown),
+          ...theirBooksIWant.map((m) => m.score.breakdown),
+        ]);
 
-          potentialMatches.push({
-            otherMember,
-            myBooksTheyWant,
-            theirBooksIWant,
-            totalScore,
-            scoreBreakdown,
-          });
+        // Add to suggestions (no longer requires two-way match)
+        potentialMatches.push({
+          otherMember,
+          myBooksTheyWant,
+          theirBooksIWant,
+          totalScore,
+          scoreBreakdown,
+        });
 
-          processedMembers.add(bookIWant.owner_id);
-        }
+        processedMembers.add(bookIWant.owner_id);
       }
     }
 
@@ -402,6 +405,20 @@ export class MatchingService {
     return { message: 'Suggestion marked as viewed' };
   }
 
+  async deleteSuggestion(userId: string, suggestionId: string) {
+    const member = await this.memberRepo.findOne({ where: { user_id: userId } });
+    if (!member) throw new NotFoundException('Member profile not found');
+
+    const suggestion = await this.suggestionRepo.findOne({
+      where: { suggestion_id: suggestionId, member_a_id: member.member_id },
+    });
+    if (!suggestion) throw new NotFoundException('Suggestion not found');
+
+    await this.suggestionRepo.remove(suggestion);
+
+    return { message: 'Suggestion deleted successfully' };
+  }
+
   // ========== Scoring ==========
 
   private calculateComprehensiveScore(
@@ -461,11 +478,12 @@ export class MatchingService {
   }
 
   private calculateTrustScore(member: Member): number {
-    // Trust score is now on 0-100 scale
+    // Trust score is now on 0-100 scale with adjusted thresholds
     const trust = Number(member.trust_score as any);
-    if (trust >= 90) return 0.15;  // Excellent: 90-100
+    if (trust >= 95) return 0.2;   // VIP: 95-100
+    if (trust >= 90) return 0.15;  // Excellent: 90-94
     if (trust >= 80) return 0.1;   // Very good: 80-89
-    if (trust >= 70) return 0.05;  // Good: 70-79
+    if (trust >= 60) return 0.0;   // Normal: 60-79
     if (trust < 60) return -0.05;  // Below average: < 60
     return 0;
   }
@@ -702,13 +720,33 @@ export class MatchingService {
     if (results.length === 0 && myWant.title) {
       this.logger.debug(`[findBooksMatchingWant] Trying fuzzy title/author match`);
       
-      const titlePattern = `%${myWant.title.toLowerCase()}%`;
+      // Normalize title: remove punctuation, extra spaces for better matching
+      const normalizedTitle = myWant.title
+        .toLowerCase()
+        .replace(/[,.:;!?()-]/g, ' ')  // Remove punctuation
+        .replace(/\s+/g, ' ')           // Collapse multiple spaces
+        .trim();
+      
+      // Split into keywords for flexible matching
+      const titleKeywords = normalizedTitle.split(' ').filter(word => word.length > 2);
+      
+      this.logger.debug(`[findBooksMatchingWant] Normalized title: "${normalizedTitle}", keywords: ${titleKeywords.join(', ')}`);
+      
+      // Build flexible query using keywords
       let query = `SELECT * FROM books 
          WHERE status = ? 
          AND deleted_at IS NULL 
-         AND owner_id != ?
-         AND LOWER(title) LIKE ?`;
-      const params: any[] = [BookStatus.AVAILABLE, excludeOwnerId, titlePattern];
+         AND owner_id != ?`;
+      const params: any[] = [BookStatus.AVAILABLE, excludeOwnerId];
+      
+      // Match if title contains most keywords (more flexible)
+      if (titleKeywords.length > 0) {
+        const titleConditions = titleKeywords
+          .map(() => `LOWER(REPLACE(REPLACE(REPLACE(title, ',', ''), '.', ''), ':', '')) LIKE ?`)
+          .join(' AND ');
+        query += ` AND (${titleConditions})`;
+        titleKeywords.forEach(keyword => params.push(`%${keyword}%`));
+      }
 
       // Add author filter if available
       if (myWant.author) {

@@ -11,10 +11,14 @@ import { Repository, IsNull, Brackets } from 'typeorm';
 import { Book, BookStatus } from '../../../infrastructure/database/entities/book.entity';
 import { BookWanted } from '../../../infrastructure/database/entities/book-wanted.entity';
 import { Member } from '../../../infrastructure/database/entities/member.entity';
+import { Exchange, ExchangeStatus } from '../../../infrastructure/database/entities/exchange.entity';
+import { ExchangeBook } from '../../../infrastructure/database/entities/exchange-book.entity';
 import { CreateBookDto, UpdateBookDto } from '../dto/create-book.dto';
 import { SearchBooksDto, AdvancedSearchDto } from '../dto/books.dto';
 import { GoogleBooksService } from '../../../infrastructure/external-services/google-books/google-books.service';
 import { GoogleBookResult } from '../../../infrastructure/external-services/google-books/google-books.types';
+import { ActivityLogService } from '../../../common/services/activity-log.service';
+import { UserActivityAction } from '../../../infrastructure/database/entities/user-activity-log.entity';
 
 function withTimeout<T>(p: Promise<T>, ms: number, tag = 'timeout'): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -35,7 +39,12 @@ export class BooksService {
     private readonly wantedRepo: Repository<BookWanted>,
     @InjectRepository(Member)
     private readonly memberRepository: Repository<Member>,
+    @InjectRepository(Exchange)
+    private readonly exchangeRepository: Repository<Exchange>,
+    @InjectRepository(ExchangeBook)
+    private readonly exchangeBookRepository: Repository<ExchangeBook>,
     private readonly googleBooksService: GoogleBooksService,
+    private readonly activityLogService: ActivityLogService,
   ) {}
 
   // ==================== NEW: BASIC SEARCH (Public) ====================
@@ -400,6 +409,15 @@ export class BooksService {
     const saved = await this.bookRepository.save(toSave);
     this.logger.log(`[createBook] <<< saved book_id=${saved.book_id}`);
 
+    // Log activity
+    await this.activityLogService.logActivity({
+      user_id: userId,
+      action: UserActivityAction.CREATE_BOOK,
+      entity_type: 'BOOK',
+      entity_id: saved.book_id,
+      metadata: { title: saved.title, author: saved.author },
+    });
+
     return saved;
   } catch (err: any) {
     this.logger.error('[createBook] ERROR', err?.stack || err);
@@ -493,8 +511,10 @@ export class BooksService {
       .select([
         'book.book_id', 'book.owner_id', 'book.title', 'book.author',
         'book.isbn', 'book.category', 'book.book_condition',
-        'book.status', 'book.views', 'book.created_at',
-        'owner.member_id', 'owner.region', 'owner.trust_score',
+        'book.status', 'book.views', 'book.created_at', 'book.updated_at',
+        'book.cover_image_url', 'book.description', 'book.publisher',
+        'book.publish_date', 'book.language', 'book.page_count',
+        'owner.member_id', 'owner.region', 'owner.trust_score', 'owner.completed_exchanges',
         'user.user_id', 'user.full_name', 'user.avatar_url',
       ])
       .where('book.book_id = :bookId', { bookId })
@@ -523,6 +543,16 @@ export class BooksService {
     Object.assign(book, updateBookDto);
     const saved = await this.bookRepository.save(book);
     this.logger.log(`[update] <<< saved book_id=${saved.book_id}`);
+
+    // Log activity
+    await this.activityLogService.logActivity({
+      user_id: userId,
+      action: UserActivityAction.UPDATE_BOOK,
+      entity_type: 'BOOK',
+      entity_id: saved.book_id,
+      metadata: { title: saved.title },
+    });
+
     return saved;
   }
 
@@ -541,6 +571,15 @@ export class BooksService {
     book.status = BookStatus.REMOVED;
     await this.bookRepository.save(book);
     this.logger.log(`[remove] <<< soft-deleted book_id=${book.book_id}`);
+
+    // Log activity
+    await this.activityLogService.logActivity({
+      user_id: userId,
+      action: UserActivityAction.DELETE_BOOK,
+      entity_type: 'BOOK',
+      entity_id: book.book_id,
+      metadata: { title: book.title },
+    });
   }
 
   /** LOG #7: Google Books search */
@@ -640,5 +679,96 @@ export class BooksService {
       .filter((r) => r && r.trim().length > 0);
 
     return { regions, total: regions.length };
+  }
+
+  // ==================== BOOK EXCHANGE HISTORY ====================
+  /**
+   * Get exchange history for a specific book
+   * Shows the journey of the book through different owners
+   */
+  async getBookExchangeHistory(bookId: string, limit = 20) {
+    this.logger.log(`[getBookExchangeHistory] bookId=${bookId} limit=${limit}`);
+
+    // 1. Verify book exists
+    const book = await this.bookRepository.findOne({
+      where: { book_id: bookId },
+      relations: ['owner', 'owner.user'],
+    });
+
+    if (!book) {
+      throw new NotFoundException('Book not found');
+    }
+
+    // 2. Find all exchange_books involving this book
+    const exchangeBooks = await this.exchangeBookRepository.find({
+      where: { book_id: bookId },
+      relations: [
+        'exchange',
+        'exchange.member_a',
+        'exchange.member_a.user',
+        'exchange.member_b',
+        'exchange.member_b.user',
+      ],
+      take: limit,
+    });
+
+    // Filter only COMPLETED and sort by date
+    const completedExchangeBooks = exchangeBooks
+      .filter(eb => eb.exchange?.status === ExchangeStatus.COMPLETED)
+      .sort((a, b) => {
+        const dateA = a.exchange.completed_at ? new Date(a.exchange.completed_at).getTime() : 0;
+        const dateB = b.exchange.completed_at ? new Date(b.exchange.completed_at).getTime() : 0;
+        return dateB - dateA; // DESC order
+      });
+
+    // 3. Format response
+    const exchanges = completedExchangeBooks.map(eb => {
+        const exchange = eb.exchange;
+        const fromMember = eb.from_member_id === exchange.member_a_id 
+          ? exchange.member_a 
+          : exchange.member_b;
+        const toMember = eb.to_member_id === exchange.member_a_id 
+          ? exchange.member_a 
+          : exchange.member_b;
+
+        // Count other books in this exchange
+        const otherBooksCount = (exchange.exchange_books?.length || 1) - 1;
+
+        return {
+          exchange_id: exchange.exchange_id,
+          from_member: {
+            member_id: fromMember.member_id,
+            name: fromMember.user?.full_name || 'Unknown',
+            avatar_url: fromMember.user?.avatar_url || null,
+            region: fromMember.region || null,
+          },
+          to_member: {
+            member_id: toMember.member_id,
+            name: toMember.user?.full_name || 'Unknown',
+            avatar_url: toMember.user?.avatar_url || null,
+            region: toMember.region || null,
+          },
+          completed_at: exchange.completed_at,
+          other_books_count: otherBooksCount,
+        };
+      });
+
+    // 4. Get current owner info
+    const currentOwner = book.owner ? {
+      member_id: book.owner.member_id,
+      name: book.owner.user?.full_name || 'Unknown',
+      avatar_url: book.owner.user?.avatar_url || null,
+      region: book.owner.region || null,
+      trust_score: book.owner.trust_score || 0,
+    } : null;
+
+    return {
+      book_id: book.book_id,
+      title: book.title,
+      author: book.author,
+      current_owner: currentOwner,
+      total_exchanges: exchanges.length,
+      exchanges,
+    };
   }
 }

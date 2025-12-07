@@ -7,6 +7,9 @@ import {
   deleteAdminUser,
   dismissAdminReport,
   getAdminBooks,
+  getAdminBookDetail,
+  restoreAdminBook,
+  batchRemoveAdminBooks,
   getAdminConversation,
   getAdminDashboardStats,
   getAdminExchange,
@@ -83,7 +86,61 @@ export const useAdminBooks = () => {
     }
   }, []);
 
-  return { books, loading, error, fetchBooks, removeBook, permanentRemoveBook };
+  const restoreBook = useCallback(async (bookId, reason) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await restoreAdminBook(bookId, { reason });
+      // Refresh the books list after restore
+      return result;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const batchRemoveBooks = useCallback(async (bookIds, reason) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await batchRemoveAdminBooks({ bookIds, reason });
+      // Refresh the books list after batch remove
+      return result;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchBookDetail = useCallback(async (bookId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getAdminBookDetail(bookId);
+      return result;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { 
+    books, 
+    loading, 
+    error, 
+    fetchBooks, 
+    removeBook, 
+    permanentRemoveBook,
+    restoreBook,
+    batchRemoveBooks,
+    fetchBookDetail,
+  };
 };
 
 /**
@@ -569,6 +626,183 @@ export const useAdminReports = () => {
   };
 };
 
+// ============================================================
+// SYSTEM REPORTS HOOK - Báo cáo tổng thể hệ thống
+// ============================================================
+import {
+  getSystemOverview,
+  getSystemTrends,
+  getRegionReport,
+  getBookCategoryReport,
+  getTopPerformersReport,
+  getSystemAlerts,
+  getFullSystemReport,
+} from '../services/api/adminSystemReports';
+
+export const useSystemReports = () => {
+  const [overview, setOverview] = useState(null);
+  const [trends, setTrends] = useState(null);
+  const [regions, setRegions] = useState(null);
+  const [categories, setCategories] = useState(null);
+  const [topPerformers, setTopPerformers] = useState(null);
+  const [alerts, setAlerts] = useState(null);
+  const [fullReport, setFullReport] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const fetchOverview = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getSystemOverview();
+      setOverview(data);
+      return data;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchTrends = useCallback(async (days = 30) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getSystemTrends(days);
+      setTrends(data);
+      return data;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchRegions = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getRegionReport();
+      setRegions(data);
+      return data;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchCategories = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getBookCategoryReport();
+      setCategories(data);
+      return data;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchTopPerformers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getTopPerformersReport();
+      setTopPerformers(data);
+      return data;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchAlerts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getSystemAlerts();
+      setAlerts(data);
+      return data;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchFullReport = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getFullSystemReport();
+      setFullReport(data);
+      return data;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchAllData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [overviewData, trendsData, regionsData, categoriesData, topPerformersData, alertsData] = await Promise.all([
+        getSystemOverview(),
+        getSystemTrends(30),
+        getRegionReport(),
+        getBookCategoryReport(),
+        getTopPerformersReport(),
+        getSystemAlerts(),
+      ]);
+      setOverview(overviewData);
+      setTrends(trendsData);
+      setRegions(regionsData);
+      setCategories(categoriesData);
+      setTopPerformers(topPerformersData);
+      setAlerts(alertsData);
+      return { overview: overviewData, trends: trendsData, regions: regionsData, categories: categoriesData, topPerformers: topPerformersData, alerts: alertsData };
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return {
+    overview,
+    trends,
+    regions,
+    categories,
+    topPerformers,
+    alerts,
+    fullReport,
+    loading,
+    error,
+    fetchOverview,
+    fetchTrends,
+    fetchRegions,
+    fetchCategories,
+    fetchTopPerformers,
+    fetchAlerts,
+    fetchFullReport,
+    fetchAllData,
+  };
+};
+
 export default {
   useAdminBooks,
   useAdminUsers,
@@ -577,4 +811,6 @@ export default {
   useAdminMessages,
   useAdminReports,
   useAdminDashboard,
+  useSystemReports,
 };
+

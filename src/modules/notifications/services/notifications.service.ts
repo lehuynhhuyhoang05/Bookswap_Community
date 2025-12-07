@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, IsNull } from 'typeorm';
 import { Notification } from '../../../infrastructure/database/entities/notification.entity';
 import { v4 as uuidv4 } from 'uuid';
-import { MessagesGateway } from '../../messages/gateways/messages/messages.gateway';
+import { NotificationsGateway } from '../gateways/notifications.gateway';
 
 @Injectable()
 export class NotificationsService {
@@ -11,7 +11,7 @@ export class NotificationsService {
     @InjectRepository(Notification)
     private readonly notificationRepo: Repository<Notification>,
     private readonly dataSource: DataSource,
-    private readonly messagesGateway: MessagesGateway,
+    private readonly notificationsGateway: NotificationsGateway,
   ) {}
 
   /**
@@ -28,17 +28,18 @@ export class NotificationsService {
 
     const saved = await this.notificationRepo.save(rec);
 
-    // Emit realtime event to room `user:{memberId}`
+    // Emit realtime event via NotificationsGateway
     try {
-      this.messagesGateway.server?.to(`user:${memberId}`).emit('notification:new', {
+      this.notificationsGateway.sendNewNotification(memberId, {
         notification_id: saved.notification_id,
         type: saved.notification_type,
         payload: saved.payload,
         is_read: saved.is_read,
         created_at: saved.created_at,
       });
-    } catch (_) {
-      // Ignore emit errors in background
+    } catch (error) {
+      // Ignore emit errors
+      console.warn('Failed to emit notification:', error.message);
     }
 
     return saved;
@@ -63,14 +64,16 @@ export class NotificationsService {
     // Emit realtime for each notification
     for (const s of saved) {
       try {
-        this.messagesGateway.server?.to(`user:${s.member_id}`).emit('notification:new', {
+        this.notificationsGateway.sendNewNotification(s.member_id, {
           notification_id: s.notification_id,
           type: s.notification_type,
           payload: s.payload,
           is_read: s.is_read,
           created_at: s.created_at,
         });
-      } catch (_) {}
+      } catch (error) {
+        console.warn('Failed to emit notification:', error.message);
+      }
     }
 
     return saved.length;

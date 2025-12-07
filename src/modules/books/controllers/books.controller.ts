@@ -444,6 +444,23 @@ export class BooksController {
   remove(@Param('id') id: string, @Request() req) {
     return this.booksService.remove(id, req.user.sub || req.user.userId);
   }
+
+  @Get(':id/exchanges')
+  @Public()
+  @ApiOperation({ 
+    summary: 'Get exchange history for a book',
+    description: 'Returns all completed exchanges involving this book, showing the journey through different owners'
+  })
+  @ApiParam({ name: 'id', description: 'Book UUID' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Max results (default: 20)' })
+  @ApiResponse({ status: 200, description: 'Book exchange history retrieved' })
+  @ApiResponse({ status: 404, description: 'Book not found' })
+  getBookExchangeHistory(
+    @Param('id') id: string,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.booksService.getBookExchangeHistory(id, limit);
+  }
   // ============= DEBUG ENDPOINTS (XÓA SAU KHI DONE) =============
 @Post('test/auth')
 @UseGuards(JwtAuthGuard)

@@ -125,4 +125,10 @@ export class Exchange {
 
   @Column('varchar', { length: 36, nullable: true })
   cancelled_by: string;
+
+  @Column('timestamp', { nullable: true })
+  expires_at: Date;
+
+  @Column('timestamp', { nullable: true })
+  cancelled_at: Date;
 }

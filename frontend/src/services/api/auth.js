@@ -83,6 +83,30 @@ export const authService = {
   },
 
   /**
+   * Alias for getMe (better naming)
+   */
+  async getProfile() {
+    return this.getMe();
+  },
+
+  /**
+   * ⭐ PATCH /auth/profile
+   * Cập nhật thông tin profile
+   */
+  async updateProfile(data) {
+    try {
+      const response = await api.patch('/auth/profile', data);
+      // Update localStorage user
+      if (response.data) {
+        this.updateUser(response.data);
+      }
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Failed to update profile' };
+    }
+  },
+
+  /**
    * ⭐ 5. POST /auth/refresh
    * Refresh access token
    */
@@ -225,3 +249,5 @@ export const authService = {
     return updatedUser;
   },
 };
+
+export default authService;

@@ -216,6 +216,19 @@ export class ExchangesController {
     return this.matchingService.getMySuggestions(req.user.userId, limit);
   }
 
+  @Delete('suggestions/:id')
+  @ApiOperation({ summary: 'Delete/dismiss a suggestion' })
+  @ApiParam({ name: 'id', description: 'Suggestion ID (UUID)', schema: { type: 'string', format: 'uuid' } })
+  @ApiResponse({ status: 200, description: 'Suggestion deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Suggestion not found' })
+  async deleteSuggestion(
+    @Request() req,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) suggestionId: string,
+  ) {
+    this.logger.log(`[deleteSuggestion] suggestionId=${suggestionId} userId=${req.user?.userId}`);
+    return this.matchingService.deleteSuggestion(req.user.userId, suggestionId);
+  }
+
   @Patch('suggestions/:id/view')
   @ApiOperation({ summary: 'Mark suggestion as viewed' })
   @ApiParam({ name: 'id', description: 'Suggestion ID (UUID)', schema: { type: 'string', format: 'uuid' } })

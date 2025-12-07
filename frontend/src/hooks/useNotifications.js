@@ -1,9 +1,13 @@
 // src/hooks/useNotifications.js
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
+import { io } from 'socket.io-client';
+import toast from 'react-hot-toast';
 import { notificationsService } from '../services/api/notifications';
 
+const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
 /**
- * Custom hook để quản lý Notifications
+ * Custom hook để quản lý Notifications với Real-time WebSocket
  *
  * @returns {Object} Hook state và methods
  *
@@ -13,23 +17,13 @@ import { notificationsService } from '../services/api/notifications';
  *   notifications,
  *   unreadCount,
  *   loading,
+ *   isConnected,
  *   getNotifications,
  *   markAsRead,
  *   markAllAsRead,
  *   deleteNotification,
  *   refreshUnreadCount
  * } = useNotifications();
- *
- * // Load notifications
- * useEffect(() => {
- *   getNotifications({ page: 1, onlyUnread: true });
- * }, []);
- *
- * // Mark as read
- * const handleRead = async (id) => {
- *   await markAsRead(id);
- *   refreshUnreadCount();
- * };
  * ```
  */
 export const useNotifications = () => {
@@ -37,11 +31,14 @@ export const useNotifications = () => {
   const [error, setError] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [isConnected, setIsConnected] = useState(false);
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 20,
     total: 0,
   });
+
+  const socketRef = useRef(null);
 
   /**
    * Helper function để gọi API với error handling
@@ -229,12 +226,98 @@ export const useNotifications = () => {
   useEffect(() => {
     refreshUnreadCount();
 
-    // Optional: Set up interval để refresh định kỳ (mỗi 60s)
-    const interval = setInterval(() => {
-      refreshUnreadCount();
-    }, 60000);
+    // Setup WebSocket connection for real-time notifications
+    const userStr = localStorage.getItem('user');
+    const token = localStorage.getItem('accessToken'); // Changed from 'token' to 'accessToken'
 
-    return () => clearInterval(interval);
+    if (!userStr || !token) {
+      console.warn('⚠️ [NOTIFICATIONS] No user/token found, skipping WebSocket');
+      return;
+    }
+
+    const user = JSON.parse(userStr);
+    console.log('🔌 [NOTIFICATIONS] Connecting WebSocket for user:', user.user_id);
+
+    // Connect to notifications namespace
+    socketRef.current = io(`${SOCKET_URL}/notifications`, {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 10,
+    });
+
+    const socket = socketRef.current;
+
+    // Connection events
+    socket.on('connect', () => {
+      console.log('✅ [NOTIFICATIONS] WebSocket connected:', socket.id);
+      setIsConnected(true);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('❌ [NOTIFICATIONS] WebSocket disconnected:', reason);
+      setIsConnected(false);
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('❌ [NOTIFICATIONS] Connection error:', error.message);
+      setIsConnected(false);
+    });
+
+    socket.on('connected', (data) => {
+      console.log('🎉 [NOTIFICATIONS] Server confirmed connection:', data);
+    });
+
+    // Listen for new notifications
+    socket.on('new_notification', (notification) => {
+      console.log('🔔 [NOTIFICATIONS] New notification received:', notification);
+
+      // Add to notifications list if currently viewing
+      setNotifications((prev) => [notification, ...prev]);
+
+      // Increment unread count
+      setUnreadCount((prev) => prev + 1);
+
+      // Show toast notification
+      const notifTypeLabel = notificationsService.getNotificationTypeLabel(notification.type);
+      const title = notification.payload?.title || '';
+      const message = title ? `${notifTypeLabel} - ${title}` : notifTypeLabel;
+      
+      toast.success(message, {
+        duration: 4000,
+        icon: '🔔',
+      });
+    });
+
+    // Listen for notification read events
+    socket.on('notification_read', ({ notificationId }) => {
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.notification_id === notificationId ? { ...n, is_read: true } : n
+        )
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    });
+
+    // Listen for notification deleted events
+    socket.on('notification_deleted', ({ notificationId }) => {
+      setNotifications((prev) =>
+        prev.filter((n) => n.notification_id !== notificationId)
+      );
+    });
+
+    // Listen for unread count updates
+    socket.on('unread_count_update', ({ count }) => {
+      setUnreadCount(count);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      console.log('🔌 [NOTIFICATIONS] Disconnecting WebSocket');
+      socket.disconnect();
+      socketRef.current = null;
+    };
   }, [refreshUnreadCount]);
 
   return {
@@ -259,6 +342,7 @@ export const useNotifications = () => {
     pagination,
     loading,
     error,
+    isConnected, // WebSocket connection status
   };
 };
 

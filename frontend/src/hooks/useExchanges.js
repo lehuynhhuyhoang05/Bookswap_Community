@@ -72,6 +72,9 @@ export const useExchanges = () => {
     markSuggestionAsViewed: (id) => 
       handleApiCall(() => exchangeService.markSuggestionAsViewed(id)),
 
+    deleteSuggestion: (id) => 
+      handleApiCall(() => exchangeService.deleteSuggestion(id)),
+
     generateExchangeSuggestions: () => 
       handleApiCall(() => exchangeService.generateExchangeSuggestions()),
   };

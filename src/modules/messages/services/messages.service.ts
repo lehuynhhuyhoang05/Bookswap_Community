@@ -17,6 +17,8 @@ import { ExchangeRequest, ExchangeRequestStatus } from '../../../infrastructure/
 import { SendMessageDto } from '../dto/send-message.dto';
 import { SearchMessagesDto } from '../dto/search-messages.dto';
 import { AddReactionDto } from '../dto/reaction.dto';
+import { ActivityLogService } from '../../../common/services/activity-log.service';
+import { UserActivityAction } from '../../../infrastructure/database/entities/user-activity-log.entity';
 
 @Injectable()
 export class MessagesService {
@@ -37,6 +39,8 @@ export class MessagesService {
 
     @InjectRepository(ExchangeRequest)
     private requestRepo: Repository<ExchangeRequest>,
+
+    private activityLogService: ActivityLogService,
   ) {}
 
   /**
@@ -466,6 +470,15 @@ export class MessagesService {
     conversation.total_messages += 1;
     conversation.last_message_at = new Date();
     await this.conversationRepo.save(conversation);
+
+    // Log activity
+    await this.activityLogService.logActivity({
+      user_id: userId,
+      action: UserActivityAction.SEND_MESSAGE,
+      entity_type: 'MESSAGE',
+      entity_id: message.message_id,
+      metadata: { conversation_id: conversation.conversation_id },
+    });
 
     return {
       message: {

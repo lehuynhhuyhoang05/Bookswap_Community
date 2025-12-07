@@ -250,6 +250,19 @@ export const exchangeService = {
   },
 
   /**
+   * ⭐ DELETE /exchanges/suggestions/{id}
+   * Xóa/ẩn gợi ý trao đổi
+   */
+  async deleteSuggestion(id) {
+    try {
+      const response = await api.delete(`/exchanges/suggestions/${id}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Failed to delete suggestion' };
+    }
+  },
+
+  /**
    * ⭐ POST /exchanges/suggestions/generate
    * Tạo gợi ý trao đổi mới
    */

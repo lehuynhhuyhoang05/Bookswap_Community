@@ -7,6 +7,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -27,11 +28,14 @@ import {
   UnlockUserDto,
   DeleteUserDto,
   UpdateUserRoleDto,
+  UpdateUserInfoDto,
 } from '../dto/user-management.dto';
-import { QueryBooksDto, RemoveBookDto, QueryReviewsDto, RemoveReviewDto } from '../dto/content-moderation.dto';
+import { QueryBooksDto, RemoveBookDto, RestoreBookDto, BatchRemoveBooksDto, QueryReviewsDto, RemoveReviewDto } from '../dto/content-moderation.dto';
 import { QueryExchangesDto, CancelExchangeDto } from '../dto/exchange-management.dto';
 import { QueryMessagesDto, RemoveMessageDto } from '../dto/messaging-moderation.dto';
 import { QueryUserActivitiesDto, QueryUserActivityStatsDto } from '../dto/user-activity.dto';
+import { QuerySuspiciousActivitiesDto } from '../dto/suspicious-activity.dto';
+import { AdjustTrustScoreDto } from '../dto/trust-score-management.dto';
 
 @ApiTags('🔧 ADMIN - Quản lý hệ thống')
 @ApiBearerAuth()
@@ -130,6 +134,22 @@ export class AdminController {
     return this.adminService.updateUserRole(userId, dto, admin.sub, admin.email);
   }
 
+  @Patch('users/:userId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: '✏️ Cập nhật thông tin người dùng',
+    description: 'Admin có thể cập nhật thông tin cơ bản của user: full_name, email, phone, region, bio'
+  })
+  @ApiResponse({ status: 200, description: 'Cập nhật thành công' })
+  @ApiResponse({ status: 404, description: 'User không tồn tại' })
+  async updateUserInfo(
+    @Param('userId') userId: string,
+    @Body() dto: UpdateUserInfoDto,
+    @CurrentAdmin() admin: any,
+  ) {
+    return this.adminService.updateUserInfo(userId, dto, admin.sub, admin.email);
+  }
+
   // ============================================================
   // CONTENT MODERATION
   // ============================================================
@@ -159,6 +179,49 @@ export class AdminController {
   ) {
     return this.adminService.removeBook(bookId, dto, admin.sub, admin.email);
   }
+
+  @Put('books/:bookId/restore')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: '♻️ Khôi phục sách đã xóa',
+    description: 'Khôi phục sách đã bị xóa nhầm hoặc sau khi user khiếu nại. Cần có lý do trong body.'
+  })
+  @ApiResponse({ status: 200, description: 'Khôi phục sách thành công' })
+  @ApiResponse({ status: 404, description: 'Sách không tồn tại' })
+  @ApiResponse({ status: 400, description: 'Chỉ có thể khôi phục sách có status REMOVED' })
+  async restoreBook(
+    @Param('bookId') bookId: string,
+    @Body() dto: RestoreBookDto,
+    @CurrentAdmin() admin: any,
+  ) {
+    return this.adminService.restoreBook(bookId, dto, admin.sub, admin.email);
+  }
+
+  @Post('books/batch-remove')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ 
+    summary: '🗑️🗑️ Xóa hàng loạt sách',
+    description: 'Xóa nhiều sách cùng lúc (tối đa 50). Hữu ích khi phát hiện spam từ cùng 1 user.'
+  })
+  @ApiResponse({ status: 200, description: 'Batch remove completed with success/failure counts' })
+  async batchRemoveBooks(
+    @Body() dto: BatchRemoveBooksDto,
+    @CurrentAdmin() admin: any,
+  ) {
+    return this.adminService.batchRemoveBooks(dto, admin.sub, admin.email);
+  }
+
+  @Get('books/:bookId')
+  @ApiOperation({ 
+    summary: '📖 Xem chi tiết sách',
+    description: 'Xem đầy đủ thông tin sách, danh sách reports, lịch sử giao dịch.'
+  })
+  @ApiResponse({ status: 200, description: 'Chi tiết sách với reports và exchange history' })
+  @ApiResponse({ status: 404, description: 'Sách không tồn tại' })
+  async getBookDetail(@Param('bookId') bookId: string) {
+    return this.adminService.getBookDetail(bookId);
+  }
+
 
   @Get('reviews')
   @ApiOperation({ 
@@ -398,4 +461,262 @@ export class AdminController {
   ) {
     return this.adminService.getUserActivityStats(userId, dto.days);
   }
+
+  // ============================================================
+  // SPAM/FRAUD DETECTION
+  // ============================================================
+
+  @Get('suspicious-activities')
+  @ApiOperation({
+    summary: '🚨 Phát hiện hoạt động đáng ngờ',
+    description:
+      'Phát hiện tự động các user có hành vi bất thường: spam books, spam messages, new account với activity cao, trust score giảm mạnh, nhiều reports.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách users đáng ngờ với severity và chi tiết',
+    schema: {
+      example: {
+        items: [
+          {
+            user_id: '88a84968-25da-4a89-bfc8-71d2cb0abfba',
+            email: 'spammer@example.com',
+            full_name: 'Suspicious User',
+            account_status: 'ACTIVE',
+            trust_score: 25.0,
+            suspicious_type: 'HIGH_BOOK_CREATION',
+            severity: 'HIGH',
+            details: {
+              book_count: 15,
+              time_span_hours: 1,
+            },
+            detected_at: '2025-12-05T10:00:00.000Z',
+          },
+        ],
+        total: 5,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+        summary: {
+          total_suspicious_users: 5,
+          high_severity: 2,
+          medium_severity: 3,
+          by_type: {
+            high_book_creation: 2,
+            high_message_volume: 1,
+            new_account_high_activity: 1,
+            trust_score_drop: 0,
+            multiple_reports: 1,
+          },
+        },
+      },
+    },
+  })
+  async getSuspiciousActivities(@Query() dto: QuerySuspiciousActivitiesDto) {
+    return this.adminService.getSuspiciousActivities(dto);
+  }
+
+  // ============================================================
+  // TRUST SCORE MANAGEMENT
+  // ============================================================
+
+  @Get('members/:memberId/trust-score-history')
+  @ApiOperation({
+    summary: '📊 Xem lịch sử trust score',
+    description:
+      'Lấy toàn bộ lịch sử thay đổi trust score của member (system + admin adjustments)',
+  })
+  @ApiParam({
+    name: 'memberId',
+    description: 'ID của member',
+    example: '88a84968-25da-4a89-bfc8-71d2cb0abfba',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lịch sử trust score với thông tin chi tiết',
+    schema: {
+      example: {
+        member: {
+          member_id: '88a84968-25da-4a89-bfc8-71d2cb0abfba',
+          user_id: 'user-uuid',
+          email: 'user@example.com',
+          full_name: 'User Name',
+          current_trust_score: 75.5,
+        },
+        history: [
+          {
+            change_id: 'change-uuid-001',
+            old_score: 77.5,
+            new_score: 75.5,
+            change_amount: -2.0,
+            reason: 'Exchange cancelled',
+            source: 'SYSTEM',
+            admin_id: null,
+            admin_name: null,
+            created_at: '2025-12-05T10:00:00.000Z',
+          },
+          {
+            change_id: 'change-uuid-002',
+            old_score: 75.5,
+            new_score: 77.5,
+            change_amount: 2.0,
+            reason: 'Exchange completed successfully',
+            source: 'SYSTEM',
+            admin_id: null,
+            admin_name: null,
+            created_at: '2025-12-04T15:30:00.000Z',
+          },
+        ],
+        total_changes: 2,
+      },
+    },
+  })
+  async getTrustScoreHistory(@Param('memberId') memberId: string) {
+    return this.adminService.getTrustScoreHistory(memberId);
+  }
+
+  @Post('members/:memberId/adjust-trust-score')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '✏️ Admin điều chỉnh trust score',
+    description:
+      'Admin thủ công tăng/giảm trust score của member. Dùng khi phát hiện gian lận hoặc muốn thưởng user.',
+  })
+  @ApiParam({
+    name: 'memberId',
+    description: 'ID của member cần điều chỉnh',
+    example: '88a84968-25da-4a89-bfc8-71d2cb0abfba',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Điều chỉnh trust score thành công',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Member không tồn tại',
+  })
+  async adjustTrustScore(
+    @Param('memberId') memberId: string,
+    @Body() dto: AdjustTrustScoreDto,
+    @CurrentAdmin() admin: any,
+  ) {
+    return this.adminService.adjustTrustScore(
+      memberId,
+      dto,
+      admin.sub,
+      admin.email,
+    );
+  }
+
+  @Get('trust-score-leaderboard')
+  @ApiOperation({
+    summary: '🏆 Trust Score Leaderboard',
+    description:
+      'Xem top members có trust score cao nhất trong hệ thống. Mặc định top 50.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    description: 'Số lượng members hiển thị',
+    required: false,
+    example: 50,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Danh sách top members',
+    schema: {
+      example: {
+        leaderboard: [
+          {
+            rank: 1,
+            member_id: 'member-uuid-001',
+            user_id: 'user-uuid-001',
+            email: 'topuser@example.com',
+            full_name: 'Top User',
+            trust_score: 95.5,
+            region: 'Hồ Chí Minh',
+          },
+        ],
+        total: 50,
+      },
+    },
+  })
+  async getTrustScoreLeaderboard(@Query('limit') limit?: number) {
+    return this.adminService.getTrustScoreLeaderboard(limit || 50);
+  }
+
+  // ============================================================
+  // SYSTEM REPORTS - BÁO CÁO TỔNG THỂ HỆ THỐNG
+  // ============================================================
+
+  @Get('reports/system/overview')
+  @ApiOperation({
+    summary: '📊 Báo cáo tổng quan hệ thống',
+    description: 'Thống kê tổng quan: users, books, exchanges, reports, reviews, messages.',
+  })
+  @ApiResponse({ status: 200, description: 'System overview statistics' })
+  async getSystemOverview() {
+    return this.adminService.getSystemOverview();
+  }
+
+  @Get('reports/system/trends')
+  @ApiOperation({
+    summary: '📈 Báo cáo xu hướng theo thời gian',
+    description: 'Thống kê xu hướng new users, books, exchanges theo ngày. Mặc định 30 ngày.',
+  })
+  @ApiQuery({ name: 'days', description: 'Số ngày thống kê (7, 30, 90)', required: false, example: 30 })
+  @ApiResponse({ status: 200, description: 'System trends data' })
+  async getSystemTrends(@Query('days') days?: number) {
+    return this.adminService.getSystemTrends(days || 30);
+  }
+
+  @Get('reports/system/regions')
+  @ApiOperation({
+    summary: '📍 Báo cáo theo vùng địa lý',
+    description: 'Thống kê members, books, exchanges, trust score theo từng vùng.',
+  })
+  @ApiResponse({ status: 200, description: 'Region report data' })
+  async getRegionReport() {
+    return this.adminService.getRegionReport();
+  }
+
+  @Get('reports/system/categories')
+  @ApiOperation({
+    summary: '📚 Báo cáo sách theo thể loại',
+    description: 'Thống kê số lượng sách theo từng category.',
+  })
+  @ApiResponse({ status: 200, description: 'Book category report' })
+  async getBookCategoryReport() {
+    return this.adminService.getBookCategoryReport();
+  }
+
+  @Get('reports/system/top-performers')
+  @ApiOperation({
+    summary: '🏆 Top performers report',
+    description: 'Top users theo exchanges, books contributed, reviews, highest rated.',
+  })
+  @ApiResponse({ status: 200, description: 'Top performers data' })
+  async getTopPerformersReport() {
+    return this.adminService.getTopPerformersReport();
+  }
+
+  @Get('reports/system/alerts')
+  @ApiOperation({
+    summary: '⚠️ System alerts',
+    description: 'Các cảnh báo hệ thống: pending reports, stale exchanges, low trust users, etc.',
+  })
+  @ApiResponse({ status: 200, description: 'System alerts' })
+  async getSystemAlerts() {
+    return this.adminService.getSystemAlerts();
+  }
+
+  @Get('reports/system/full')
+  @ApiOperation({
+    summary: '📊 Full system report',
+    description: 'Báo cáo đầy đủ hệ thống bao gồm tất cả các thống kê.',
+  })
+  @ApiResponse({ status: 200, description: 'Full system report' })
+  async getFullSystemReport() {
+    return this.adminService.getFullSystemReport();
+  }
 }
+

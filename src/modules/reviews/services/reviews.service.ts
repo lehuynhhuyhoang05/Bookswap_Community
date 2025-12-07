@@ -6,6 +6,8 @@ import { Exchange, ExchangeStatus } from '../../../infrastructure/database/entit
 import { Member } from '../../../infrastructure/database/entities/member.entity';
 import { CreateReviewDto } from '../dto/create-review.dto';
 import { UpdateReviewDto } from '../dto/update-review.dto';
+import { ActivityLogService } from '../../../common/services/activity-log.service';
+import { UserActivityAction } from '../../../infrastructure/database/entities/user-activity-log.entity';
 
 @Injectable()
 export class ReviewsService {
@@ -14,6 +16,7 @@ export class ReviewsService {
     @InjectRepository(Exchange) private readonly exchangeRepo: Repository<Exchange>,
     @InjectRepository(Member) private readonly memberRepo: Repository<Member>,
     private readonly dataSource: DataSource,
+    private readonly activityLogService: ActivityLogService,
   ) {}
 
   private clampTrust(v: number) {
@@ -24,18 +27,18 @@ export class ReviewsService {
   }
 
   private trustDeltaFromRating(rating: number) {
-    // Trust score impact on 0-100 scale
+    // Trust score impact on 0-100 scale (balanced system)
     switch (rating) {
       case 5:
-        return 1.0;  // +1 point for 5-star review
+        return 1.5;  // +1.5 points for 5-star review
       case 4:
-        return 0.5;  // +0.5 point for 4-star review
+        return 0.8;  // +0.8 points for 4-star review
       case 3:
         return 0.0;  // No change for 3-star review
       case 2:
-        return -0.5; // -0.5 point for 2-star review
+        return -0.8; // -0.8 points for 2-star review
       case 1:
-        return -1.0; // -1 point for 1-star review
+        return -1.5; // -1.5 points for 1-star review
       default:
         return 0;
     }
@@ -98,6 +101,22 @@ export class ReviewsService {
 
       // Recalculate stats for reviewee
       await this.recalculateStatsForMember(dto.reviewee_id, manager);
+
+      // Log activity (get user_id from reviewer member)
+      const reviewer = await manager.findOne(Member, {
+        where: { member_id: reviewerId },
+        relations: ['user'],
+      });
+      
+      if (reviewer?.user) {
+        await this.activityLogService.logActivity({
+          user_id: reviewer.user.user_id,
+          action: UserActivityAction.CREATE_REVIEW,
+          entity_type: 'REVIEW',
+          entity_id: review.review_id,
+          metadata: { rating: dto.rating, exchange_id: dto.exchange_id },
+        });
+      }
 
       return review;
     });
@@ -202,7 +221,22 @@ export class ReviewsService {
   }
 
   async statsForMember(memberId: string) {
-    const { average, total, trust_score } = await this.recalculateStatsForMember(memberId);
+    // TEMP: Disable auto-recalculation for testing manual trust_score updates
+    // const { average, total, trust_score } = await this.recalculateStatsForMember(memberId);
+    
+    // Get current values from DB without recalculating
+    const member = await this.memberRepo.findOne({ where: { member_id: memberId } });
+    const { avg, cnt } = await this.reviewRepo
+      .createQueryBuilder('r')
+      .select('AVG(r.rating)', 'avg')
+      .addSelect('COUNT(r.review_id)', 'cnt')
+      .where('r.reviewee_id = :memberId', { memberId })
+      .getRawOne();
+    
+    const average = Number(Number(avg || 0).toFixed(1));
+    const total = Number(cnt || 0);
+    const trust_score = member?.trust_score || 50;
+    
     return { member_id: memberId, average_rating: average, total_reviews: total, trust_score };
   }
 }

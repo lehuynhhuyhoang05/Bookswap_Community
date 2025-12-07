@@ -6,6 +6,8 @@ import AdminBooksPage from '../pages/admin/books/AdminBooksPage';
 import AdminExchangesPage from '../pages/admin/exchanges/AdminExchangesPage';
 import AdminModerationPage from '../pages/admin/moderation/AdminModerationPage';
 import AdminUsersPage from '../pages/admin/users/AdminUsersPage';
+import AdminSpamDetectionPage from '../pages/admin/spam/AdminSpamDetectionPage';
+import AdminSystemReportsPage from '../pages/admin/system-reports/AdminSystemReportsPage';
 
 // Protected Route Component for Admin
 const ProtectedAdminRoute = ({ children }) => {
@@ -35,6 +37,8 @@ const AdminRoutes = () => {
         <Route path="exchanges" element={<AdminExchangesPage />} />
         <Route path="moderation" element={<AdminModerationPage />} />
         <Route path="reports" element={<AdminReportsPage />} />
+        <Route path="spam-detection" element={<AdminSpamDetectionPage />} />
+        <Route path="system-reports" element={<AdminSystemReportsPage />} />
       </Route>
     </Routes>
   );

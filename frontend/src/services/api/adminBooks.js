@@ -9,7 +9,8 @@ const cleanParams = (params) => {
   const cleaned = {};
   Object.keys(params).forEach((key) => {
     const value = params[key];
-    if (value !== '' && value !== null && value !== undefined) {
+    // Skip empty strings, null, undefined, and false boolean values
+    if (value !== '' && value !== null && value !== undefined && value !== false) {
       cleaned[key] = value;
     }
   });
@@ -92,8 +93,75 @@ export const permanentDeleteAdminBook = async (bookId, data) => {
   }
 };
 
+/**
+ * PUT /admin/books/{bookId}/restore - Khôi phục sách đã xóa
+ * @param {string} bookId - ID sách cần khôi phục
+ * @param {Object} data - Request body
+ * @param {string} data.reason - Lý do khôi phục sách
+ * @returns {Promise<Object>} Kết quả khôi phục sách
+ */
+export const restoreAdminBook = async (bookId, data) => {
+  try {
+    console.log('[Admin Books] Restoring book:', bookId, 'with data:', data);
+    const response = await api.put(`/admin/books/${bookId}/restore`, data);
+    console.log('[Admin Books] Restore response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('[Admin Books] Error restoring book:', error);
+    console.error('[Admin Books] Error response:', error.response?.data);
+    const errorMessage =
+      error.response?.data?.message || error.message || 'Lỗi khi khôi phục sách';
+    throw new Error(errorMessage);
+  }
+};
+
+/**
+ * POST /admin/books/batch-remove - Xóa hàng loạt sách
+ * @param {Object} data - Request body
+ * @param {Array<string>} data.bookIds - Danh sách ID sách cần xóa (max 50)
+ * @param {string} data.reason - Lý do xóa
+ * @returns {Promise<Object>} Kết quả batch remove
+ */
+export const batchRemoveAdminBooks = async (data) => {
+  try {
+    console.log('[Admin Books] Batch removing books:', data);
+    const response = await api.post('/admin/books/batch-remove', data);
+    console.log('[Admin Books] Batch remove response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('[Admin Books] Error batch removing books:', error);
+    console.error('[Admin Books] Error response:', error.response?.data);
+    const errorMessage =
+      error.response?.data?.message || error.message || 'Lỗi khi xóa hàng loạt sách';
+    throw new Error(errorMessage);
+  }
+};
+
+/**
+ * GET /admin/books/{bookId} - Xem chi tiết sách
+ * @param {string} bookId - ID sách
+ * @returns {Promise<Object>} Chi tiết sách với reports và exchange history
+ */
+export const getAdminBookDetail = async (bookId) => {
+  try {
+    console.log('[Admin Books] Fetching book detail:', bookId);
+    const response = await api.get(`/admin/books/${bookId}`);
+    console.log('[Admin Books] Book detail response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('[Admin Books] Error fetching book detail:', error);
+    console.error('[Admin Books] Error response:', error.response?.data);
+    const errorMessage =
+      error.response?.data?.message || error.message || 'Lỗi khi lấy chi tiết sách';
+    throw new Error(errorMessage);
+  }
+};
+
 export default {
   getAdminBooks,
   deleteAdminBook,
   permanentDeleteAdminBook,
+  restoreAdminBook,
+  batchRemoveAdminBooks,
+  getAdminBookDetail,
 };

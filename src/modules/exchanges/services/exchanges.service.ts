@@ -8,7 +8,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, IsNull, LessThan } from 'typeorm';
+import { Repository, In, IsNull, LessThan, Not } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Member } from '../../../infrastructure/database/entities/member.entity';
@@ -32,6 +32,9 @@ import {
   QueryExchangeRequestsDto,
   QueryExchangesDto,
 } from '../dto/exchange.dto';
+import { NotificationsService } from '../../notifications/services/notifications.service';
+import { ActivityLogService } from '../../../common/services/activity-log.service';
+import { UserActivityAction } from '../../../infrastructure/database/entities/user-activity-log.entity';
 
 @Injectable()
 export class ExchangesService {
@@ -55,6 +58,9 @@ export class ExchangesService {
 
     @InjectRepository(ExchangeBook)
     private exchangeBookRepo: Repository<ExchangeBook>,
+
+    private notificationsService: NotificationsService,
+    private activityLogService: ActivityLogService,
   ) { }
 
   // ==================== CRON: AUTO-EXPIRE REQUESTS ====================
@@ -102,6 +108,74 @@ export class ExchangesService {
       this.logger.log(`[CRON] Successfully expired ${expiredRequests.length} requests`);
     } catch (error) {
       this.logger.error('[CRON] Error expiring requests:', error);
+    }
+  }
+
+  // ==================== CRON: AUTO-EXPIRE EXCHANGES ====================
+  /**
+   * Run every 6 hours to auto-cancel exchanges that exceeded expiration date
+   * CRITICAL: Prevents books from being locked forever in EXCHANGING status
+   */
+  @Cron(CronExpression.EVERY_6_HOURS)
+  async handleExpiredExchanges() {
+    this.logger.log('[CRON] Checking for expired exchanges...');
+
+    try {
+      // Find all PENDING exchanges that have expired
+      const expiredExchanges = await this.exchangeRepo.find({
+        where: {
+          status: ExchangeStatus.PENDING,
+          expires_at: LessThan(new Date()),
+        },
+        relations: ['exchange_books'],
+      });
+
+      if (expiredExchanges.length === 0) {
+        this.logger.log('[CRON] No expired exchanges found');
+        return;
+      }
+
+      this.logger.log(`[CRON] Found ${expiredExchanges.length} expired exchanges`);
+
+      for (const exchange of expiredExchanges) {
+        // Update status to CANCELLED
+        exchange.status = ExchangeStatus.CANCELLED;
+        exchange.cancellation_reason = 'EXPIRED';
+        exchange.cancelled_at = new Date();
+        await this.exchangeRepo.save(exchange);
+
+        // Release all books back to AVAILABLE
+        const bookIds = exchange.exchange_books.map(eb => eb.book_id);
+        if (bookIds.length > 0) {
+          await this.bookRepo.update(
+            { book_id: In(bookIds) },
+            { status: BookStatus.AVAILABLE }
+          );
+        }
+
+        // Apply penalty to BOTH members for letting exchange expire (-5 points each)
+        const EXPIRED_PENALTY = 5.0;
+        await this.memberRepo.decrement(
+          { member_id: exchange.member_a_id },
+          'trust_score',
+          EXPIRED_PENALTY
+        );
+        await this.memberRepo.decrement(
+          { member_id: exchange.member_b_id },
+          'trust_score',
+          EXPIRED_PENALTY
+        );
+
+        this.logger.log(
+          `[CRON] Expired exchange ${exchange.exchange_id}, ` +
+          `released ${bookIds.length} books, ` +
+          `penalized both members -${EXPIRED_PENALTY} trust score`
+        );
+      }
+
+      this.logger.log(`[CRON] Successfully auto-cancelled ${expiredExchanges.length} expired exchanges`);
+    } catch (error) {
+      this.logger.error('[CRON] Error expiring exchanges:', error);
     }
   }
 
@@ -187,6 +261,26 @@ export class ExchangesService {
       throw new ConflictException('You already have a pending request with this member');
     }
 
+    // 6.1 Check MAX_PENDING_PER_BOOK limit (prevent spam on popular books)
+    const MAX_PENDING_PER_BOOK = 3;
+    for (const bookId of dto.requested_book_ids) {
+      const pendingCount = await this.requestRepo
+        .createQueryBuilder('request')
+        .innerJoin('exchange_request_books', 'rb', 'rb.request_id = request.request_id')
+        .where('rb.book_id = :bookId', { bookId })
+        .andWhere('rb.book_type = :bookType', { bookType: 'REQUESTED' })
+        .andWhere('request.status = :status', { status: ExchangeRequestStatus.PENDING })
+        .getCount();
+
+      if (pendingCount >= MAX_PENDING_PER_BOOK) {
+        const book = requestedBooks.find(b => b.book_id === bookId);
+        throw new ConflictException(
+          `Sách "${book?.title || 'này'}" đã có ${MAX_PENDING_PER_BOOK} yêu cầu chờ xử lý. ` +
+          `Vui lòng thử lại sau khi chủ sách xử lý các yêu cầu hiện tại.`
+        );
+      }
+    }
+
     // 7. Create exchange request with expiration (14 days)
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 14); // Request expires in 14 days
@@ -226,13 +320,19 @@ export class ExchangesService {
       await this.requestBookRepo.save(requestBook);
     }
 
-    // 10. Update book status to EXCHANGING
-    await this.bookRepo.update(
-      { book_id: In([...dto.offered_book_ids, ...dto.requested_book_ids]) },
-      { status: BookStatus.EXCHANGING },
-    );
+    // 10. KHÔNG lock sách khi tạo request - chỉ lock khi receiver ACCEPT
+    // Books remain AVAILABLE to allow other users to send requests
+    // This prevents books being locked unnecessarily if request is rejected
+    this.logger.log(`Exchange request created: ${request.request_id} (books remain AVAILABLE)`);
 
-    this.logger.log(`Exchange request created: ${request.request_id}`);
+    // Log activity
+    await this.activityLogService.logActivity({
+      user_id: userId,
+      action: UserActivityAction.CREATE_EXCHANGE_REQUEST,
+      entity_type: 'EXCHANGE_REQUEST',
+      entity_id: request.request_id,
+      metadata: { receiver: receiver.member_id },
+    });
 
     // Return full request details
     return this.getRequestById(request.request_id);
@@ -386,12 +486,43 @@ export class ExchangesService {
 
   // ==================== ACCEPT REQUEST ====================
   private async acceptRequest(request: ExchangeRequest) {
-    // 1. Update request status
+    // 1. Lock books to EXCHANGING (moved from createRequest)
+    const requestBooks = await this.requestBookRepo.find({
+      where: { request_id: request.request_id },
+    });
+    
+    const bookIds = requestBooks.map(rb => rb.book_id);
+    
+    // Check if books are still AVAILABLE (race condition protection)
+    const conflictingBooks = await this.bookRepo.find({
+      where: {
+        book_id: In(bookIds),
+        status: Not(BookStatus.AVAILABLE)
+      }
+    });
+
+    if (conflictingBooks.length > 0) {
+      const conflictTitles = conflictingBooks.map(b => b.title).join(', ');
+      throw new BadRequestException(
+        `Some books are no longer available: ${conflictTitles}. ` +
+        `They may have been accepted in another exchange.`
+      );
+    }
+
+    // Lock all books involved
+    await this.bookRepo.update(
+      { book_id: In(bookIds) },
+      { status: BookStatus.EXCHANGING }
+    );
+    
+    this.logger.log(`Locked ${bookIds.length} books to EXCHANGING for request ${request.request_id}`);
+
+    // 2. Update request status
     request.status = ExchangeRequestStatus.ACCEPTED;
     request.responded_at = new Date();
     await this.requestRepo.save(request);
 
-    // 2. Create Exchange
+    // 3. Create Exchange
     const exchange = this.exchangeRepo.create({
       exchange_id: uuidv4(),
       request_id: request.request_id,
@@ -402,11 +533,7 @@ export class ExchangesService {
 
     await this.exchangeRepo.save(exchange);
 
-    // 3. Create ExchangeBooks
-    const requestBooks = await this.requestBookRepo.find({
-      where: { request_id: request.request_id },
-    });
-
+    // 4. Create ExchangeBooks (requestBooks already loaded above)
     for (const rb of requestBooks) {
       const exchangeBook = this.exchangeBookRepo.create({
         exchange_book_id: uuidv4(),
@@ -423,6 +550,45 @@ export class ExchangesService {
     }
 
     this.logger.log(`Exchange created: ${exchange.exchange_id}`);
+
+    // Log activity for receiver (who accepted)
+    const receiver = await this.memberRepo.findOne({
+      where: { member_id: request.receiver_id },
+      relations: ['user'],
+    });
+    
+    if (receiver?.user) {
+      await this.activityLogService.logActivity({
+        user_id: receiver.user.user_id,
+        action: UserActivityAction.ACCEPT_EXCHANGE_REQUEST,
+        entity_type: 'EXCHANGE',
+        entity_id: exchange.exchange_id,
+        metadata: { requester: request.requester_id },
+      });
+    }
+
+    // 5. Send notification to requester (their request was accepted!)
+    this.logger.log(`[NOTIFICATION] Attempting to send EXCHANGE_ACCEPTED to ${request.requester_id}`);
+    try {
+      
+      this.logger.log(`[NOTIFICATION] Receiver info: ${receiver?.user?.full_name}`);
+      
+      await this.notificationsService.create(
+        request.requester_id,
+        'EXCHANGE_ACCEPTED',
+        {
+          exchange_id: exchange.exchange_id,
+          request_id: request.request_id,
+          accepted_by: receiver?.user?.full_name || 'Someone',
+          message: `${receiver?.user?.full_name || 'Someone'} đã chấp nhận yêu cầu trao đổi của bạn!`,
+        },
+      );
+      
+      this.logger.log(`[NOTIFICATION] ✅ EXCHANGE_ACCEPTED notification sent successfully`);
+    } catch (err) {
+      this.logger.error(`[NOTIFICATION] ❌ Failed to send EXCHANGE_ACCEPTED notification:`, err.message);
+      this.logger.error(err.stack);
+    }
 
     return this.getRequestById(request.request_id);
   }
@@ -448,6 +614,39 @@ export class ExchangesService {
     );
 
     this.logger.log(`Request rejected: ${request.request_id}`);
+
+    // Log activity for receiver (who rejected)
+    const receiver = await this.memberRepo.findOne({
+      where: { member_id: request.receiver_id },
+      relations: ['user'],
+    });
+    
+    if (receiver?.user) {
+      await this.activityLogService.logActivity({
+        user_id: receiver.user.user_id,
+        action: UserActivityAction.REJECT_EXCHANGE_REQUEST,
+        entity_type: 'EXCHANGE_REQUEST',
+        entity_id: request.request_id,
+        metadata: { reason: reason || 'No reason provided' },
+      });
+    }
+
+    // 3. Send notification to requester (their request was rejected)
+    try {
+      
+      await this.notificationsService.create(
+        request.requester_id,
+        'EXCHANGE_REJECTED',
+        {
+          request_id: request.request_id,
+          rejected_by: receiver?.user?.full_name || 'Someone',
+          reason: reason || 'Không có lý do',
+          message: `${receiver?.user?.full_name || 'Someone'} đã từ chối yêu cầu trao đổi của bạn`,
+        },
+      );
+    } catch (err) {
+      this.logger.warn('Failed to send EXCHANGE_REJECTED notification:', err.message);
+    }
 
     return this.getRequestById(request.request_id);
   }
@@ -641,6 +840,66 @@ export class ExchangesService {
         'completed_exchanges',
         1,
       );
+
+      // Award +2.0 trust score for completing exchange
+      await this.memberRepo.increment(
+        { member_id: exchange.member_a_id },
+        'trust_score',
+        2.0,
+      );
+      await this.memberRepo.increment(
+        { member_id: exchange.member_b_id },
+        'trust_score',
+        2.0,
+      );
+      this.logger.log(`Awarded +2.0 trust score to both members for completing exchange ${exchangeId}`);
+      
+      // Send completion notifications to both members
+      try {
+        await this.notificationsService.createMany([
+          {
+            memberId: exchange.member_a_id,
+            type: 'EXCHANGE_COMPLETED',
+            payload: {
+              exchange_id: exchangeId,
+              trust_score_bonus: 2.0,
+              message: '🎉 Giao dịch trao đổi hoàn tất! Bạn nhận +2.0 điểm tin cậy',
+            },
+          },
+          {
+            memberId: exchange.member_b_id,
+            type: 'EXCHANGE_COMPLETED',
+            payload: {
+              exchange_id: exchangeId,
+              trust_score_bonus: 2.0,
+              message: '🎉 Giao dịch trao đổi hoàn tất! Bạn nhận +2.0 điểm tin cậy',
+            },
+          },
+        ]);
+      } catch (err) {
+        this.logger.warn('Failed to send EXCHANGE_COMPLETED notifications:', err.message);
+      }
+    } else {
+      // Only one person confirmed, notify the other
+      try {
+        const otherMemberId = userIsMemberA ? exchange.member_b_id : exchange.member_a_id;
+        const confirmer = await this.memberRepo.findOne({
+          where: { member_id: userIsMemberA ? exchange.member_a_id : exchange.member_b_id },
+          relations: ['user'],
+        });
+        
+        await this.notificationsService.create(
+          otherMemberId,
+          'EXCHANGE_CONFIRMATION_PENDING',
+          {
+            exchange_id: exchangeId,
+            confirmed_by: confirmer?.user?.full_name || 'Someone',
+            message: `${confirmer?.user?.full_name || 'Someone'} đã xác nhận hoàn tất. Vui lòng xác nhận!`,
+          },
+        );
+      } catch (err) {
+        this.logger.warn('Failed to send EXCHANGE_CONFIRMATION_PENDING notification:', err.message);
+      }
     }
 
     await this.exchangeRepo.save(exchange);
@@ -868,6 +1127,28 @@ export class ExchangesService {
 
     this.logger.log(`Meeting scheduled for exchange: ${exchangeId}`);
 
+    // Send notification to the other member
+    try {
+      const otherMemberId = userIsMemberA ? exchange.member_b_id : exchange.member_a_id;
+      const scheduler = await this.memberRepo.findOne({
+        where: { member_id: currentMemberId },
+        relations: ['user'],
+      });
+      
+      await this.notificationsService.create(
+        otherMemberId,
+        'MEETING_SCHEDULED',
+        {
+          exchange_id: exchangeId,
+          scheduled_by: scheduler?.user?.full_name || 'Someone',
+          meeting_time: meetingTime.toISOString(),
+          message: `${scheduler?.user?.full_name || 'Someone'} đã đề xuất lịch hẹn. Vui lòng xác nhận!`,
+        },
+      );
+    } catch (err) {
+      this.logger.warn('Failed to send MEETING_SCHEDULED notification:', err.message);
+    }
+
     return this.getExchangeById(exchangeId);
   }
 
@@ -930,6 +1211,54 @@ export class ExchangesService {
     if (exchange.meeting_confirmed_by_a && exchange.meeting_confirmed_by_b) {
       exchange.status = ExchangeStatus.MEETING_SCHEDULED;
       this.logger.log(`Meeting confirmed by both parties for exchange: ${exchangeId}`);
+      
+      // Send notifications to both members
+      try {
+        await this.notificationsService.createMany([
+          {
+            memberId: exchange.member_a_id,
+            type: 'MEETING_CONFIRMED',
+            payload: {
+              exchange_id: exchangeId,
+              meeting_time: exchange.meeting_time,
+              message: '🎉 Cả hai bên đã xác nhận cuộc hẹn!',
+            },
+          },
+          {
+            memberId: exchange.member_b_id,
+            type: 'MEETING_CONFIRMED',
+            payload: {
+              exchange_id: exchangeId,
+              meeting_time: exchange.meeting_time,
+              message: '🎉 Cả hai bên đã xác nhận cuộc hẹn!',
+            },
+          },
+        ]);
+      } catch (err) {
+        this.logger.warn('Failed to send MEETING_CONFIRMED notifications:', err.message);
+      }
+    } else {
+      // Only one person confirmed, notify the other
+      try {
+        const otherMemberId = userIsMemberA ? exchange.member_b_id : exchange.member_a_id;
+        const confirmer = await this.memberRepo.findOne({
+          where: { member_id: userIsMemberA ? exchange.member_a_id : exchange.member_b_id },
+          relations: ['user'],
+        });
+        
+        await this.notificationsService.create(
+          otherMemberId,
+          'MEETING_CONFIRMATION_PENDING',
+          {
+            exchange_id: exchangeId,
+            confirmed_by: confirmer?.user?.full_name || 'Someone',
+            meeting_time: exchange.meeting_time,
+            message: `${confirmer?.user?.full_name || 'Someone'} đã xác nhận cuộc hẹn. Vui lòng xác nhận!`,
+          },
+        );
+      } catch (err) {
+        this.logger.warn('Failed to send MEETING_CONFIRMATION_PENDING notification:', err.message);
+      }
     }
 
     await this.exchangeRepo.save(exchange);
@@ -1177,6 +1506,32 @@ export class ExchangesService {
     }
 
     this.logger.log(`Exchange cancelled: ${exchange.exchange_id}`);
+
+    // Send notification to the other member
+    try {
+      const otherMemberId = cancellingMemberId === exchange.member_a_id 
+        ? exchange.member_b_id 
+        : exchange.member_a_id;
+        
+      const canceller = await this.memberRepo.findOne({
+        where: { member_id: cancellingMemberId! },
+        relations: ['user'],
+      });
+      
+      await this.notificationsService.create(
+        otherMemberId,
+        'EXCHANGE_CANCELLED',
+        {
+          exchange_id: exchangeId,
+          cancelled_by: canceller?.user?.full_name || 'Someone',
+          reason: dto.cancellation_reason,
+          details: dto.cancellation_details,
+          message: `${canceller?.user?.full_name || 'Someone'} đã hủy giao dịch trao đổi`,
+        },
+      );
+    } catch (err) {
+      this.logger.warn('Failed to send EXCHANGE_CANCELLED notification:', err.message);
+    }
 
     return this.getExchangeById(exchangeId);
   }

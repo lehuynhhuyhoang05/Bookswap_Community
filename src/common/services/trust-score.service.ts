@@ -54,15 +54,15 @@ export class TrustScoreService {
     let score = 50; // Base score
 
     // BONUSES
-    // 1. Completed exchanges (+5 each)
+    // 1. Completed exchanges (+2 each) - matches increment in confirmExchange
     const completedCount = await this.exchangeRepo.count({
       where: [
         { member_a_id: memberId, status: ExchangeStatus.COMPLETED },
         { member_b_id: memberId, status: ExchangeStatus.COMPLETED },
       ],
     });
-    score += completedCount * 5;
-    this.logger.debug(`+${completedCount * 5} from ${completedCount} completed exchanges`);
+    score += completedCount * 2;
+    this.logger.debug(`+${completedCount * 2} from ${completedCount} completed exchanges`);
 
     // 2. Good reviews (4-5 stars, +3 each)
     const goodReviews = await this.reviewRepo

@@ -15,7 +15,8 @@ import Books from '../pages/books/index';
 import MyLibrary from '../pages/books/my-library';
 import AddBook from '../pages/books/add-book';
 import EditBook from '../pages/books/edit-book/[id]';
-import BookDetail from '../pages/books/detail/[id]';
+import BookDetail from '../pages/books/detail/[id]'; // Public book detail (for discovery)
+import MyBookDetail from '../pages/books/book-detail'; // My book detail (with tracking)
 import SearchBooks from '../pages/books/search';
 import BookDiscovery from '../pages/books/discover';
 import BookCatalog from '../pages/books/catalog';
@@ -28,6 +29,7 @@ import EditWantedBook from '../pages/library/edit-wanted/[id]';
 // Profile
 import Profile from '../pages/profile/index';
 import ProfileReviews from '../pages/profile/reviews';
+import ProfileSettings from '../pages/profile/settings';
 import MemberProfile from '../pages/profile/member/[id]';
 
 // Messages
@@ -64,21 +66,26 @@ const AppRouter = () => (
     <Route path="/books/discover" element={<PrivateRoute><BookDiscovery /></PrivateRoute>} />
     <Route path="/books/catalog" element={<PrivateRoute><BookCatalog /></PrivateRoute>} />
     <Route path="/books/detail/:id" element={<BookDetail />} />
+    <Route path="/books/:id" element={<BookDetail />} />
     <Route path="/login" element={<Navigate to="/auth/login" replace />} />
+    <Route path="/register" element={<Navigate to="/auth/register" replace />} />
 
     {/* Protected Routes */}
     {/* Books */}
     <Route path="/books/my-library" element={<PrivateRoute><MyLibrary /></PrivateRoute>} />
     <Route path="/books/add-book" element={<PrivateRoute><AddBook /></PrivateRoute>} />
     <Route path="/books/edit-book/:id" element={<PrivateRoute><EditBook /></PrivateRoute>} />
+    <Route path="/library/book/:id" element={<PrivateRoute><MyBookDetail /></PrivateRoute>} />
 
-    {/* Library */}
+    {/* Library - Main route redirects to my-library */}
+    <Route path="/library" element={<PrivateRoute><MyLibrary /></PrivateRoute>} />
     <Route path="/library/wanted-books" element={<PrivateRoute><WantedBooks /></PrivateRoute>} />
     <Route path="/library/add-wanted" element={<PrivateRoute><AddWantedBook /></PrivateRoute>} />
     <Route path="/library/edit-wanted/:id" element={<PrivateRoute><EditWantedBook /></PrivateRoute>} />
 
     {/* Profile */}
     <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+    <Route path="/profile/settings" element={<PrivateRoute><ProfileSettings /></PrivateRoute>} />
     <Route path="/profile/reviews" element={<PrivateRoute><ProfileReviews /></PrivateRoute>} />
     <Route path="/profile/:id" element={<MemberProfile />} />
 

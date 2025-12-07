@@ -207,6 +207,30 @@ export const getAdminUserActivityStats = async (userId, params = {}) => {
   }
 };
 
+/**
+ * PATCH /admin/users/{userId} - Cập nhật thông tin user (admin)
+ * @param {string} userId - ID user cần cập nhật
+ * @param {Object} data - Request body
+ * @param {string} data.full_name - Tên đầy đủ
+ * @param {string} data.email - Email
+ * @param {string} data.phone - Số điện thoại
+ * @param {string} data.region - Khu vực
+ * @param {string} data.bio - Giới thiệu
+ * @param {string} data.reason - Lý do cập nhật
+ * @returns {Promise<Object>} Kết quả cập nhật
+ */
+export const updateAdminUserInfo = async (userId, data) => {
+  try {
+    console.log('[Admin Users] Updating user info:', userId, data);
+    const response = await api.patch(`/admin/users/${userId}`, data);
+    console.log('[Admin Users] Update response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('[Admin Users] Update user error:', error.response?.data || error);
+    throw error;
+  }
+};
+
 export default {
   getAdminUsers,
   getAdminUser,
@@ -214,6 +238,7 @@ export default {
   lockAdminUser,
   unlockAdminUser,
   updateAdminUserRole,
+  updateAdminUserInfo,
   getAdminUserActivities,
   getAdminUserActivityStats,
 };
