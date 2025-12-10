@@ -1,0 +1,70 @@
+@startuml SD_02_Login
+' ============================================================
+' SEQUENCE DIAGRAM - ĐĂNG NHẬP
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+
+title <b>Sequence Diagram - Đăng nhập</b>
+
+actor "Khách" as User
+participant "Frontend" as FE
+participant "AuthController" as AC
+participant "AuthService" as AS
+participant "UserRepository" as UR
+participant "JwtService" as JWT
+database "MySQL" as DB
+
+User -> FE : Nhập email, password
+FE -> AC : POST /auth/login
+activate AC
+
+AC -> AS : login(email, password)
+activate AS
+
+AS -> UR : findByEmail(email)
+activate UR
+UR -> DB : SELECT * FROM users
+DB --> UR : user
+UR --> AS : user
+deactivate UR
+
+alt User không tồn tại
+    AS --> AC : throw UnauthorizedException
+    AC --> FE : 401 Unauthorized
+    FE --> User : "Sai email hoặc mật khẩu"
+else User tồn tại
+    AS -> AS : comparePassword(password, hash)
+    
+    alt Sai mật khẩu
+        AS --> AC : throw UnauthorizedException
+        AC --> FE : 401 Unauthorized
+        FE --> User : "Sai email hoặc mật khẩu"
+    else Đúng mật khẩu
+        alt Email chưa xác thực
+            AS --> AC : throw ForbiddenException
+            AC --> FE : 403 Forbidden
+            FE --> User : "Vui lòng xác thực email"
+        else Email đã xác thực
+            AS -> JWT : sign(payload)
+            activate JWT
+            JWT --> AS : access_token
+            deactivate JWT
+            
+            AS -> UR : updateLastLogin(user_id)
+            
+            AS --> AC : { access_token, user }
+            deactivate AS
+            AC --> FE : 200 OK
+            deactivate AC
+            FE -> FE : Lưu token vào localStorage
+            FE --> User : Chuyển đến Dashboard
+        end
+    end
+end
+
+@enduml

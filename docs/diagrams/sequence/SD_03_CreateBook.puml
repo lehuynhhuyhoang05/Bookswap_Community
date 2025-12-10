@@ -1,0 +1,52 @@
+@startuml SD_03_CreateBook
+' ============================================================
+' SEQUENCE DIAGRAM - THÊM SÁCH MỚI
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+
+title <b>Sequence Diagram - Thêm sách mới</b>
+
+actor "Thành viên" as User
+participant "Frontend" as FE
+participant "BooksController" as BC
+participant "BooksService" as BS
+participant "GoogleBooksService" as GBS
+participant "BookRepository" as BR
+database "MySQL" as DB
+
+User -> FE : Nhập thông tin sách
+FE -> BC : POST /books
+activate BC
+
+note right of BC : JWT Auth Guard
+
+BC -> BS : create(memberId, dto)
+activate BS
+
+opt Có ISBN
+    BS -> GBS : searchByISBN(isbn)
+    activate GBS
+    GBS --> BS : bookInfo
+    deactivate GBS
+    BS -> BS : Merge data từ Google Books
+end
+
+BS -> BR : create(book)
+activate BR
+BR -> DB : INSERT INTO books
+DB --> BR : book_id
+BR --> BS : book
+deactivate BR
+
+BS --> BC : book
+deactivate BS
+BC --> FE : 201 Created
+deactivate BC
+FE --> User : "Thêm sách thành công"
+
+@enduml

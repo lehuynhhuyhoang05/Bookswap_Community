@@ -1,0 +1,96 @@
+@startuml UC_03_BookManagement
+' ============================================================
+' USE CASE DIAGRAM - MODULE QUẢN LÝ SÁCH
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam linetype ortho
+skinparam ranksep 50
+skinparam nodesep 30
+
+skinparam actor {
+    BackgroundColor #E8F5E9
+    BorderColor #2E7D32
+    BorderThickness 2
+}
+
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #455A64
+    BorderThickness 1.5
+}
+
+skinparam rectangle {
+    BackgroundColor #FAFAFA
+    BorderColor #2E7D32
+    BorderThickness 2
+}
+
+left to right direction
+
+title <b>Use Case Diagram</b>\nModule Quản lý Sách (Book Management)
+
+' === ACTORS ===
+actor "Khách" as Guest
+actor "Thành viên" as Member
+actor "Quản trị viên" as Admin
+actor "Google Books API" as GoogleAPI <<system>>
+
+Guest <|-- Member
+Member <|-- Admin
+
+' === SYSTEM BOUNDARY ===
+rectangle "Hệ thống BookSwap" {
+    
+    ' --- Xem & Tìm kiếm ---
+    usecase "Xem danh sách sách" as UC01
+    usecase "Tìm kiếm sách" as UC02
+    usecase "Lọc sách theo tiêu chí" as UC03
+    usecase "Xem chi tiết sách" as UC04
+    
+    ' --- Quản lý sách cá nhân ---
+    usecase "Thêm sách mới" as UC05
+    usecase "Chỉnh sửa thông tin sách" as UC06
+    usecase "Xóa sách" as UC07
+    usecase "Upload ảnh sách" as UC08
+    
+    ' --- Sách mong muốn ---
+    usecase "Xem danh sách mong muốn" as UC09
+    usecase "Thêm sách mong muốn" as UC10
+    usecase "Xóa sách mong muốn" as UC11
+    
+    ' --- Admin ---
+    usecase "Xóa sách vi phạm" as UC12
+}
+
+' === GUEST ASSOCIATIONS ===
+Guest -- UC01
+Guest -- UC02
+Guest -- UC03
+Guest -- UC04
+
+' === MEMBER ASSOCIATIONS ===
+Member -- UC05
+Member -- UC06
+Member -- UC07
+Member -- UC08
+Member -- UC09
+Member -- UC10
+Member -- UC11
+
+' === ADMIN ASSOCIATIONS ===
+Admin -- UC12
+
+' === RELATIONSHIPS ===
+UC05 .down.> UC08 : <<extend>>
+UC02 .right.> UC03 : <<include>>
+
+' === EXTERNAL SYSTEM ===
+UC02 -- GoogleAPI
+UC05 -- GoogleAPI
+
+@enduml

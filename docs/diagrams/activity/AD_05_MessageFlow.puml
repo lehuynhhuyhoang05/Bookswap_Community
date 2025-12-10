@@ -1,0 +1,98 @@
+@startuml AD_05_MessageFlow
+' ============================================================
+' ACTIVITY DIAGRAM - QUY TRÌNH NHẮN TIN
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+
+skinparam activity {
+    BackgroundColor #E1F5FE
+    BorderColor #0277BD
+    DiamondBackgroundColor #B3E5FC
+    DiamondBorderColor #0277BD
+}
+
+title <b>Activity Diagram - Quy trình Nhắn tin</b>
+
+|Member A|
+start
+
+:Truy cập Messages;
+
+if (Có conversation?) then (Có)
+    :Chọn conversation;
+else (Không)
+    :Tạo Exchange Request trước;
+    note right: Conversation tự động\ntạo khi có request
+    stop
+endif
+
+|Hệ thống|
+:Load messages từ DB;
+:Kết nối WebSocket;
+
+|Member A|
+:Xem tin nhắn cũ;
+
+repeat
+    :Soạn tin nhắn;
+    
+    if (Đính kèm file?) then (Có)
+        :Chọn file/ảnh;
+        
+        |Hệ thống|
+        :Validate file size & type;
+        
+        if (File hợp lệ?) then (Có)
+            :Upload lên server;
+            :Lưu attachment URL;
+        else (Không)
+            |Member A|
+            :Thông báo lỗi;
+        endif
+    endif
+    
+    |Member A|
+    :Gửi tin nhắn;
+    
+    |Hệ thống|
+    :Lưu message vào DB;
+    :Phát qua WebSocket;
+    :Cập nhật conversation.last_message_at;
+    
+    |Member B|
+    if (Online?) then (Có)
+        :Nhận tin nhắn real-time;
+        :Hiển thị tin nhắn;
+        
+        if (Đang xem conversation?) then (Có)
+            |Hệ thống|
+            :Mark as read;
+            :Gửi read receipt về A;
+            
+            |Member A|
+            :Hiển thị đã đọc;
+        else (Không)
+            |Hệ thống|
+            :Gửi push notification;
+        endif
+    else (Không)
+        |Hệ thống|
+        :Lưu notification;
+        :Gửi email thông báo (nếu bật);
+    endif
+    
+    |Member A|
+repeat while (Tiếp tục chat?) is (Có)
+
+:Đóng conversation;
+
+|Hệ thống|
+:Ngắt WebSocket connection;
+
+stop
+
+@enduml

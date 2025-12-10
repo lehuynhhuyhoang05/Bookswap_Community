@@ -1,0 +1,128 @@
+@startuml ARCH_DataFlow
+' ============================================================
+' DATA FLOW DIAGRAM
+' BookSwap - Main Business Flows
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam roundCorner 15
+
+skinparam actor {
+    BackgroundColor #E3F2FD
+    BorderColor #1565C0
+}
+
+skinparam rectangle {
+    BackgroundColor #FFFFFF
+    BorderColor #BDBDBD
+}
+
+skinparam database {
+    BackgroundColor #E8F5E9
+    BorderColor #2E7D32
+}
+
+skinparam collections {
+    BackgroundColor #FFF3E0
+    BorderColor #EF6C00
+}
+
+title <size:18>**BookSwap - Data Flow Diagram**</size>\n<size:12>Main System Flows</size>
+
+' ============================================================
+' ACTORS
+' ============================================================
+actor "👤 Member A\n(Book Owner)" as MemberA
+actor "👤 Member B\n(Requester)" as MemberB
+actor "👨‍💼 Admin" as Admin
+
+' ============================================================
+' PROCESSES
+' ============================================================
+rectangle "**1.0**\nAuthentication\nProcess" as P1 #E3F2FD
+rectangle "**2.0**\nBook\nManagement" as P2 #C8E6C9
+rectangle "**3.0**\nExchange\nProcess" as P3 #FFE0B2
+rectangle "**4.0**\nMessaging\nSystem" as P4 #E1BEE7
+rectangle "**5.0**\nReview &\nTrust Score" as P5 #FFCDD2
+rectangle "**6.0**\nAdmin\nManagement" as P6 #B3E5FC
+
+' ============================================================
+' DATA STORES
+' ============================================================
+database "D1\nUsers &\nMembers" as D1
+database "D2\nBooks &\nLibrary" as D2
+database "D3\nExchanges &\nRequests" as D3
+database "D4\nMessages &\nConversations" as D4
+database "D5\nReviews &\nReports" as D5
+
+' ============================================================
+' EXTERNAL ENTITIES
+' ============================================================
+collections "Google\nBooks API" as GoogleAPI #F5F5F5
+collections "Email\nService" as EmailSvc #F5F5F5
+
+' ============================================================
+' DATA FLOWS
+' ============================================================
+
+' Authentication flows
+MemberA --> P1 : "Login/Register\nCredentials"
+MemberB --> P1 : "Login/Register\nCredentials"
+P1 --> D1 : "Store User Data"
+P1 --> EmailSvc : "Verification Email"
+P1 --> MemberA : "JWT Token"
+P1 --> MemberB : "JWT Token"
+
+' Book Management flows
+MemberA --> P2 : "Add/Edit Book"
+P2 --> GoogleAPI : "Search Book Info"
+GoogleAPI --> P2 : "Book Metadata"
+P2 --> D2 : "Store Book Data"
+D2 --> P2 : "Book List"
+P2 --> MemberB : "Browse Books"
+
+' Exchange Process flows
+MemberB --> P3 : "Create Exchange\nRequest"
+P3 --> D2 : "Check Book\nAvailability"
+P3 --> D3 : "Store Request"
+P3 --> MemberA : "Request\nNotification"
+MemberA --> P3 : "Accept/Reject"
+P3 --> D3 : "Update Status"
+P3 --> P5 : "Trigger Review"
+
+' Messaging flows
+MemberA --> P4 : "Send Message"
+MemberB --> P4 : "Send Message"
+P4 <--> D4 : "Store/Retrieve\nMessages"
+P4 --> MemberA : "Real-time\nNotification"
+P4 --> MemberB : "Real-time\nNotification"
+
+' Review & Trust Score flows
+MemberA --> P5 : "Submit Review"
+MemberB --> P5 : "Submit Review"
+P5 --> D5 : "Store Review"
+P5 --> D1 : "Update Trust Score"
+
+' Admin flows
+Admin --> P6 : "Manage System"
+P6 <--> D1 : "User Management"
+P6 <--> D2 : "Content Moderation"
+P6 <--> D5 : "Handle Reports"
+P6 --> MemberA : "Admin Actions"
+P6 --> MemberB : "Admin Actions"
+
+' ============================================================
+' LEGEND
+' ============================================================
+legend bottom right
+    |= Symbol |= Meaning |
+    | Rectangle | Process |
+    | Database | Data Store |
+    | Actor | External Entity |
+    | Arrow | Data Flow |
+endlegend
+
+@enduml

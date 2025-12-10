@@ -1,0 +1,92 @@
+@startuml UC_06_Admin
+' ============================================================
+' USE CASE DIAGRAM - MODULE QUẢN TRỊ
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam linetype ortho
+skinparam ranksep 50
+skinparam nodesep 30
+
+skinparam actor {
+    BackgroundColor #FCE4EC
+    BorderColor #C2185B
+    BorderThickness 2
+}
+
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #455A64
+    BorderThickness 1.5
+}
+
+skinparam rectangle {
+    BackgroundColor #FAFAFA
+    BorderColor #C2185B
+    BorderThickness 2
+}
+
+left to right direction
+
+title <b>Use Case Diagram</b>\nModule Quản trị (Admin)
+
+' === ACTORS ===
+actor "Quản trị viên" as Admin
+
+' === SYSTEM BOUNDARY ===
+rectangle "Hệ thống BookSwap" {
+    
+    ' --- Quản lý người dùng ---
+    usecase "Xem danh sách người dùng" as UC01
+    usecase "Xem chi tiết người dùng" as UC02
+    usecase "Khóa tài khoản" as UC03
+    usecase "Mở khóa tài khoản" as UC04
+    usecase "Điều chỉnh Trust Score" as UC05
+    
+    ' --- Kiểm duyệt nội dung ---
+    usecase "Xem danh sách sách" as UC06
+    usecase "Xóa sách vi phạm" as UC07
+    usecase "Xem danh sách đánh giá" as UC08
+    usecase "Xóa đánh giá vi phạm" as UC09
+    
+    ' --- Xử lý báo cáo ---
+    usecase "Xem danh sách báo cáo" as UC10
+    usecase "Xử lý báo cáo" as UC11
+    usecase "Bác bỏ báo cáo" as UC12
+    
+    ' --- Thống kê ---
+    usecase "Xem Dashboard" as UC13
+    usecase "Xem thống kê người dùng" as UC14
+    usecase "Xem thống kê trao đổi" as UC15
+    usecase "Xem Activity Logs" as UC16
+}
+
+' === ADMIN ASSOCIATIONS ===
+Admin -- UC01
+Admin -- UC02
+Admin -- UC03
+Admin -- UC04
+Admin -- UC05
+Admin -- UC06
+Admin -- UC07
+Admin -- UC08
+Admin -- UC09
+Admin -- UC10
+Admin -- UC11
+Admin -- UC12
+Admin -- UC13
+Admin -- UC14
+Admin -- UC15
+Admin -- UC16
+
+' === RELATIONSHIPS ===
+UC01 .down.> UC02 : <<extend>>
+UC10 .down.> UC11 : <<extend>>
+UC10 .down.> UC12 : <<extend>>
+UC11 .down.> UC03 : <<extend>>
+
+@enduml

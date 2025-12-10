@@ -1,0 +1,83 @@
+@startuml AD_06_ReviewFlow
+' ============================================================
+' ACTIVITY DIAGRAM - QUY TRÌNH ĐÁNH GIÁ
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+
+skinparam activity {
+    BackgroundColor #F3E5F5
+    BorderColor #7B1FA2
+    DiamondBackgroundColor #E1BEE7
+    DiamondBorderColor #7B1FA2
+}
+
+title <b>Activity Diagram - Quy trình Đánh giá</b>
+
+|Hệ thống|
+start
+
+:Exchange hoàn thành;
+
+fork
+    |Member A|
+    :Nhận thông báo đánh giá;
+fork again
+    |Member B|
+    :Nhận thông báo đánh giá;
+end fork
+
+|Member A|
+:Truy cập trang đánh giá;
+
+:Chọn số sao (1-5);
+
+:Viết nhận xét (tùy chọn);
+
+:Gửi đánh giá;
+
+|Hệ thống|
+:Validate dữ liệu;
+
+if (Đã đánh giá trước đó?) then (Có)
+    |Member A|
+    :Thông báo đã đánh giá;
+else (Không)
+    |Hệ thống|
+    :Lưu review vào DB;
+    
+    :Tính toán trust_score_impact;
+    
+    :Cập nhật Member B trust_score;
+    
+    :Cập nhật Member B average_rating;
+    
+    :Lưu trust_score_history;
+    
+    :Gửi notification cho Member B;
+    
+    |Member A|
+    :Hiển thị thành công;
+endif
+
+|Member B|
+:Nhận thông báo có đánh giá mới;
+
+:Xem đánh giá;
+
+if (Đánh giá không công bằng?) then (Có)
+    :Tạo báo cáo vi phạm;
+    
+    |Hệ thống|
+    :Lưu violation_report;
+    :Thông báo cho Admin;
+else (Không)
+    :Chấp nhận đánh giá;
+endif
+
+stop
+
+@enduml

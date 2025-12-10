@@ -1,0 +1,94 @@
+@startuml UC_04_Exchange
+' ============================================================
+' USE CASE DIAGRAM - MODULE TRAO ĐỔI SÁCH
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam linetype ortho
+skinparam ranksep 50
+skinparam nodesep 30
+
+skinparam actor {
+    BackgroundColor #FFF3E0
+    BorderColor #EF6C00
+    BorderThickness 2
+}
+
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #455A64
+    BorderThickness 1.5
+}
+
+skinparam rectangle {
+    BackgroundColor #FAFAFA
+    BorderColor #EF6C00
+    BorderThickness 2
+}
+
+left to right direction
+
+title <b>Use Case Diagram</b>\nModule Trao đổi Sách (Exchange)
+
+' === ACTORS ===
+actor "Thành viên" as Member
+actor "Hệ thống\nGợi ý" as AISystem <<system>>
+actor "Scheduler" as Scheduler <<system>>
+
+' === SYSTEM BOUNDARY ===
+rectangle "Hệ thống BookSwap" {
+    
+    ' --- Yêu cầu trao đổi ---
+    usecase "Tạo yêu cầu trao đổi" as UC01
+    usecase "Xem yêu cầu đã gửi" as UC02
+    usecase "Xem yêu cầu nhận được" as UC03
+    usecase "Chấp nhận yêu cầu" as UC04
+    usecase "Từ chối yêu cầu" as UC05
+    usecase "Hủy yêu cầu" as UC06
+    
+    ' --- Quản lý trao đổi ---
+    usecase "Xem danh sách trao đổi" as UC07
+    usecase "Sắp xếp cuộc hẹn" as UC08
+    usecase "Xác nhận cuộc hẹn" as UC09
+    usecase "Xác nhận hoàn thành" as UC10
+    usecase "Hủy trao đổi" as UC11
+    
+    ' --- Gợi ý Matching ---
+    usecase "Xem gợi ý trao đổi" as UC12
+    usecase "Tạo gợi ý mới" as UC13
+    usecase "Lọc gợi ý" as UC14
+    
+    ' --- Tự động ---
+    usecase "Tự động hết hạn yêu cầu" as UC15
+}
+
+' === MEMBER ASSOCIATIONS ===
+Member -- UC01
+Member -- UC02
+Member -- UC03
+Member -- UC04
+Member -- UC05
+Member -- UC06
+Member -- UC07
+Member -- UC08
+Member -- UC09
+Member -- UC10
+Member -- UC11
+Member -- UC12
+Member -- UC13
+Member -- UC14
+
+' === RELATIONSHIPS ===
+UC04 .down.> UC08 : <<extend>>
+UC08 .down.> UC09 : <<include>>
+UC09 .down.> UC10 : <<extend>>
+
+' === EXTERNAL SYSTEM ===
+UC13 -- AISystem
+UC15 -- Scheduler
+
+@enduml

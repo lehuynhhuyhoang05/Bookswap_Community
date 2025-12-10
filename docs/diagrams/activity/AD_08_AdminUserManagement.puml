@@ -1,0 +1,107 @@
+@startuml AD_08_AdminUserManagement
+' ============================================================
+' ACTIVITY DIAGRAM - ADMIN QUẢN LÝ USER
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+
+skinparam activity {
+    BackgroundColor #FCE4EC
+    BorderColor #C2185B
+    DiamondBackgroundColor #F8BBD9
+    DiamondBorderColor #C2185B
+}
+
+title <b>Activity Diagram - Admin Quản lý User</b>
+
+|Admin|
+start
+
+:Đăng nhập Admin Panel;
+
+|Hệ thống|
+:Xác thực JWT;
+
+if (Có quyền Admin?) then (Có)
+    |Admin|
+    :Truy cập User Management;
+    
+    :Tìm kiếm/Lọc users;
+    
+    |Hệ thống|
+    :Query users với filters;
+    :Hiển thị danh sách;
+    
+    |Admin|
+    :Chọn user cần quản lý;
+    
+    :Xem chi tiết user;
+    note right
+        - Thông tin profile
+        - Lịch sử exchanges
+        - Lịch sử vi phạm
+        - Trust score history
+    end note
+    
+    switch (Chọn hành động?)
+    case (Khóa tài khoản)
+        :Nhập lý do khóa;
+        :Chọn thời hạn khóa;
+        
+        |Hệ thống|
+        :Cập nhật account_status = LOCKED;
+        :Lưu lock_reason & locked_until;
+        :Hủy tất cả exchanges đang pending;
+        :Gửi email thông báo cho user;
+        :Lưu audit_log;
+        
+    case (Mở khóa tài khoản)
+        |Hệ thống|
+        :Cập nhật account_status = ACTIVE;
+        :Clear lock_reason & locked_until;
+        :Gửi email thông báo cho user;
+        :Lưu audit_log;
+        
+    case (Điều chỉnh Trust Score)
+        |Admin|
+        :Nhập số điểm điều chỉnh;
+        :Nhập lý do;
+        
+        |Hệ thống|
+        :Cập nhật member.trust_score;
+        :Lưu trust_score_history;
+        :Lưu audit_log;
+        
+    case (Xóa tài khoản)
+        |Admin|
+        :Xác nhận xóa;
+        
+        |Hệ thống|
+        :Cập nhật account_status = DELETED;
+        :Soft delete related data;
+        :Anonymize personal data;
+        :Lưu audit_log;
+        
+    case (Xem lịch sử hoạt động)
+        |Hệ thống|
+        :Query user_activity_logs;
+        
+        |Admin|
+        :Xem timeline hoạt động;
+        
+    endswitch
+    
+    |Admin|
+    :Hoàn thành quản lý;
+    
+else (Không)
+    |Hệ thống|
+    :Redirect về login;
+endif
+
+stop
+
+@enduml

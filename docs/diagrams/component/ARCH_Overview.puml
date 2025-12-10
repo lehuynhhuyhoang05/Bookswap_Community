@@ -1,0 +1,163 @@
+@startuml ARCH_Overview
+' ============================================================
+' SYSTEM ARCHITECTURE OVERVIEW
+' BookSwap - Simple & Clean Diagram
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing true
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam roundCorner 15
+
+skinparam rectangle {
+    BackgroundColor<<user>> #E3F2FD
+    BorderColor<<user>> #1565C0
+    BorderThickness<<user>> 2
+    
+    BackgroundColor<<frontend>> #C8E6C9
+    BorderColor<<frontend>> #2E7D32
+    BorderThickness<<frontend>> 2
+    
+    BackgroundColor<<backend>> #FFE0B2
+    BorderColor<<backend>> #EF6C00
+    BorderThickness<<backend>> 2
+    
+    BackgroundColor<<database>> #E1BEE7
+    BorderColor<<database>> #6A1B9A
+    BorderThickness<<database>> 2
+    
+    BackgroundColor<<external>> #CFD8DC
+    BorderColor<<external>> #455A64
+    BorderThickness<<external>> 2
+}
+
+skinparam arrow {
+    Color #424242
+    Thickness 2
+}
+
+title <size:20>**📚 BookSwap - System Architecture Overview**</size>
+
+' ============================================================
+' USERS
+' ============================================================
+rectangle "**👥 USERS**" <<user>> as Users {
+    actor "Member" as Member
+    actor "Admin" as Admin
+}
+
+' ============================================================
+' FRONTEND
+' ============================================================
+rectangle "**🖥️ FRONTEND**\n\nReact + Vite + TailwindCSS" <<frontend>> as Frontend {
+    
+    rectangle "**Pages**" as Pages {
+        [🏠 Home]
+        [📖 Books]
+        [🔄 Exchange]
+        [💬 Messages]
+        [👤 Profile]
+        [⚙️ Admin]
+    }
+    
+    rectangle "**Services**" as FEServices {
+        [Axios API Client]
+        [Socket.IO Client]
+    }
+}
+
+' ============================================================
+' BACKEND
+' ============================================================
+rectangle "**⚙️ BACKEND**\n\nNestJS + TypeORM" <<backend>> as Backend {
+    
+    rectangle "**Modules**" as Modules {
+        [Auth Module]
+        [Books Module]
+        [Exchange Module]
+        [Messages Module]
+        [Reviews Module]
+        [Admin Module]
+        [Notifications Module]
+    }
+    
+    rectangle "**Real-time**" as Realtime {
+        [WebSocket Gateway]
+    }
+    
+    rectangle "**Services**" as BEServices {
+        [Matching Engine\n(AI Suggestions)]
+        [Trust Score\nCalculator]
+    }
+}
+
+' ============================================================
+' DATABASE
+' ============================================================
+rectangle "**💾 DATABASE**" <<database>> as Database {
+    database "MySQL 8.0" as MySQL {
+        [Users & Members]
+        [Books & Library]
+        [Exchanges]
+        [Messages]
+        [Reviews & Reports]
+    }
+    
+    storage "File Storage" as Files {
+        [Images]
+        [Attachments]
+    }
+}
+
+' ============================================================
+' EXTERNAL SERVICES
+' ============================================================
+rectangle "**☁️ EXTERNAL**" <<external>> as External {
+    cloud "Google Books API" as GoogleAPI
+    cloud "Email Service" as Email
+}
+
+' ============================================================
+' CONNECTIONS
+' ============================================================
+
+' Users to Frontend
+Users -down-> Frontend : "HTTPS"
+
+' Frontend to Backend
+Frontend -down-> Backend : "REST API\n+ WebSocket"
+
+' Backend to Database
+Backend -down-> Database : "TypeORM"
+
+' Backend to External
+Backend -right-> External : "HTTP/SMTP"
+
+' ============================================================
+' DATA FLOW ANNOTATIONS
+' ============================================================
+note right of Frontend
+    **Client Features:**
+    ✓ Single Page App
+    ✓ Responsive Design
+    ✓ Real-time Updates
+    ✓ Offline Support
+end note
+
+note right of Backend
+    **Server Features:**
+    ✓ RESTful API
+    ✓ JWT Authentication
+    ✓ WebSocket Events
+    ✓ Scheduled Jobs
+end note
+
+note right of Database
+    **Data Storage:**
+    ✓ 24 Database Tables
+    ✓ User Uploads
+    ✓ Transaction Logs
+end note
+
+@enduml

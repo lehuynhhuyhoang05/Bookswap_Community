@@ -1,0 +1,251 @@
+@startuml COMP_SystemArchitecture
+' ============================================================
+' COMPONENT DIAGRAM - BOOKSWAP SYSTEM
+' UML 2.5 Standard | Clean Design
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam linetype ortho
+
+skinparam component {
+    BackgroundColor #FFFDE7
+    BorderColor #37474F
+}
+
+skinparam package {
+    BackgroundColor #FAFAFA
+    BorderColor #BDBDBD
+}
+
+skinparam database {
+    BackgroundColor #E1F5FE
+    BorderColor #0288D1
+}
+
+skinparam cloud {
+    BackgroundColor #F5F5F5
+    BorderColor #9E9E9E
+}
+
+skinparam interface {
+    BackgroundColor #E8F5E9
+    BorderColor #2E7D32
+}
+
+title <b>Component Diagram - BookSwap System</b>\n3-Tier Architecture
+
+' ============================================================
+' PRESENTATION LAYER
+' ============================================================
+package "Presentation Layer" #E3F2FD {
+    
+    component [Web Browser] as Browser
+    component [Mobile Browser] as Mobile
+    
+    package "Frontend (React + Vite)" #BBDEFB {
+        component [App Router] as Router
+        component [Pages] as Pages
+        component [Components] as UIComp
+        component [Hooks] as Hooks
+        component [Services] as FEServices
+        component [Utils] as Utils
+        
+        interface "API Client" as APIClient
+        interface "Socket Client" as SocketClient
+    }
+}
+
+' ============================================================
+' BUSINESS LOGIC LAYER
+' ============================================================
+package "Business Logic Layer" #FFF3E0 {
+    
+    package "API Gateway (NestJS)" #FFE0B2 {
+        
+        package "Controllers" #FFFFFF {
+            component [AuthController] as AuthCtrl
+            component [BooksController] as BooksCtrl
+            component [ExchangesController] as ExchCtrl
+            component [MessagesController] as MsgCtrl
+            component [ReviewsController] as ReviewCtrl
+            component [ReportsController] as ReportCtrl
+            component [LibraryController] as LibCtrl
+            component [AdminController] as AdminCtrl
+            component [NotificationsController] as NotifCtrl
+        }
+        
+        package "WebSocket Gateways" #FFFFFF {
+            component [MessagesGateway] as MsgGW
+            component [NotificationsGateway] as NotifGW
+        }
+        
+        package "Middleware" #FFFFFF {
+            component [JWT Guard] as JWTGuard
+            component [Rate Limiter] as RateLimiter
+            component [Logger] as Logger
+        }
+    }
+    
+    package "Services" #FCE4EC {
+        
+        package "Core Services" #FFFFFF {
+            component [AuthService] as AuthSvc
+            component [BooksService] as BooksSvc
+            component [ExchangesService] as ExchSvc
+            component [MessagesService] as MsgSvc
+            component [ReviewsService] as ReviewSvc
+            component [LibraryService] as LibSvc
+        }
+        
+        package "Support Services" #FFFFFF {
+            component [MatchingService] as MatchSvc
+            component [TrustScoreService] as TrustSvc
+            component [NotificationsService] as NotifSvc
+            component [AdminService] as AdminSvc
+            component [ReportsService] as ReportSvc
+        }
+        
+        package "Infrastructure Services" #FFFFFF {
+            component [EmailService] as EmailSvc
+            component [GoogleBooksService] as GoogleSvc
+            component [StorageService] as StorageSvc
+        }
+    }
+}
+
+' ============================================================
+' DATA ACCESS LAYER
+' ============================================================
+package "Data Access Layer" #E8F5E9 {
+    
+    package "TypeORM" #C8E6C9 {
+        component [Entity Manager] as EntityMgr
+        component [Query Builder] as QueryBuilder
+        component [Repositories] as Repos
+    }
+    
+    database "MySQL 8.0" as MySQL {
+        [users]
+        [members]
+        [books]
+        [exchanges]
+        [messages]
+        [reviews]
+        [notifications]
+    }
+    
+    database "File Storage" as FileStorage {
+        [uploads/]
+    }
+}
+
+' ============================================================
+' EXTERNAL SERVICES
+' ============================================================
+package "External Services" #ECEFF1 {
+    cloud "Google Books API" as GoogleAPI
+    cloud "SMTP Server" as SMTP
+}
+
+' ============================================================
+' INTERFACES
+' ============================================================
+interface "REST API" as RestAPI
+interface "WebSocket" as WSInterface
+interface "Database Connection" as DBConn
+
+' ============================================================
+' CONNECTIONS
+' ============================================================
+
+' Client to Frontend
+Browser --> Router
+Mobile --> Router
+
+' Frontend internal
+Router --> Pages
+Pages --> UIComp
+Pages --> Hooks
+Hooks --> FEServices
+FEServices --> APIClient
+FEServices --> SocketClient
+
+' Frontend to Backend
+APIClient --> RestAPI
+SocketClient --> WSInterface
+
+' API Gateway
+RestAPI --> AuthCtrl
+RestAPI --> BooksCtrl
+RestAPI --> ExchCtrl
+RestAPI --> MsgCtrl
+RestAPI --> ReviewCtrl
+RestAPI --> ReportCtrl
+RestAPI --> LibCtrl
+RestAPI --> AdminCtrl
+RestAPI --> NotifCtrl
+
+WSInterface --> MsgGW
+WSInterface --> NotifGW
+
+' Middleware
+AuthCtrl --> JWTGuard
+BooksCtrl --> JWTGuard
+ExchCtrl --> JWTGuard
+MsgCtrl --> JWTGuard
+AdminCtrl --> JWTGuard
+
+' Controllers to Services
+AuthCtrl --> AuthSvc
+BooksCtrl --> BooksSvc
+ExchCtrl --> ExchSvc
+MsgCtrl --> MsgSvc
+ReviewCtrl --> ReviewSvc
+ReportCtrl --> ReportSvc
+LibCtrl --> LibSvc
+AdminCtrl --> AdminSvc
+NotifCtrl --> NotifSvc
+
+MsgGW --> MsgSvc
+NotifGW --> NotifSvc
+
+' Services to Support
+ExchSvc --> MatchSvc
+ExchSvc --> TrustSvc
+ReviewSvc --> TrustSvc
+ExchSvc --> NotifSvc
+MsgSvc --> NotifSvc
+
+' Infrastructure Services
+AuthSvc --> EmailSvc
+BooksSvc --> GoogleSvc
+BooksSvc --> StorageSvc
+MsgSvc --> StorageSvc
+
+' Services to Data Access
+AuthSvc --> Repos
+BooksSvc --> Repos
+ExchSvc --> Repos
+MsgSvc --> Repos
+ReviewSvc --> Repos
+LibSvc --> Repos
+AdminSvc --> Repos
+NotifSvc --> Repos
+ReportSvc --> Repos
+MatchSvc --> Repos
+TrustSvc --> Repos
+
+' Data Access
+Repos --> EntityMgr
+EntityMgr --> QueryBuilder
+QueryBuilder --> DBConn
+DBConn --> MySQL
+StorageSvc --> FileStorage
+
+' External
+GoogleSvc --> GoogleAPI
+EmailSvc --> SMTP
+
+@enduml

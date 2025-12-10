@@ -25,21 +25,21 @@ const MessageItem = ({ message, isOwn, onDelete, onAddReaction, onRemoveReaction
 
   return (
     <div
-      className={`flex gap-3 group mb-4 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}
+      className={`flex gap-3 group mb-6 ${isOwn ? 'flex-row-reverse' : 'flex-row'} animate-fadeIn`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
-      {/* Avatar */}
+      {/* Avatar - Enhanced with shadow */}
       {!isOwn && (
         <div className="flex-shrink-0">
           {senderAvatar ? (
             <img 
               src={senderAvatar} 
               alt={senderName}
-              className="w-8 h-8 rounded-full object-cover"
+              className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-md"
             />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-sm font-semibold">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-sm font-bold shadow-md">
               {senderName.charAt(0).toUpperCase()}
             </div>
           )}
@@ -48,64 +48,64 @@ const MessageItem = ({ message, isOwn, onDelete, onAddReaction, onRemoveReaction
 
       <div className={`flex flex-col max-w-[70%] ${isOwn ? 'items-end' : 'items-start'}`}>
         {!isOwn && (
-          <span className="text-xs font-medium text-gray-600 mb-1 px-1">{senderName}</span>
+          <span className="text-xs font-semibold text-gray-600 mb-1.5 px-2">{senderName}</span>
         )}
 
         <div className="relative group">
           <div 
-            className={`rounded-2xl px-4 py-2.5 shadow-sm ${
+            className={`rounded-2xl px-4 py-3 shadow-md transition-all transform hover:scale-[1.02] ${
               isOwn 
-                ? 'bg-blue-500 text-white rounded-tr-sm' 
-                : 'bg-gray-100 text-gray-900 rounded-tl-sm'
+                ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-tr-sm' 
+                : 'bg-white text-gray-900 rounded-tl-sm border border-gray-100'
             }`}
           >
-            {/* Image Attachment */}
+            {/* Image Attachment - Enhanced */}
             {message.attachment_url && message.attachment_type === 'image' && (
               <div className="mb-2">
                 <img 
                   src={`http://localhost:3000${message.attachment_url}`}
                   alt={message.attachment_name || 'Image'}
-                  className="max-w-full rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                  className="max-w-full rounded-xl cursor-pointer hover:opacity-90 transition-all shadow-sm hover:shadow-md"
                   style={{ maxHeight: '300px', objectFit: 'contain' }}
                   onClick={() => window.open(`http://localhost:3000${message.attachment_url}`, '_blank')}
                 />
                 {message.attachment_name && (
-                  <p className="text-xs mt-1 opacity-75">{message.attachment_name}</p>
+                  <p className="text-xs mt-1.5 opacity-75">{message.attachment_name}</p>
                 )}
               </div>
             )}
 
-            {/* File Attachment */}
+            {/* File Attachment - Enhanced */}
             {message.attachment_url && message.attachment_type === 'file' && (
               <a
                 href={`http://localhost:3000${message.attachment_url}`}
                 download={message.attachment_name}
-                className={`flex items-center gap-2 p-2 rounded-lg mb-2 hover:opacity-80 transition-opacity ${
-                  isOwn ? 'bg-blue-600' : 'bg-gray-200'
+                className={`flex items-center gap-2 p-3 rounded-xl mb-2 hover:opacity-90 transition-all shadow-sm ${
+                  isOwn ? 'bg-blue-600/80 backdrop-blur-sm' : 'bg-gray-50'
                 }`}
               >
                 <FileText className="w-5 h-5" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{message.attachment_name || 'File'}</p>
+                  <p className="text-sm font-semibold truncate">{message.attachment_name || 'File'}</p>
                   {message.attachment_size && (
-                    <p className="text-xs opacity-75">
+                    <p className="text-xs opacity-80">
                       {(message.attachment_size / 1024).toFixed(2)} KB
                     </p>
                   )}
                 </div>
-                <Download className="w-4 h-4" />
+                <Download className="w-4 h-4 flex-shrink-0" />
               </a>
             )}
 
-            {/* Text Content */}
+            {/* Text Content - Enhanced typography */}
             {message.content && (
-              <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+              <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
             )}
           </div>
           
           <span 
-            className={`text-xs text-gray-500 mt-1 flex items-center gap-1 px-1 ${
-              isOwn ? 'justify-end' : 'justify-start'
+            className={`text-xs mt-1.5 flex items-center gap-1.5 px-1 font-medium ${
+              isOwn ? 'justify-end text-gray-600' : 'justify-start text-gray-500'
             }`}
           >
             {formatTime(messageTime)}
@@ -115,7 +115,7 @@ const MessageItem = ({ message, isOwn, onDelete, onAddReaction, onRemoveReaction
           {showActions && canDelete && (
             <button
               onClick={handleDelete}
-              className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-full text-xs shadow-lg transition-all"
+              className="absolute -top-2 -right-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white p-2 rounded-full text-xs shadow-lg hover:shadow-xl transition-all transform hover:scale-110"
               title="Xóa tin nhắn"
             >
               🗑️
@@ -123,7 +123,7 @@ const MessageItem = ({ message, isOwn, onDelete, onAddReaction, onRemoveReaction
           )}
         </div>
 
-        {/* Reactions Display */}
+        {/* Reactions Display - Enhanced */}
         {message.reactions?.length > 0 && (
           <MessageReactions
             reactions={message.reactions}
@@ -134,14 +134,14 @@ const MessageItem = ({ message, isOwn, onDelete, onAddReaction, onRemoveReaction
           />
         )}
 
-        {/* Add Reaction Button - Show on hover */}
+        {/* Add Reaction Button - Enhanced hover effect */}
         {showActions && (
-          <div className="flex gap-1 mt-1">
+          <div className="flex gap-1 mt-2 animate-fadeIn">
             {['👍', '❤️', '😂', '😮', '🎉'].map(emoji => (
               <button
                 key={emoji}
                 onClick={() => onAddReaction(message.message_id || message.id, emoji)}
-                className="text-sm hover:scale-125 transition-transform p-1 hover:bg-gray-100 rounded"
+                className="text-lg hover:scale-125 transition-all p-1.5 hover:bg-white hover:shadow-md rounded-lg transform"
                 title={`React with ${emoji}`}
               >
                 {emoji}

@@ -1,0 +1,68 @@
+@startuml SM_04_UserAccountState
+' ============================================================
+' STATE MACHINE - TRẠNG THÁI TÀI KHOẢN
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+
+skinparam state {
+    BackgroundColor #E3F2FD
+    BorderColor #1565C0
+    StartColor #2E7D32
+    EndColor #C62828
+}
+
+title <b>State Machine - Trạng thái User Account</b>
+
+[*] --> Unverified : Đăng ký tài khoản
+
+state Unverified : Email chưa xác thực\n---\nKhông thể đăng nhập
+Unverified : entry / Gửi email xác thực
+
+Unverified --> Active : Xác thực email thành công
+Unverified --> Unverified : Gửi lại email xác thực
+
+state Active : Tài khoản hoạt động\n---\nĐầy đủ quyền truy cập
+Active : entry / Khởi tạo member profile
+
+Active --> Suspended : Vi phạm quy định
+Active --> Banned : Vi phạm nghiêm trọng
+Active --> Deleted : User yêu cầu xóa
+
+state Suspended : Tạm khóa\n---\nKhông thể trao đổi
+Suspended : entry / Gửi email thông báo
+Suspended : Thời hạn: 7-30 ngày
+
+Suspended --> Active : Hết thời hạn khóa
+Suspended --> Banned : Tiếp tục vi phạm
+
+state Banned : Cấm vĩnh viễn\n---\nKhông thể truy cập
+Banned : entry / Gửi email thông báo
+Banned : entry / Hủy tất cả exchanges đang chờ
+
+state Deleted : Đã xóa\n---\nSoft delete
+Deleted : entry / Anonymize data
+Deleted : entry / Retain transactions
+
+Banned --> [*]
+Deleted --> [*]
+
+note right of Active
+    Các hành động trong trạng thái Active:
+    - Quản lý sách
+    - Tạo/nhận Exchange Request
+    - Nhắn tin
+    - Đánh giá
+end note
+
+note right of Suspended
+    Lý do Suspended:
+    - Hủy exchange nhiều lần
+    - Bị report vi phạm
+    - Trust score quá thấp
+end note
+
+@enduml

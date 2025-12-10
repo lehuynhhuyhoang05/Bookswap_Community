@@ -1,0 +1,86 @@
+@startuml UC_05_Messaging
+' ============================================================
+' USE CASE DIAGRAM - MODULE TIN NHẮN
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam linetype ortho
+skinparam ranksep 50
+skinparam nodesep 30
+
+skinparam actor {
+    BackgroundColor #E1F5FE
+    BorderColor #0277BD
+    BorderThickness 2
+}
+
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #455A64
+    BorderThickness 1.5
+}
+
+skinparam rectangle {
+    BackgroundColor #FAFAFA
+    BorderColor #0277BD
+    BorderThickness 2
+}
+
+left to right direction
+
+title <b>Use Case Diagram</b>\nModule Tin nhắn (Messaging)
+
+' === ACTORS ===
+actor "Thành viên" as Member
+actor "WebSocket\nServer" as WSServer <<system>>
+
+' === SYSTEM BOUNDARY ===
+rectangle "Hệ thống BookSwap" {
+    
+    ' --- Quản lý cuộc trò chuyện ---
+    usecase "Xem danh sách cuộc trò chuyện" as UC01
+    usecase "Xem tin nhắn trong cuộc trò chuyện" as UC02
+    usecase "Tìm kiếm tin nhắn" as UC03
+    
+    ' --- Gửi tin nhắn ---
+    usecase "Gửi tin nhắn văn bản" as UC04
+    usecase "Gửi ảnh" as UC05
+    usecase "Gửi file đính kèm" as UC06
+    
+    ' --- Thao tác tin nhắn ---
+    usecase "Xóa tin nhắn" as UC07
+    usecase "React emoji" as UC08
+    usecase "Đánh dấu đã đọc" as UC09
+    
+    ' --- Real-time ---
+    usecase "Nhận tin nhắn real-time" as UC10
+    usecase "Hiển thị trạng thái đang nhập" as UC11
+}
+
+' === MEMBER ASSOCIATIONS ===
+Member -- UC01
+Member -- UC02
+Member -- UC03
+Member -- UC04
+Member -- UC05
+Member -- UC06
+Member -- UC07
+Member -- UC08
+Member -- UC09
+Member -- UC10
+Member -- UC11
+
+' === RELATIONSHIPS ===
+UC04 .down.> UC05 : <<extend>>
+UC04 .down.> UC06 : <<extend>>
+UC02 .down.> UC09 : <<include>>
+
+' === EXTERNAL SYSTEM ===
+UC10 -- WSServer
+UC11 -- WSServer
+
+@enduml

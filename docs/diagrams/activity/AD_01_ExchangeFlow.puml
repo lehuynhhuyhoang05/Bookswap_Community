@@ -1,0 +1,88 @@
+@startuml AD_01_ExchangeFlow
+' ============================================================
+' ACTIVITY DIAGRAM - QUY TRÌNH TRAO ĐỔI SÁCH
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+
+skinparam activity {
+    BackgroundColor #FFFDE7
+    BorderColor #37474F
+    DiamondBackgroundColor #FFF9C4
+    DiamondBorderColor #37474F
+}
+
+title <b>Activity Diagram - Quy trình Trao đổi Sách</b>
+
+start
+
+:Thành viên tìm kiếm sách;
+
+:Xem danh sách sách có sẵn;
+
+:Chọn sách muốn trao đổi;
+
+:Xem chi tiết sách;
+
+if (Muốn trao đổi?) then (Có)
+    :Chọn sách của mình để đề xuất;
+    
+    :Tạo yêu cầu trao đổi;
+    
+    :Hệ thống gửi thông báo;
+    
+    :Người nhận xem yêu cầu;
+    
+    if (Chấp nhận yêu cầu?) then (Có)
+        :Tạo Exchange;
+        
+        :Hai bên nhắn tin thỏa thuận;
+        
+        :Đề xuất thời gian và địa điểm;
+        
+        if (Đồng ý lịch hẹn?) then (Có)
+            :Xác nhận cuộc hẹn;
+            
+            :Gặp mặt trao đổi sách;
+            
+            fork
+                :Thành viên A xác nhận hoàn thành;
+            fork again
+                :Thành viên B xác nhận hoàn thành;
+            end fork
+            
+            if (Cả hai đã xác nhận?) then (Có)
+                :Cập nhật trạng thái COMPLETED;
+                
+                :Chuyển quyền sở hữu sách;
+                
+                :Cập nhật Trust Score;
+                
+                :Mở tính năng đánh giá;
+                
+                :Thông báo hoàn thành;
+                
+                stop
+            else (Chưa)
+                :Chờ xác nhận từ đối phương;
+            endif
+        else (Không)
+            :Hủy hoặc đề xuất lại;
+        endif
+    else (Từ chối)
+        :Cập nhật trạng thái REJECTED;
+        
+        :Khôi phục trạng thái sách;
+        
+        :Thông báo từ chối;
+        
+        stop
+    endif
+else (Không)
+    stop
+endif
+
+@enduml

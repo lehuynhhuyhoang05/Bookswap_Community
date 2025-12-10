@@ -1,0 +1,179 @@
+@startuml ARCH_LayeredArchitecture
+' ============================================================
+' LAYERED ARCHITECTURE DIAGRAM
+' BookSwap - Clean 3-Tier Architecture
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam roundCorner 10
+
+skinparam package {
+    BackgroundColor #FAFAFA
+    BorderColor #E0E0E0
+    FontSize 14
+    FontStyle bold
+}
+
+skinparam rectangle {
+    BackgroundColor #FFFFFF
+    BorderColor #BDBDBD
+    BorderThickness 1
+}
+
+skinparam component {
+    BackgroundColor #FFFFFF
+    BorderColor #9E9E9E
+}
+
+title <size:18>**BookSwap - Layered Architecture**</size>\n<size:12>3-Tier Architecture Pattern</size>
+
+' ============================================================
+' PRESENTATION LAYER
+' ============================================================
+package "🎨 **PRESENTATION LAYER**" as PresentationLayer #E3F2FD {
+    
+    rectangle "**React Frontend**" as ReactFE {
+        component "Pages" as Pages {
+            [HomePage] #BBDEFB
+            [BooksPage] #BBDEFB
+            [ExchangePage] #BBDEFB
+            [MessagesPage] #BBDEFB
+            [ProfilePage] #BBDEFB
+            [AdminPage] #BBDEFB
+        }
+        
+        component "Components" as Components {
+            [BookCard] #BBDEFB
+            [ExchangeCard] #BBDEFB
+            [MessageBubble] #BBDEFB
+            [Navigation] #BBDEFB
+        }
+        
+        component "Hooks & Context" as Hooks {
+            [useAuth] #BBDEFB
+            [useMessages] #BBDEFB
+            [useExchanges] #BBDEFB
+            [useNotifications] #BBDEFB
+        }
+    }
+}
+
+' ============================================================
+' BUSINESS LOGIC LAYER
+' ============================================================
+package "⚙️ **BUSINESS LOGIC LAYER**" as BusinessLayer #FFF3E0 {
+    
+    rectangle "**NestJS Backend**" as NestBE {
+        
+        component "Controllers (API)" as Controllers {
+            [AuthController] #FFE0B2
+            [BooksController] #FFE0B2
+            [ExchangesController] #FFE0B2
+            [MessagesController] #FFE0B2
+            [ReviewsController] #FFE0B2
+            [AdminController] #FFE0B2
+        }
+        
+        component "Services (Business)" as Services {
+            [AuthService] #FFCC80
+            [BooksService] #FFCC80
+            [ExchangesService] #FFCC80
+            [MatchingService] #FFCC80
+            [TrustScoreService] #FFCC80
+            [NotificationsService] #FFCC80
+        }
+        
+        component "WebSocket" as WSGateway {
+            [MessagesGateway] #FFB74D
+            [NotificationsGateway] #FFB74D
+        }
+    }
+}
+
+' ============================================================
+' DATA ACCESS LAYER
+' ============================================================
+package "💾 **DATA ACCESS LAYER**" as DataLayer #E8F5E9 {
+    
+    rectangle "**TypeORM**" as TypeORM {
+        component "Entities" as Entities {
+            [User] #C8E6C9
+            [Member] #C8E6C9
+            [Book] #C8E6C9
+            [Exchange] #C8E6C9
+            [Message] #C8E6C9
+            [Review] #C8E6C9
+        }
+        
+        component "Repositories" as Repositories {
+            [UserRepository] #A5D6A7
+            [BookRepository] #A5D6A7
+            [ExchangeRepository] #A5D6A7
+            [MessageRepository] #A5D6A7
+        }
+    }
+    
+    database "MySQL 8.0" as MySQL #81C784 {
+        [bookswap_db]
+    }
+}
+
+' ============================================================
+' CONNECTIONS (Top to Bottom Flow)
+' ============================================================
+
+' Presentation to Business
+Pages -[#1565C0,thickness=2]-> Controllers : HTTP/REST
+Hooks -[#1565C0,thickness=2]-> WSGateway : WebSocket
+Components ..> Pages : compose
+
+' Business internal
+Controllers -[#EF6C00,thickness=2]-> Services : calls
+WSGateway -[#EF6C00,thickness=2]-> Services : events
+Services ..> Services : internal
+
+' Business to Data
+Services -[#2E7D32,thickness=2]-> Repositories : CRUD
+Repositories -[#2E7D32,thickness=2]-> MySQL : SQL
+
+' ============================================================
+' ANNOTATIONS
+' ============================================================
+note right of PresentationLayer
+    **Technologies:**
+    • React 18
+    • Vite
+    • TailwindCSS
+    • Socket.IO Client
+    • Axios
+end note
+
+note right of BusinessLayer
+    **Technologies:**
+    • NestJS 10
+    • JWT/Passport
+    • Socket.IO
+    • Class-Validator
+end note
+
+note right of DataLayer
+    **Technologies:**
+    • TypeORM
+    • MySQL 8.0
+    • Migrations
+end note
+
+' ============================================================
+' LEGEND
+' ============================================================
+legend bottom
+    | Layer | Responsibility | Communication |
+    | Presentation | UI, User Interaction | HTTP, WebSocket |
+    | Business Logic | Business Rules, Validation | Service Methods |
+    | Data Access | Data Persistence | SQL Queries |
+endlegend
+
+@enduml

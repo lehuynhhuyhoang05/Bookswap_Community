@@ -1,0 +1,78 @@
+@startuml SD_07_CompleteExchange
+' ============================================================
+' SEQUENCE DIAGRAM - HOÀN THÀNH TRAO ĐỔI
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+
+title <b>Sequence Diagram - Hoàn thành trao đổi</b>
+
+actor "Thành viên" as User
+participant "Frontend" as FE
+participant "ExchangeController" as EC
+participant "ExchangeService" as ES
+participant "BookService" as BS
+participant "TrustScoreService" as TS
+participant "NotificationService" as NS
+database "MySQL" as DB
+
+User -> FE : Click "Xác nhận hoàn thành"
+FE -> EC : POST /exchanges/{id}/confirm
+activate EC
+
+EC -> ES : confirmComplete(exchangeId, memberId)
+activate ES
+
+ES -> DB : SELECT * FROM exchanges
+DB --> ES : exchange
+
+alt Đã xác nhận trước đó
+    ES --> EC : throw BadRequestException
+    EC --> FE : 400 Bad Request
+    FE --> User : "Bạn đã xác nhận rồi"
+else Chưa xác nhận
+    ES -> DB : UPDATE exchanges SET member_confirmed
+    DB --> ES : success
+    
+    ES -> DB : Kiểm tra cả 2 đã xác nhận?
+    
+    alt Cả 2 đã xác nhận
+        ES -> DB : UPDATE exchanges SET status = 'COMPLETED'
+        DB --> ES : success
+        
+        ES -> BS : transferOwnership(books)
+        activate BS
+        BS -> DB : UPDATE books SET owner_id, status
+        DB --> BS : success
+        BS --> ES : success
+        deactivate BS
+        
+        ES -> TS : updateTrustScores(memberA, memberB)
+        activate TS
+        TS -> DB : UPDATE members SET trust_score
+        DB --> TS : success
+        TS --> ES : success
+        deactivate TS
+        
+        ES -> NS : notifyBoth('EXCHANGE_COMPLETED')
+        activate NS
+        NS --> ES : success
+        deactivate NS
+        
+        ES --> EC : exchange (COMPLETED)
+    else Chờ đối phương
+        ES -> NS : notify(partner, 'PARTNER_CONFIRMED')
+        ES --> EC : exchange (waiting)
+    end
+    deactivate ES
+    
+    EC --> FE : 200 OK
+    deactivate EC
+    FE --> User : "Đã xác nhận"
+end
+
+@enduml

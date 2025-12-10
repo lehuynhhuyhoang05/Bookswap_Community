@@ -1,0 +1,61 @@
+@startuml SD_01_Register
+' ============================================================
+' SEQUENCE DIAGRAM - ĐĂNG KÝ TÀI KHOẢN
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+
+title <b>Sequence Diagram - Đăng ký tài khoản</b>
+
+actor "Khách" as User
+participant "Frontend" as FE
+participant "AuthController" as AC
+participant "AuthService" as AS
+participant "UserRepository" as UR
+participant "EmailService" as ES
+database "MySQL" as DB
+
+User -> FE : Nhập thông tin đăng ký
+FE -> AC : POST /auth/register
+activate AC
+
+AC -> AS : register(dto)
+activate AS
+
+AS -> UR : findByEmail(email)
+activate UR
+UR -> DB : SELECT * FROM users
+DB --> UR : null
+UR --> AS : null
+deactivate UR
+
+alt Email đã tồn tại
+    AS --> AC : throw ConflictException
+    AC --> FE : 409 Conflict
+    FE --> User : "Email đã được sử dụng"
+else Email chưa tồn tại
+    AS -> AS : hashPassword(password)
+    AS -> UR : create(user)
+    activate UR
+    UR -> DB : INSERT INTO users
+    DB --> UR : user_id
+    UR --> AS : user
+    deactivate UR
+    
+    AS -> ES : sendVerificationEmail(email, token)
+    activate ES
+    ES --> AS : success
+    deactivate ES
+    
+    AS --> AC : user
+    deactivate AS
+    AC --> FE : 201 Created
+    deactivate AC
+    FE --> User : "Đăng ký thành công,\nkiểm tra email"
+end
+
+@enduml

@@ -1,0 +1,50 @@
+@startuml SM_03_BookState
+' ============================================================
+' STATE MACHINE - TRẠNG THÁI SÁCH
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+
+skinparam state {
+    BackgroundColor #E8F5E9
+    BorderColor #2E7D32
+    StartColor #2E7D32
+    EndColor #C62828
+}
+
+title <b>State Machine - Trạng thái Book (Personal Library)</b>
+
+[*] --> Available : Thêm sách vào tủ
+
+state Available : Sách có thể trao đổi\n---\nHiển thị trong tìm kiếm
+Available : entry / Cập nhật search index
+
+Available --> InRequest : Có request
+Available --> Reserved : Được giữ cho exchange
+Available --> Removed : Owner xóa sách
+
+state InRequest : Đang trong request\n---\nVẫn hiển thị nhưng đánh dấu
+InRequest : entry / Mark as in_request
+
+InRequest --> Available : Request rejected/cancelled
+InRequest --> Reserved : Request accepted
+
+state Reserved : Đang trong exchange\n---\nKhông thể trao đổi khác
+Reserved : entry / Lock book
+
+Reserved --> Exchanged : Exchange completed
+Reserved --> Available : Exchange cancelled
+
+state Exchanged : Đã trao đổi\n---\nChuyển ownership
+Exchanged : entry / Transfer to new owner
+
+state Removed : Đã xóa\n---\nKhông còn trong hệ thống
+Removed : entry / Soft delete
+
+Exchanged --> [*]
+Removed --> [*]
+
+@enduml

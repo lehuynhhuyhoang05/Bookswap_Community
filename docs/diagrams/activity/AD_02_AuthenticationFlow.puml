@@ -1,0 +1,102 @@
+@startuml AD_02_AuthenticationFlow
+' ============================================================
+' ACTIVITY DIAGRAM - QUY TRÌNH XÁC THỰC
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+
+skinparam activity {
+    BackgroundColor #E3F2FD
+    BorderColor #1565C0
+    DiamondBackgroundColor #BBDEFB
+    DiamondBorderColor #1565C0
+}
+
+title <b>Activity Diagram - Quy trình Xác thực</b>
+
+|Người dùng|
+start
+
+:Truy cập trang đăng ký;
+
+:Nhập email, mật khẩu, họ tên;
+
+:Gửi form đăng ký;
+
+|Hệ thống|
+:Validate dữ liệu;
+
+if (Dữ liệu hợp lệ?) then (Có)
+    :Kiểm tra email tồn tại;
+    
+    if (Email đã tồn tại?) then (Có)
+        :Trả về lỗi "Email đã được sử dụng";
+        
+        |Người dùng|
+        :Nhập email khác;
+        
+        note right: Quay lại nhập form
+    else (Không)
+        :Hash mật khẩu;
+        
+        :Tạo tài khoản (chưa xác thực);
+        
+        :Tạo token xác thực;
+        
+        :Gửi email xác thực;
+        
+        |Người dùng|
+        :Nhận email xác thực;
+        
+        :Click link xác thực;
+        
+        |Hệ thống|
+        :Validate token;
+        
+        if (Token hợp lệ?) then (Có)
+            :Kích hoạt tài khoản;
+            
+            |Người dùng|
+            :Chuyển đến trang đăng nhập;
+            
+            :Nhập email và mật khẩu;
+            
+            |Hệ thống|
+            :Xác thực credentials;
+            
+            if (Đăng nhập thành công?) then (Có)
+                :Tạo JWT token;
+                
+                :Cập nhật last_login;
+                
+                |Người dùng|
+                :Truy cập hệ thống;
+                
+                stop
+            else (Không)
+                :Trả về lỗi đăng nhập;
+                
+                stop
+            endif
+        else (Không)
+            :Trả về lỗi "Token hết hạn";
+            
+            |Người dùng|
+            :Yêu cầu gửi lại email;
+            
+            note right: Quay lại gửi email
+        endif
+    endif
+else (Không)
+    :Trả về lỗi validation;
+    
+    |Người dùng|
+    :Sửa thông tin;
+    
+    note right: Quay lại nhập form
+endif
+
+@enduml

@@ -1,0 +1,48 @@
+@startuml SM_02_ExchangeRequestState
+' ============================================================
+' STATE MACHINE - TRẠNG THÁI EXCHANGE REQUEST
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+
+skinparam state {
+    BackgroundColor #FFF3E0
+    BorderColor #EF6C00
+    StartColor #2E7D32
+    EndColor #C62828
+}
+
+title <b>State Machine - Trạng thái Exchange Request</b>
+
+[*] --> Pending : Tạo request mới
+
+state Pending : Chờ phản hồi\n---\nRecipient chưa xử lý
+Pending : entry / Gửi notification
+
+Pending --> Accepted : Recipient chấp nhận
+Pending --> Rejected : Recipient từ chối
+Pending --> Cancelled : Initiator hủy bỏ
+Pending --> Expired : Hết thời hạn (14 ngày)
+
+state Accepted : Request được chấp nhận\n---\nTạo Exchange entity
+Accepted : entry / Tạo Exchange
+Accepted : entry / Gửi notification
+
+state Rejected : Request bị từ chối\n---\nKết thúc quy trình
+Rejected : entry / Gửi notification
+
+state Cancelled : Request bị hủy\n---\nInitiator tự hủy
+Cancelled : entry / Ghi log
+
+state Expired : Request hết hạn\n---\nTự động hết hạn
+Expired : entry / Scheduler job
+
+Accepted --> [*]
+Rejected --> [*]
+Cancelled --> [*]
+Expired --> [*]
+
+@enduml

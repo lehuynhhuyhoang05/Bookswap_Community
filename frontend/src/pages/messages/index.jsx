@@ -141,28 +141,28 @@ const MessagesPage = () => {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
         <div className="container mx-auto max-w-7xl h-screen flex flex-col">
-          {/* Page Header */}
-          <div className="bg-white border-b border-gray-200 px-4 py-4">
+          {/* Page Header - Modern Gradient Design */}
+          <div className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 px-6 py-5 shadow-sm">
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-500 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30 transform hover:scale-105 transition-transform">
                   <MessageCircle className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Tin nhắn</h1>
-                  <p className="text-sm text-gray-500">{conversations.length} cuộc trò chuyện</p>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Tin nhắn</h1>
+                  <p className="text-sm text-gray-600 font-medium">{conversations.length} cuộc trò chuyện</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-full ${
-                  isConnected ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+              <div className="flex items-center space-x-3">
+                <div className={`flex items-center space-x-2 px-4 py-2 rounded-full shadow-sm ${
+                  isConnected ? 'bg-green-50 text-green-700 ring-1 ring-green-200' : 'bg-red-50 text-red-700 ring-1 ring-red-200'
                 }`}>
-                  <div className={`w-2 h-2 rounded-full ${
-                    isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+                  <div className={`w-2.5 h-2.5 rounded-full ${
+                    isConnected ? 'bg-green-500 animate-pulse shadow-sm shadow-green-500/50' : 'bg-red-500'
                   }`} />
-                  <span className="text-xs font-medium">
+                  <span className="text-xs font-semibold">
                     {isConnected ? 'Đang kết nối' : 'Mất kết nối'}
                   </span>
                 </div>
@@ -170,38 +170,38 @@ const MessagesPage = () => {
             </div>
           </div>
 
-          {/* Main Content */}
-          <div className="flex-1 flex overflow-hidden bg-white">
-            {/* Conversation List Sidebar */}
+          {/* Main Content - Modern Card Layout */}
+          <div className="flex-1 flex overflow-hidden mt-4 mx-4 mb-4 rounded-2xl bg-white shadow-xl">
+            {/* Conversation List Sidebar - Enhanced Design */}
             <div className={`${
               selectedConversation ? 'hidden' : 'flex'
-            } md:flex w-full md:w-80 lg:w-96 border-r border-gray-200 bg-white flex-col`}>
-              {/* Search Bar */}
-              <div className="p-4 border-b border-gray-100">
+            } md:flex w-full md:w-80 lg:w-96 border-r border-gray-200/50 bg-gradient-to-b from-white to-gray-50/50 flex-col`}>
+              {/* Search Bar - Modern Glass Effect */}
+              <div className="p-5 border-b border-gray-200/50">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <input
                     type="text"
                     placeholder="Tìm kiếm cuộc trò chuyện..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white transition-all"
+                    className="w-full pl-12 pr-4 py-3 text-sm bg-white/80 backdrop-blur-sm border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-300 focus:bg-white shadow-sm transition-all placeholder:text-gray-400"
                   />
                 </div>
               </div>
 
-              {/* Conversations List */}
+              {/* Conversations List - Enhanced Scrollbar */}
               <div className="flex-1 overflow-hidden flex flex-col">
                 {filteredConversations.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                      <MessageCircle className="w-8 h-8 text-gray-400" />
+                    <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-3xl flex items-center justify-center mb-5 shadow-inner">
+                      <MessageCircle className="w-10 h-10 text-blue-500" />
                     </div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">
                       Chưa có cuộc trò chuyện
                     </h3>
-                    <p className="text-sm text-gray-500">
-                      Bắt đầu trò chuyện mới với bạn bè!
+                    <p className="text-sm text-gray-500 max-w-xs">
+                      Bắt đầu trò chuyện mới với bạn bè và trao đổi sách ngay!
                     </p>
                   </div>
                 ) : (
@@ -215,14 +215,14 @@ const MessagesPage = () => {
               </div>
             </div>
 
-            {/* Main Chat Area */}
+            {/* Main Chat Area - Modern Background Pattern */}
             <div className={`${
               !selectedConversation ? 'hidden md:flex' : 'flex'
-            } flex-1 flex-col bg-gray-50`}>
+            } flex-1 flex-col bg-gradient-to-br from-gray-50 via-blue-50/20 to-purple-50/20`}>
               {selectedConversation ? (
                 <>
-                  {/* Chat Header */}
-                  <div className="bg-white border-b border-gray-200 px-4 py-3">
+                  {/* Chat Header - Glass Morphism */}
+                  <div className="bg-white/90 backdrop-blur-xl border-b border-gray-200/50 px-6 py-4 shadow-sm">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3 min-w-0 flex-1">
                         {/* Back button for mobile */}
