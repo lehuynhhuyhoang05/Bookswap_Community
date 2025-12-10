@@ -28,7 +28,7 @@ export class Member {
   @Column({ type: 'text', nullable: true })
   bio: string;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, default: 50.00 })
+  @Column({ type: 'decimal', precision: 3, scale: 2, default: 0.00 })
   trust_score: number;
 
   @Column({ type: 'decimal', precision: 2, scale: 1, default: 0.0 })
@@ -36,6 +36,15 @@ export class Member {
 
   @Column({ default: false })
   is_verified: boolean;
+
+  @Column({ default: false })
+  is_online: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  last_seen_at: Date;
+
+  @Column({ type: 'json', nullable: true })
+  notification_settings: any;
 
   @Column({ type: 'timestamp', nullable: true })
   verification_date: Date;

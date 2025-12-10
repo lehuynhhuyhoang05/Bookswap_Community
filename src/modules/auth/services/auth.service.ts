@@ -13,7 +13,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
-import { v4 as uuidv4 } from 'uuid';
 
 import {
   User,
@@ -26,11 +25,14 @@ import { PasswordResetToken } from '../../../infrastructure/database/entities/pa
 import { EmailVerificationToken } from '../../../infrastructure/database/entities/email-verification-token.entity';
 import { TokenBlacklist } from '../../../infrastructure/database/entities/token-blacklist.entity';
 import { EmailService } from '../../../infrastructure/external-services/email/email.service';
+import { ActivityLogService } from '../../../common/services/activity-log.service';
+import { UserActivityAction } from '../../../infrastructure/database/entities/user-activity-log.entity';
 import {
   RegisterDto,
   LoginDto,
   ForgotPasswordDto,
   ResetPasswordDto,
+  UpdateProfileDto,
 } from '../dto/auth.dto';
 
 type JwtClaims = { sub: string; email: string; role: UserRole; memberId?: string };
@@ -59,6 +61,7 @@ export class AuthService {
   constructor(
     @InjectRepository(User) private userRepository: Repository<User>,
     @InjectRepository(Member) private memberRepository: Repository<Member>,
+    private activityLogService: ActivityLogService,
     @InjectRepository(PasswordResetToken) private resetTokenRepository: Repository<PasswordResetToken>,
     @InjectRepository(EmailVerificationToken) private emailVerifyRepo: Repository<EmailVerificationToken>,
     @InjectRepository(TokenBlacklist) private tokenBlacklistRepo: Repository<TokenBlacklist>,
@@ -220,6 +223,13 @@ export class AuthService {
     user.last_login_at = new Date();
     await this.userRepository.save(user);
 
+    // Log login activity
+    await this.activityLogService.logActivity({
+      user_id: user.user_id,
+      action: UserActivityAction.LOGIN,
+      metadata: { method: 'email' },
+    });
+
     const payload: JwtClaims = { sub: user.user_id, email: user.email, role: user.role };
     // attach memberId when available to avoid a DB lookup in JwtStrategy
     try {
@@ -353,6 +363,35 @@ export class AuthService {
       });
     }
 
+    // Calculate Trust Score restrictions
+    let trustRestrictions: {
+      score: number;
+      canCreateExchange: boolean;
+      canPostBooks: boolean;
+      canSendMessages: boolean;
+      warningLevel: string;
+      warningMessage: string | null;
+    } | null = null;
+    if (memberProfile) {
+      // Convert from DB scale (0-1) to display scale (0-100)
+      const trustScoreRaw = Number(memberProfile.trust_score) || 0;
+      const trustScore = trustScoreRaw <= 1 ? Math.round(trustScoreRaw * 100) : Math.round(trustScoreRaw);
+      trustRestrictions = {
+        score: trustScore,
+        canCreateExchange: trustScore >= 20,
+        canPostBooks: trustScore >= 20,
+        canSendMessages: trustScore > 0,
+        warningLevel: trustScore === 0 ? 'critical' : trustScore < 20 ? 'very_low' : trustScore < 40 ? 'low' : 'none',
+        warningMessage: trustScore === 0 
+          ? 'Tài khoản của bạn đã bị hạn chế hoàn toàn do điểm uy tín bằng 0.'
+          : trustScore < 20 
+            ? 'Điểm uy tín của bạn rất thấp. Bạn không thể tạo yêu cầu trao đổi hoặc đăng sách mới.'
+            : trustScore < 40
+              ? 'Điểm uy tín của bạn thấp. Hãy hoàn thành các giao dịch thành công để cải thiện.'
+              : null,
+      };
+    }
+
     return {
       user_id: user.user_id,
       email: user.email,
@@ -364,18 +403,19 @@ export class AuthService {
       last_login_at: user.last_login_at,
       account_status: user.account_status,
       member: memberProfile,
+      trust_restrictions: trustRestrictions,
     };
   }
 
   // =========================================================
-  // PATCH /auth/profile - Update user profile
+  // PATCH /auth/profile
   // =========================================================
-  async updateProfile(userId: string, updateData: any) {
-    const user = await this.userRepository.findOne({ 
+  async updateProfile(userId: string, updateData: UpdateProfileDto) {
+    const user = await this.userRepository.findOne({
       where: { user_id: userId },
-      relations: ['member']
+      relations: ['member'],
     });
-    
+
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -387,35 +427,23 @@ export class AuthService {
     if (updateData.avatar_url !== undefined) {
       user.avatar_url = updateData.avatar_url;
     }
-
     await this.userRepository.save(user);
 
-    // Update member table fields if user is a MEMBER
-    if (user.role === UserRole.MEMBER) {
-      let member = user.member;
-      
-      if (!member) {
-        // Create member profile if doesn't exist
-        member = this.memberRepository.create({
-          member_id: uuidv4(),
-          user_id: userId,
-        });
-      }
-
+    // Update member table fields if user is a MEMBER and has member profile
+    if (user.role === UserRole.MEMBER && user.member) {
       if (updateData.phone !== undefined) {
-        member.phone = updateData.phone;
+        user.member.phone = updateData.phone;
       }
       if (updateData.address !== undefined) {
-        member.address = updateData.address;
+        user.member.address = updateData.address;
       }
       if (updateData.bio !== undefined) {
-        member.bio = updateData.bio;
+        user.member.bio = updateData.bio;
       }
       if (updateData.region !== undefined) {
-        member.region = updateData.region;
+        user.member.region = updateData.region;
       }
-
-      await this.memberRepository.save(member);
+      await this.memberRepository.save(user.member);
     }
 
     // Return updated profile

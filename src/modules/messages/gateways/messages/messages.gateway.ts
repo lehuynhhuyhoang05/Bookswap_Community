@@ -70,6 +70,12 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
       client.data.userId = userId;
       this.onlineUsers.set(member.member_id, client.id);
 
+      // Update online status in DB
+      await this.memberRepo.update(
+        { member_id: member.member_id },
+        { is_online: true, last_seen_at: new Date() }
+      );
+
       // Join user's room
       client.join(`user:${member.member_id}`);
 
@@ -78,7 +84,10 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
       );
 
       // Notify user's contacts that they're online
-      client.broadcast.emit('user:online', { member_id: member.member_id });
+      client.broadcast.emit('user:online', {
+        member_id: member.member_id,
+        timestamp: new Date()
+      });
 
       // Send online users list to the connected user
       const onlineUserIds = Array.from(this.onlineUsers.keys());
@@ -92,12 +101,23 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   /**
    * Handle client disconnection
    */
-  handleDisconnect(client: Socket) {
+  async handleDisconnect(client: Socket) {
     const memberId = client.data.memberId;
 
     if (memberId) {
       this.onlineUsers.delete(memberId);
-      client.broadcast.emit('user:offline', { member_id: memberId });
+      
+      // Update online status in DB
+      await this.memberRepo.update(
+        { member_id: memberId },
+        { is_online: false, last_seen_at: new Date() }
+      );
+      
+      client.broadcast.emit('user:offline', { 
+        member_id: memberId,
+        last_seen_at: new Date()
+      });
+      
       this.logger.log(`[handleDisconnect] Client disconnected: ${client.id}, memberId=${memberId}`);
     }
   }
@@ -174,7 +194,7 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
   @SubscribeMessage('message:read')
   async handleMarkRead(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { message_ids: string[] },
+    @MessageBody() data: { message_ids: string[]; sender_id: string },
   ) {
     try {
       const memberId = client.data.memberId;
@@ -185,11 +205,31 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
 
       const result = await this.messagesService.markMessagesAsRead(memberId, data.message_ids);
 
+      // Notify sender that messages were read
+      if (data.sender_id) {
+        this.server.to(`user:${data.sender_id}`).emit('message:status', {
+          message_ids: data.message_ids,
+          status: 'read',
+          read_at: new Date()
+        });
+      }
+
       return result;
     } catch (error) {
       this.logger.error(`[handleMarkRead] Error: ${error.message}`);
       return { error: error.message };
     }
+  }
+
+  /**
+   * Emit message delivered event
+   */
+  emitMessageDelivered(receiverId: string, messageId: string, senderId: string) {
+    this.server.to(`user:${senderId}`).emit('message:status', {
+      message_ids: [messageId],
+      status: 'delivered',
+      delivered_at: new Date()
+    });
   }
 
   /**
@@ -204,5 +244,13 @@ export class MessagesGateway implements OnGatewayConnection, OnGatewayDisconnect
    */
   getOnlineUsersCount(): number {
     return this.onlineUsers.size;
+  }
+
+  /**
+   * Emit new message to receiver (called from HTTP controller)
+   */
+  emitNewMessage(receiverId: string, messageData: any) {
+    this.logger.log(`[emitNewMessage] Emitting to user:${receiverId}`);
+    this.server.to(`user:${receiverId}`).emit('message:new', messageData);
   }
 }

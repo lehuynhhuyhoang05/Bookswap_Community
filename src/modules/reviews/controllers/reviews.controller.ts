@@ -58,6 +58,19 @@ export class ReviewsController {
     return this.reviewsService.findByMember(memberId, page, pageSize);
   }
 
+  @Get('reviewer/:reviewerId')
+  @ApiOperation({ summary: "Get reviews written by a member (paginated)" })
+  @ApiParam({ name: 'reviewerId', description: 'Reviewer Member ID', required: true })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'pageSize', required: false, example: 10 })
+  async byReviewer(
+    @Param('reviewerId', new ParseUUIDPipe()) reviewerId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('pageSize', new DefaultValuePipe(10), ParseIntPipe) pageSize: number,
+  ) {
+    return this.reviewsService.findByReviewer(reviewerId, page, pageSize);
+  }
+
   @Get('member/:memberId/stats')
   @ApiOperation({ summary: "Get review stats for a member" })
   @ApiParam({ name: 'memberId', description: 'Member ID', required: true })

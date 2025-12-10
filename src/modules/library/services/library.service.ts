@@ -148,7 +148,7 @@ export class LibraryService {
       }
     }
 
-    // Create wanted book
+    // Create wanted book with all new fields
     const wantedBook = this.wantedRepo.create({
       library_id: library.library_id,
       title: dto.title,
@@ -156,7 +156,10 @@ export class LibraryService {
       isbn: dto.isbn,
       google_books_id: dto.google_books_id,
       category: dto.category,
-      priority: dto.priority ?? 0,
+      cover_image_url: dto.cover_image_url,
+      preferred_condition: dto.preferred_condition,
+      language: dto.language,
+      priority: dto.priority ?? 5,
       notes: dto.notes,
     });
 

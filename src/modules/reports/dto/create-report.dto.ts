@@ -3,7 +3,7 @@
 // DTOs cho User Report Module
 // ============================================================
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsEnum, IsUUID, IsOptional, MinLength } from 'class-validator';
+import { IsString, IsEnum, IsUUID, IsOptional, MinLength, IsArray } from 'class-validator';
 
 // Các loại report (khớp với DB schema VARCHAR)
 export enum ReportTypeEnum {
@@ -13,6 +13,13 @@ export enum ReportTypeEnum {
   FRAUD = 'FRAUD',
   FAKE_PROFILE = 'FAKE_PROFILE',
   OTHER = 'OTHER',
+}
+
+// Mức độ nghiêm trọng
+export enum ReportSeverityEnum {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
 }
 
 // DTO tạo report từ member
@@ -55,6 +62,24 @@ export class CreateReportDto {
   @IsString()
   @MinLength(10, { message: 'Mô tả phải có ít nhất 10 ký tự' })
   description: string;
+
+  @ApiPropertyOptional({ 
+    example: 'MEDIUM', 
+    enum: ReportSeverityEnum,
+    description: 'Mức độ nghiêm trọng của vi phạm (LOW, MEDIUM, HIGH)' 
+  })
+  @IsOptional()
+  @IsEnum(ReportSeverityEnum)
+  severity?: ReportSeverityEnum;
+
+  @ApiPropertyOptional({ 
+    example: ['https://example.com/evidence1.jpg', 'https://example.com/evidence2.png'],
+    description: 'Danh sách URLs của bằng chứng (ảnh, tài liệu)' 
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  evidence_urls?: string[];
 }
 
 // Response DTO khi tạo report thành công

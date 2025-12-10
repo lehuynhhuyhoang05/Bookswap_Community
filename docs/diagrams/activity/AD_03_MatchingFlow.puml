@@ -1,0 +1,87 @@
+@startuml AD_03_MatchingFlow
+' ============================================================
+' ACTIVITY DIAGRAM - GỢI Ý MATCHING
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+
+skinparam activity {
+    BackgroundColor #E8F5E9
+    BorderColor #2E7D32
+    DiamondBackgroundColor #C8E6C9
+    DiamondBorderColor #2E7D32
+}
+
+title <b>Activity Diagram - Gợi ý Matching</b>
+
+|Member|
+start
+
+:Xem danh sách sách muốn đổi;
+
+:Chọn xem gợi ý matching;
+
+|Hệ thống|
+:Lấy danh sách books_wanted của member;
+
+if (Có sách muốn?) then (Có)
+    :Lấy danh sách sách đang có của member;
+    
+    :Tìm các member khác có sách member muốn;
+    
+    :Lọc các member muốn sách member đang có;
+    
+    if (Có kết quả matching?) then (Có)
+        :Tính toán độ phù hợp;
+        
+        fork
+            :Đánh giá theo thể loại sách;
+        fork again
+            :Đánh giá theo tình trạng sách;
+        fork again
+            :Đánh giá theo trust score;
+        fork again
+            :Đánh giá theo khoảng cách;
+        end fork
+        
+        :Tổng hợp điểm matching;
+        
+        :Sắp xếp theo điểm phù hợp;
+        
+        |Member|
+        :Xem danh sách gợi ý;
+        
+        :Chọn gợi ý phù hợp;
+        
+        if (Muốn tạo request?) then (Có)
+            :Chuyển đến tạo Exchange Request;
+            
+            note right: Quy trình Exchange Request
+            
+            stop
+        else (Không)
+            :Tiếp tục xem gợi ý khác;
+            
+            stop
+        endif
+    else (Không)
+        |Member|
+        :Hiển thị "Chưa có gợi ý phù hợp";
+        
+        :Gợi ý thêm sách vào tủ;
+        
+        stop
+    endif
+else (Không)
+    |Member|
+    :Hiển thị "Vui lòng thêm sách muốn đổi";
+    
+    :Chuyển đến trang Books Wanted;
+    
+    stop
+endif
+
+@enduml

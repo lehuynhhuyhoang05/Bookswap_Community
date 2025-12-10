@@ -31,6 +31,7 @@ import { ReportsModule } from './modules/reports/reports.module';
         database: config.get<string>('DB_DATABASE', 'bookswap_db'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         synchronize: false,
+        charset: 'utf8mb4',
       }),
     }),
 

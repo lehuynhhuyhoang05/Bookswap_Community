@@ -17,6 +17,8 @@ import { ExchangeRequest, ExchangeRequestStatus } from '../../../infrastructure/
 import { SendMessageDto } from '../dto/send-message.dto';
 import { SearchMessagesDto } from '../dto/search-messages.dto';
 import { AddReactionDto } from '../dto/reaction.dto';
+import { ActivityLogService } from '../../../common/services/activity-log.service';
+import { UserActivityAction } from '../../../infrastructure/database/entities/user-activity-log.entity';
 
 @Injectable()
 export class MessagesService {
@@ -37,6 +39,8 @@ export class MessagesService {
 
     @InjectRepository(ExchangeRequest)
     private requestRepo: Repository<ExchangeRequest>,
+
+    private activityLogService: ActivityLogService,
   ) {}
 
   /**
@@ -55,13 +59,23 @@ export class MessagesService {
         { member_a_id: member.member_id },
         { member_b_id: member.member_id },
       ],
-      relations: ['member_a', 'member_a.user', 'member_b', 'member_b.user', 'exchange_request'],
+      relations: [
+        'member_a', 
+        'member_a.user', 
+        'member_b', 
+        'member_b.user', 
+        'exchange_request',
+        'exchange_request.requester',
+        'exchange_request.requester.user',
+        'exchange_request.receiver',
+        'exchange_request.receiver.user'
+      ],
       order: { last_message_at: 'DESC', created_at: 'DESC' },
       skip,
       take: limit,
     });
 
-    // Get unread count for each conversation
+    // Get unread count and last message for each conversation
     const conversationsWithUnread = await Promise.all(
       conversations.map(async (conv) => {
         const unreadCount = await this.messageRepo.count({
@@ -73,12 +87,37 @@ export class MessagesService {
           },
         });
 
+        // Get the last message for this conversation
+        const lastMessage = await this.messageRepo.findOne({
+          where: {
+            conversation_id: conv.conversation_id,
+            deleted_at: undefined,
+          },
+          order: { sent_at: 'DESC' },
+          relations: ['sender', 'sender.user'],
+        });
+
         const otherMember =
           conv.member_a_id === member.member_id ? conv.member_b : conv.member_a;
 
         return {
           conversation_id: conv.conversation_id,
           exchange_request_id: conv.exchange_request_id,
+          exchange_request: conv.exchange_request ? {
+            request_id: conv.exchange_request.request_id,
+            status: conv.exchange_request.status,
+            message: conv.exchange_request.message,
+            created_at: conv.exchange_request.created_at,
+            responded_at: conv.exchange_request.responded_at,
+            requester: conv.exchange_request.requester ? {
+              member_id: conv.exchange_request.requester.member_id,
+              full_name: conv.exchange_request.requester.user?.full_name,
+            } : null,
+            receiver: conv.exchange_request.receiver ? {
+              member_id: conv.exchange_request.receiver.member_id,
+              full_name: conv.exchange_request.receiver.user?.full_name,
+            } : null,
+          } : null,
           other_member: {
             member_id: otherMember.member_id,
             full_name: otherMember.user.full_name,
@@ -86,7 +125,17 @@ export class MessagesService {
             region: otherMember.region,
             trust_score: parseFloat(otherMember.trust_score.toString()),
             is_verified: otherMember.is_verified,
+            is_online: otherMember.is_online || false,
+            last_seen_at: otherMember.last_seen_at,
           },
+          last_message: lastMessage ? {
+            message_id: lastMessage.message_id,
+            content: lastMessage.content,
+            sent_at: lastMessage.sent_at,
+            is_read: lastMessage.is_read,
+            sender_name: lastMessage.sender?.user?.full_name,
+            is_mine: lastMessage.sender_id === member.member_id,
+          } : null,
           total_messages: conv.total_messages,
           unread_count: unreadCount,
           last_message_at: conv.last_message_at,
@@ -107,6 +156,93 @@ export class MessagesService {
   }
 
   /**
+   * Create or get existing direct conversation between 2 users
+   */
+  async createDirectConversation(currentUserId: string, receiverUserId: string) {
+    this.logger.log(`[createDirectConversation] current=${currentUserId}, receiver=${receiverUserId}`);
+
+    // Validate not chatting with yourself
+    if (currentUserId === receiverUserId) {
+      throw new BadRequestException('Cannot create conversation with yourself');
+    }
+
+    // Get current user's member profile
+    const currentMember = await this.memberRepo.findOne({
+      where: { user_id: currentUserId },
+      relations: ['user'],
+    });
+    if (!currentMember) throw new NotFoundException('Your member profile not found');
+
+    // Get receiver's member profile
+    const receiverMember = await this.memberRepo.findOne({
+      where: { user_id: receiverUserId },
+      relations: ['user'],
+    });
+    if (!receiverMember) throw new NotFoundException('Receiver user not found');
+
+    // Check if conversation already exists (bidirectional)
+    const existingConversation = await this.conversationRepo
+      .createQueryBuilder('conv')
+      .where(
+        '(conv.member_a_id = :currentId AND conv.member_b_id = :receiverId) OR (conv.member_a_id = :receiverId AND conv.member_b_id = :currentId)',
+        { currentId: currentMember.member_id, receiverId: receiverMember.member_id }
+      )
+      .andWhere('conv.exchange_request_id IS NULL') // Only direct conversations
+      .leftJoinAndSelect('conv.member_a', 'member_a')
+      .leftJoinAndSelect('conv.member_b', 'member_b')
+      .leftJoinAndSelect('member_a.user', 'user_a')
+      .leftJoinAndSelect('member_b.user', 'user_b')
+      .getOne();
+
+    if (existingConversation) {
+      this.logger.log(`[createDirectConversation] Found existing conversation: ${existingConversation.conversation_id}`);
+      
+      const otherMember =
+        existingConversation.member_a_id === currentMember.member_id
+          ? existingConversation.member_b
+          : existingConversation.member_a;
+
+      return {
+        conversation_id: existingConversation.conversation_id,
+        is_new: false,
+        other_member: {
+          member_id: otherMember.member_id,
+          user_id: otherMember.user.user_id,
+          full_name: otherMember.user.full_name,
+          avatar_url: otherMember.user.avatar_url,
+          region: otherMember.region,
+          trust_score: parseFloat(otherMember.trust_score.toString()),
+        },
+      };
+    }
+
+    // Create new direct conversation
+    const newConversation = this.conversationRepo.create({
+      conversation_id: uuidv4(),
+      member_a_id: currentMember.member_id,
+      member_b_id: receiverMember.member_id,
+      exchange_request_id: null, // Direct conversation (no exchange request)
+    });
+
+    const savedConversation = await this.conversationRepo.save(newConversation) as Conversation;
+
+    this.logger.log(`[createDirectConversation] Created new conversation: ${savedConversation.conversation_id}`);
+
+    return {
+      conversation_id: savedConversation.conversation_id,
+      is_new: true,
+      other_member: {
+        member_id: receiverMember.member_id,
+        user_id: receiverMember.user.user_id,
+        full_name: receiverMember.user.full_name,
+        avatar_url: receiverMember.user.avatar_url,
+        region: receiverMember.region,
+        trust_score: parseFloat(receiverMember.trust_score.toString()),
+      },
+    };
+  }
+
+  /**
    * Get messages in a conversation
    */
   async getMessages(
@@ -120,10 +256,15 @@ export class MessagesService {
     const member = await this.memberRepo.findOne({ where: { user_id: userId } });
     if (!member) throw new NotFoundException('Member profile not found');
 
-    const conversation = await this.conversationRepo.findOne({
-      where: { conversation_id: conversationId },
-      relations: ['member_a', 'member_a.user', 'member_b', 'member_b.user'],
-    });
+    // Use query builder to avoid collation issues
+    const conversation = await this.conversationRepo
+      .createQueryBuilder('conv')
+      .leftJoinAndSelect('conv.member_a', 'member_a')
+      .leftJoinAndSelect('member_a.user', 'member_a_user')
+      .leftJoinAndSelect('conv.member_b', 'member_b')
+      .leftJoinAndSelect('member_b.user', 'member_b_user')
+      .where('conv.conversation_id = :conversationId COLLATE utf8mb4_unicode_ci', { conversationId })
+      .getOne();
 
     if (!conversation) {
       throw new NotFoundException('Conversation not found');
@@ -139,16 +280,22 @@ export class MessagesService {
 
     const skip = (page - 1) * limit;
 
-    const [messages, total] = await this.messageRepo.findAndCount({
-      where: { 
-        conversation_id: conversationId,
-        deleted_at: undefined, // Exclude deleted messages
-      },
-      relations: ['sender', 'sender.user', 'receiver', 'receiver.user', 'reactions', 'reactions.member'],
-      order: { sent_at: 'DESC' },
-      skip,
-      take: limit,
-    });
+    // Use query builder to handle collation issues
+    const queryBuilder = this.messageRepo
+      .createQueryBuilder('msg')
+      .leftJoinAndSelect('msg.sender', 'sender')
+      .leftJoinAndSelect('sender.user', 'sender_user')
+      .leftJoinAndSelect('msg.receiver', 'receiver')
+      .leftJoinAndSelect('receiver.user', 'receiver_user')
+      .leftJoinAndSelect('msg.reactions', 'reactions')
+      .leftJoinAndSelect('reactions.member', 'reaction_member')
+      .where('msg.conversation_id = :conversationId COLLATE utf8mb4_unicode_ci', { conversationId })
+      .andWhere('msg.deleted_at IS NULL')
+      .orderBy('msg.sent_at', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    const [messages, total] = await queryBuilder.getManyAndCount();
 
     // Auto-mark messages as read
     const unreadMessageIds = messages
@@ -172,6 +319,8 @@ export class MessagesService {
           full_name: otherMember.user.full_name,
           avatar_url: otherMember.user.avatar_url,
           region: otherMember.region,
+          is_online: otherMember.is_online || false,
+          last_seen_at: otherMember.last_seen_at,
         },
       },
       messages: messages.reverse().map((msg) => this.formatMessage(msg, member.member_id)),
@@ -276,67 +425,9 @@ export class MessagesService {
 
         conversation = savedConversation;
       }
-    }
-    // Case 3: Create new direct conversation with receiver_member_id
-    else if (dto.receiver_member_id) {
-      // Check if sender is trying to message themselves
-      if (dto.receiver_member_id === member.member_id) {
-        throw new BadRequestException('Cannot send message to yourself');
-      }
-
-      // Check if receiver exists
-      const receiver = await this.memberRepo.findOne({
-        where: { member_id: dto.receiver_member_id },
-        relations: ['user'],
-      });
-
-      if (!receiver) {
-        throw new NotFoundException('Receiver member not found');
-      }
-
-      // Check if conversation already exists between these two members
-      const existingConversation = await this.conversationRepo
-        .createQueryBuilder('conv')
-        .where(
-          '((conv.member_a_id = :senderId AND conv.member_b_id = :receiverId) OR ' +
-          '(conv.member_a_id = :receiverId AND conv.member_b_id = :senderId)) AND ' +
-          'conv.exchange_request_id IS NULL',
-          { senderId: member.member_id, receiverId: dto.receiver_member_id }
-        )
-        .leftJoinAndSelect('conv.member_a', 'member_a')
-        .leftJoinAndSelect('member_a.user', 'user_a')
-        .leftJoinAndSelect('conv.member_b', 'member_b')
-        .leftJoinAndSelect('member_b.user', 'user_b')
-        .getOne();
-
-      if (existingConversation) {
-        conversation = existingConversation;
-      } else {
-        // Create new direct conversation (no exchange_request_id)
-        const newConversation = this.conversationRepo.create({
-          conversation_id: uuidv4(),
-          member_a_id: member.member_id,
-          member_b_id: dto.receiver_member_id,
-          exchange_request_id: null, // Direct conversation
-        });
-
-        conversation = await this.conversationRepo.save(newConversation);
-
-        // Load relations for response
-        const savedConversation = await this.conversationRepo.findOne({
-          where: { conversation_id: conversation.conversation_id },
-          relations: ['member_a', 'member_a.user', 'member_b', 'member_b.user'],
-        });
-
-        if (!savedConversation) {
-          throw new NotFoundException('Failed to load saved conversation');
-        }
-
-        conversation = savedConversation;
-      }
     } else {
       throw new BadRequestException(
-        'Must provide either conversation_id, exchange_request_id, or receiver_member_id'
+        'Must provide either conversation_id or exchange_request_id'
       );
     }
 
@@ -358,15 +449,36 @@ export class MessagesService {
       sender_id: member.member_id,
       receiver_id: receiverId,
       content: dto.content,
+      attachment_url: dto.attachment_url,
+      attachment_type: dto.attachment_type,
+      attachment_name: dto.attachment_name,
+      attachment_size: dto.attachment_size,
       sent_at: new Date(),
+      status: 'sent', // Initial status
     });
 
     await this.messageRepo.save(message);
+
+    // Check if receiver is online - if yes, mark as delivered
+    if (receiver.is_online) {
+      message.status = 'delivered';
+      message.delivered_at = new Date();
+      await this.messageRepo.save(message);
+    }
 
     // Update conversation
     conversation.total_messages += 1;
     conversation.last_message_at = new Date();
     await this.conversationRepo.save(conversation);
+
+    // Log activity
+    await this.activityLogService.logActivity({
+      user_id: userId,
+      action: UserActivityAction.SEND_MESSAGE,
+      entity_type: 'MESSAGE',
+      entity_id: message.message_id,
+      metadata: { conversation_id: conversation.conversation_id },
+    });
 
     return {
       message: {
@@ -383,8 +495,15 @@ export class MessagesService {
           avatar_url: receiver.user.avatar_url,
         },
         content: message.content,
+        attachment_url: message.attachment_url,
+        attachment_type: message.attachment_type,
+        attachment_name: message.attachment_name,
+        attachment_size: message.attachment_size,
         is_read: message.is_read,
+        status: message.status,
         sent_at: message.sent_at,
+        delivered_at: message.delivered_at,
+        read_at: message.read_at,
         reactions: [],
       },
       conversation_id: conversation.conversation_id,
@@ -406,6 +525,7 @@ export class MessagesService {
       {
         is_read: true,
         read_at: new Date(),
+        status: 'read',
       }
     );
 
@@ -498,17 +618,23 @@ export class MessagesService {
 
     const skip = (query.page! - 1) * query.limit!;
 
-    const [messages, total] = await this.messageRepo.findAndCount({
-      where: {
-        conversation_id: query.conversation_id,
-        content: Like(`%${query.q}%`),
-        deleted_at: undefined, // Only include non-deleted messages
-      },
-      relations: ['sender', 'sender.user', 'receiver', 'receiver.user', 'reactions', 'reactions.member'],
-      order: { sent_at: 'DESC' },
-      skip,
-      take: query.limit!,
-    });
+    // Use query builder to handle collation issues
+    const queryBuilder = this.messageRepo
+      .createQueryBuilder('msg')
+      .leftJoinAndSelect('msg.sender', 'sender')
+      .leftJoinAndSelect('sender.user', 'sender_user')
+      .leftJoinAndSelect('msg.receiver', 'receiver')
+      .leftJoinAndSelect('receiver.user', 'receiver_user')
+      .leftJoinAndSelect('msg.reactions', 'reactions')
+      .leftJoinAndSelect('reactions.member', 'reaction_member')
+      .where('msg.conversation_id = :conversationId COLLATE utf8mb4_unicode_ci', { conversationId: query.conversation_id })
+      .andWhere('msg.content LIKE :searchTerm COLLATE utf8mb4_unicode_ci', { searchTerm: `%${query.q}%` })
+      .andWhere('msg.deleted_at IS NULL')
+      .orderBy('msg.sent_at', 'DESC')
+      .skip(skip)
+      .take(query.limit!);
+
+    const [messages, total] = await queryBuilder.getManyAndCount();
 
     return {
       messages: messages.reverse().map((msg) => this.formatMessage(msg, member.member_id)),
@@ -716,8 +842,14 @@ export class MessagesService {
         avatar_url: msg.receiver.user.avatar_url,
       },
       content: msg.content,
+      attachment_url: msg.attachment_url,
+      attachment_type: msg.attachment_type,
+      attachment_name: msg.attachment_name,
+      attachment_size: msg.attachment_size,
       is_read: msg.is_read,
       read_at: msg.read_at,
+      status: msg.status,
+      delivered_at: msg.delivered_at,
       sent_at: msg.sent_at,
       is_mine: msg.sender_id === currentMemberId,
       deleted_at: msg.deleted_at,

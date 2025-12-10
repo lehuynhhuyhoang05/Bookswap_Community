@@ -74,57 +74,6 @@ export class RefreshTokenDto {
   refresh_token: string;
 }
 
-export class UpdateProfileDto {
-  @ApiPropertyOptional({ 
-    example: 'John Doe Updated', 
-    description: 'Full name'
-  })
-  @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  full_name?: string;
-
-  @ApiPropertyOptional({ 
-    example: 'https://example.com/avatar.jpg', 
-    description: 'Avatar URL'
-  })
-  @IsOptional()
-  @IsString()
-  avatar_url?: string;
-
-  @ApiPropertyOptional({ 
-    example: '0901234567', 
-    description: 'Phone number'
-  })
-  @IsOptional()
-  @IsString()
-  phone?: string;
-
-  @ApiPropertyOptional({ 
-    example: '123 Nguyen Hue, District 1, Ho Chi Minh City', 
-    description: 'Address'
-  })
-  @IsOptional()
-  @IsString()
-  address?: string;
-
-  @ApiPropertyOptional({ 
-    example: 'I love reading books!', 
-    description: 'Bio/description'
-  })
-  @IsOptional()
-  @IsString()
-  bio?: string;
-
-  @ApiPropertyOptional({ 
-    example: 'Ho Chi Minh', 
-    description: 'Region/city'
-  })
-  @IsOptional()
-  @IsString()
-  region?: string;
-}
-
 export class UserProfileResponseDto {
   @ApiProperty({ example: 'user-uuid-123' })
   user_id: string;
@@ -166,4 +115,54 @@ export class UserProfileResponseDto {
     total_exchanges: number;
     completed_exchanges: number;
   };
+}
+
+export class UpdateProfileDto {
+  @ApiPropertyOptional({ 
+    example: 'John Doe Updated', 
+    description: 'Full name'
+  })
+  @IsOptional()
+  @IsString()
+  full_name?: string;
+
+  @ApiPropertyOptional({ 
+    example: 'https://example.com/avatar.jpg', 
+    description: 'Avatar URL'
+  })
+  @IsOptional()
+  @IsString()
+  avatar_url?: string;
+
+  @ApiPropertyOptional({ 
+    example: '0901234567', 
+    description: 'Phone number'
+  })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional({ 
+    example: '123 Nguyen Hue, District 1, Ho Chi Minh City', 
+    description: 'Address'
+  })
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional({ 
+    example: 'I love reading books!', 
+    description: 'Bio/description'
+  })
+  @IsOptional()
+  @IsString()
+  bio?: string;
+
+  @ApiPropertyOptional({ 
+    example: 'Ho Chi Minh', 
+    description: 'Region/city'
+  })
+  @IsOptional()
+  @IsString()
+  region?: string;
 }

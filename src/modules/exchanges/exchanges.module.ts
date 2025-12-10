@@ -13,28 +13,28 @@ import { BookMatchPair } from '../../infrastructure/database/entities/book-match
 import { ExchangesController } from './controllers/exchanges.controller';
 import { ExchangesService } from './services/exchanges.service';
 import { MatchingService } from './services/matching.service';
-import { TrustScoreService } from '../../common/services/trust-score.service';
-import { Review } from '../../infrastructure/database/entities/review.entity';
-import { User } from '../../infrastructure/database/entities/user.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { ActivityLogService } from '../../common/services/activity-log.service';
+import { UserActivityLog } from '../../infrastructure/database/entities/user-activity-log.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Member,
       Book,
-      BookWanted,
+      BookWanted, // ← THIS WAS MISSING!
       ExchangeRequest,
       ExchangeRequestBook,
       Exchange,
       ExchangeBook,
       ExchangeSuggestion,
       BookMatchPair,
-      Review, // For TrustScoreService
-      User, // For TrustScoreService
+      UserActivityLog,
     ]),
+    NotificationsModule, // Import NotificationsModule
   ],
   controllers: [ExchangesController],
-  providers: [ExchangesService, MatchingService, TrustScoreService],
-  exports: [ExchangesService, MatchingService, TrustScoreService],
+  providers: [ExchangesService, MatchingService, ActivityLogService],
+  exports: [ExchangesService, MatchingService],
 })
 export class ExchangesModule {}

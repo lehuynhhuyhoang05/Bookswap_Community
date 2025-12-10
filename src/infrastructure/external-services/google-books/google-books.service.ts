@@ -1,6 +1,8 @@
 // src/infrastructure/external-services/google-books/google-books.service.ts
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import axios, { AxiosInstance } from 'axios';
 
 export interface GoogleBookResult {
@@ -23,17 +25,19 @@ export class GoogleBooksService {
   private readonly api: AxiosInstance;
   private readonly apiKey: string;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+  ) {
     this.apiKey = this.config.get<string>('GOOGLE_BOOKS_API_KEY') || '';
 
     this.api = axios.create({
       baseURL: 'https://www.googleapis.com/books/v1',
-      timeout: 4000,                           // ⬅ timeout cứng 4s
-      // paramsSerializer để không sai encode
+      timeout: 4000,
       paramsSerializer: { indexes: null },
     });
 
-    // Retry nhẹ khi lỗi mạng (2 lần, backoff tuyến tính)
+    // Retry on network errors
     this.api.interceptors.response.use(
       (r) => r,
       async (err) => {
@@ -50,42 +54,87 @@ export class GoogleBooksService {
   }
 
   async searchBooks(query: string, maxResults = 20): Promise<GoogleBookResult[]> {
+    const cacheKey = `gbooks:search:${query}:${maxResults}`;
+    
+    // Check cache first
+    const cached = await this.cacheManager.get<GoogleBookResult[]>(cacheKey);
+    if (cached) {
+      this.logger.debug(`Cache hit for search: ${query}`);
+      return cached;
+    }
+
     try {
       const params: any = { q: query, maxResults };
       if (this.apiKey) params.key = this.apiKey;
 
       const { data } = await this.api.get('/volumes', { params });
       if (!data?.items) return [];
-      return data.items.map((item: any) => this.format(item));
+      
+      const results = data.items.map((item: any) => this.format(item));
+      
+      // Cache for 24 hours
+      await this.cacheManager.set(cacheKey, results, 86400);
+      this.logger.debug(`Cached search results: ${query} (${results.length} books)`);
+      
+      return results;
     } catch (error: any) {
       this.logger.warn(`Google Books search failed: ${error?.message}`);
-      // lỗi mềm: trả mảng rỗng để không chặn luồng
       return [];
     }
   }
 
   async getBookById(googleBookId: string): Promise<GoogleBookResult> {
+    const cacheKey = `gbooks:id:${googleBookId}`;
+    
+    // Check cache first
+    const cached = await this.cacheManager.get<GoogleBookResult>(cacheKey);
+    if (cached) {
+      this.logger.debug(`Cache hit for book ID: ${googleBookId}`);
+      return cached;
+    }
+
     try {
       const params: any = {};
       if (this.apiKey) params.key = this.apiKey;
 
       const { data } = await this.api.get(`/volumes/${encodeURIComponent(googleBookId)}`, { params });
-      return this.format(data);
+      const result = this.format(data);
+      
+      // Cache for 24 hours
+      await this.cacheManager.set(cacheKey, result, 86400);
+      this.logger.debug(`Cached book by ID: ${googleBookId}`);
+      
+      return result;
     } catch (error: any) {
       this.logger.warn(`Fetch volume ${googleBookId} failed: ${error?.message}`);
-      // Bắn NotFound để tầng trên có thể bỏ qua enrich
       throw new NotFoundException('Book not found in Google Books');
     }
   }
 
   async searchByISBN(isbn: string): Promise<GoogleBookResult> {
+    const cacheKey = `gbooks:isbn:${isbn}`;
+    
+    // Check cache first
+    const cached = await this.cacheManager.get<GoogleBookResult>(cacheKey);
+    if (cached) {
+      this.logger.debug(`Cache hit for ISBN: ${isbn}`);
+      return cached;
+    }
+
     try {
       const params: any = { q: `isbn:${isbn}` };
       if (this.apiKey) params.key = this.apiKey;
 
       const { data } = await this.api.get('/volumes', { params });
       if (!data?.items?.length) throw new NotFoundException('Book not found by ISBN');
-      return this.format(data.items[0]);
+      
+      const result = this.format(data.items[0]);
+      
+      // Cache for 24 hours
+      await this.cacheManager.set(cacheKey, result, 86400);
+      this.logger.debug(`Cached book by ISBN: ${isbn}`);
+      
+      return result;
     } catch (error: any) {
       this.logger.warn(`ISBN search failed: ${error?.message}`);
       throw error;

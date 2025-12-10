@@ -1,0 +1,105 @@
+@startuml AD_07_ReportFlow
+' ============================================================
+' ACTIVITY DIAGRAM - QUY TRÌNH BÁO CÁO VI PHẠM
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+
+skinparam activity {
+    BackgroundColor #FFEBEE
+    BorderColor #C62828
+    DiamondBackgroundColor #FFCDD2
+    DiamondBorderColor #C62828
+}
+
+title <b>Activity Diagram - Quy trình Báo cáo Vi phạm</b>
+
+|Member|
+start
+
+:Phát hiện vi phạm;
+
+:Chọn loại báo cáo;
+note right
+    - INAPPROPRIATE_CONTENT
+    - SPAM
+    - HARASSMENT
+    - FRAUD
+    - FAKE_PROFILE
+    - OTHER
+end note
+
+:Mô tả chi tiết vi phạm;
+
+if (Có bằng chứng?) then (Có)
+    :Upload ảnh/file bằng chứng;
+endif
+
+:Chọn mức độ nghiêm trọng;
+
+:Gửi báo cáo;
+
+|Hệ thống|
+:Validate dữ liệu;
+
+:Lưu violation_report;
+
+:Tự động phân loại priority;
+
+:Gửi notification cho Admin;
+
+|Admin|
+:Nhận thông báo có report mới;
+
+:Xem chi tiết báo cáo;
+
+:Kiểm tra bằng chứng;
+
+:Xem lịch sử vi phạm của member bị report;
+
+switch (Quyết định?)
+case (Giải quyết - Có vi phạm)
+    :Ghi resolution;
+    
+    if (Vi phạm nghiêm trọng?) then (Có)
+        :Lock/Suspend member;
+        
+        :Giảm trust_score;
+    else (Không)
+        :Cảnh cáo member;
+    endif
+    
+    :Cập nhật status = RESOLVED;
+    
+    |Hệ thống|
+    :Gửi thông báo cho reporter;
+    :Gửi thông báo cho reported member;
+
+case (Bác bỏ - Không vi phạm)
+    :Ghi lý do bác bỏ;
+    
+    :Cập nhật status = DISMISSED;
+    
+    |Hệ thống|
+    :Gửi thông báo cho reporter;
+
+case (Cần thêm thông tin)
+    :Chuyển status = IN_REVIEW;
+    
+    |Hệ thống|
+    :Yêu cầu thêm thông tin từ reporter;
+    
+    |Member|
+    :Bổ sung thông tin;
+
+endswitch
+
+|Hệ thống|
+:Lưu audit_log;
+
+stop
+
+@enduml

@@ -1,0 +1,69 @@
+@startuml SD_05_AcceptExchange
+' ============================================================
+' SEQUENCE DIAGRAM - CHẤP NHẬN YÊU CẦU TRAO ĐỔI
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+
+title <b>Sequence Diagram - Chấp nhận yêu cầu trao đổi</b>
+
+actor "Thành viên" as User
+participant "Frontend" as FE
+participant "ExchangeController" as EC
+participant "ExchangeRequestService" as ERS
+participant "ExchangeService" as ES
+participant "NotificationService" as NS
+database "MySQL" as DB
+
+User -> FE : Click "Chấp nhận"
+FE -> EC : POST /exchanges/requests/{id}/accept
+activate EC
+
+EC -> ERS : acceptRequest(requestId, receiverId)
+activate ERS
+
+ERS -> DB : SELECT * FROM exchange_requests
+DB --> ERS : request
+
+alt Request không tồn tại
+    ERS --> EC : throw NotFoundException
+    EC --> FE : 404 Not Found
+    FE --> User : "Yêu cầu không tồn tại"
+else Request không thuộc receiver
+    ERS --> EC : throw ForbiddenException
+    EC --> FE : 403 Forbidden
+    FE --> User : "Không có quyền"
+else Request không ở trạng thái PENDING
+    ERS --> EC : throw BadRequestException
+    EC --> FE : 400 Bad Request
+    FE --> User : "Yêu cầu đã được xử lý"
+else Hợp lệ
+    ERS -> DB : UPDATE exchange_requests SET status = 'ACCEPTED'
+    DB --> ERS : success
+    
+    ERS -> ES : createExchange(request)
+    activate ES
+    ES -> DB : INSERT INTO exchanges
+    DB --> ES : exchange_id
+    ES -> DB : INSERT INTO exchange_books
+    DB --> ES : success
+    ES --> ERS : exchange
+    deactivate ES
+    
+    ERS -> NS : notify(requesterId, 'REQUEST_ACCEPTED')
+    activate NS
+    NS --> ERS : success
+    deactivate NS
+    
+    ERS --> EC : exchange
+    deactivate ERS
+    EC --> FE : 200 OK
+    deactivate EC
+    FE --> User : "Đã chấp nhận yêu cầu"
+end
+
+@enduml

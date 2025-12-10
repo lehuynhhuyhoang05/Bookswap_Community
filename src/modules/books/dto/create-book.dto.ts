@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsNotEmpty, MaxLength, IsInt, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsNotEmpty, MaxLength, IsInt, IsDateString, IsArray, ArrayMinSize } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { BookCondition } from '../../../infrastructure/database/entities/book.entity';
@@ -74,14 +74,33 @@ export class CreateBookDto {
   @MaxLength(500)
   cover_image_url?: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
+    description: 'URLs of photos taken by user to verify book ownership (at least 1 required)',
+    example: ['https://example.com/my-book-photo1.jpg', 'https://example.com/my-book-photo2.jpg'],
+    type: [String],
+  })
+  @IsArray({ message: 'user_photos phải là mảng các URL ảnh' })
+  @ArrayMinSize(1, { message: 'Vui lòng upload ít nhất 1 ảnh sách thật của bạn để xác minh' })
+  @IsString({ each: true, message: 'Mỗi URL ảnh phải là chuỗi' })
+  user_photos: string[];
+
+  @ApiProperty({
     enum: BookCondition,
     example: BookCondition.GOOD,
-    description: 'Book physical condition',
+    description: 'Book physical condition (LIKE_NEW, VERY_GOOD, GOOD, FAIR, POOR)',
+  })
+  @IsNotEmpty({ message: 'Vui lòng chọn tình trạng sách' })
+  @IsEnum(BookCondition, { message: 'Tình trạng sách không hợp lệ' })
+  book_condition: BookCondition;
+
+  @ApiPropertyOptional({ 
+    example: 'Sách còn mới, chưa gấp trang',
+    description: 'Notes about book condition' 
   })
   @IsOptional()
-  @IsEnum(BookCondition)
-  book_condition?: BookCondition;
+  @IsString()
+  @MaxLength(500)
+  condition_notes?: string;
 }
 
 export class UpdateBookDto {
@@ -142,6 +161,15 @@ export class UpdateBookDto {
   @IsString()
   @MaxLength(500)
   cover_image_url?: string;
+
+  @ApiPropertyOptional({
+    description: 'URLs of photos taken by user',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  user_photos?: string[];
 
   @ApiPropertyOptional({ enum: BookCondition })
   @IsOptional()

@@ -1,0 +1,61 @@
+@startuml SM_01_ExchangeState
+' ============================================================
+' STATE MACHINE - TRẠNG THÁI EXCHANGE
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+
+skinparam state {
+    BackgroundColor #FFF3E0
+    BorderColor #EF6C00
+    StartColor #2E7D32
+    EndColor #C62828
+}
+
+title <b>State Machine - Trạng thái Exchange</b>
+
+[*] --> InProgress : Request được accept
+
+state InProgress {
+    state "Đợi xác nhận" as Waiting
+    state "Initiator xác nhận" as InitiatorConfirmed
+    state "Recipient xác nhận" as RecipientConfirmed
+    
+    [*] --> Waiting
+    
+    Waiting --> InitiatorConfirmed : Initiator confirm
+    Waiting --> RecipientConfirmed : Recipient confirm
+    
+    InitiatorConfirmed --> [*] : Recipient confirm
+    RecipientConfirmed --> [*] : Initiator confirm
+}
+
+InProgress --> Completed : Cả 2 bên xác nhận
+InProgress --> Cancelled : Một bên hủy
+
+state Completed {
+    state "Cập nhật Trust Score" as UpdateScore
+    state "Tạo Review" as CreateReview
+    
+    [*] --> UpdateScore
+    UpdateScore --> CreateReview
+    CreateReview --> [*]
+}
+
+Completed --> [*]
+
+state Cancelled {
+    state "Ghi nhận lý do" as LogReason
+    state "Giảm Trust Score" as DecreaseTrust
+    
+    [*] --> LogReason
+    LogReason --> DecreaseTrust
+    DecreaseTrust --> [*]
+}
+
+Cancelled --> [*]
+
+@enduml

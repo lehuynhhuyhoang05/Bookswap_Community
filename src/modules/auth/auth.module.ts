@@ -15,11 +15,13 @@ import { PasswordResetToken } from '../../infrastructure/database/entities/passw
 import { EmailVerificationToken } from '../../infrastructure/database/entities/email-verification-token.entity';
 import { EmailService } from '../../infrastructure/external-services/email/email.service';
 import { TokenBlacklist } from 'src/infrastructure/database/entities/token-blacklist.entity';
+import { ActivityLogService } from '../../common/services/activity-log.service';
+import { UserActivityLog } from '../../infrastructure/database/entities/user-activity-log.entity';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    TypeOrmModule.forFeature([User, Member, PasswordResetToken, EmailVerificationToken,TokenBlacklist]),
+    TypeOrmModule.forFeature([User, Member, PasswordResetToken, EmailVerificationToken, TokenBlacklist, UserActivityLog]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       inject: [ConfigService],
@@ -44,7 +46,7 @@ import { TokenBlacklist } from 'src/infrastructure/database/entities/token-black
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, EmailService],
+  providers: [AuthService, JwtStrategy, EmailService, ActivityLogService],
   exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

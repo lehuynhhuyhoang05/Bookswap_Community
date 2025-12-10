@@ -102,16 +102,61 @@ export class ConfirmExchangeDto {
   confirm: boolean;
 }
 
+// ==================== SCHEDULE MEETING ====================
+export class ScheduleMeetingDto {
+  @ApiProperty({
+    description: 'Meeting location (address or landmark)',
+    example: 'Thư viện Quốc gia, 31 Tràng Thi, Hoàn Kiếm, Hà Nội',
+    maxLength: 500,
+  })
+  @IsString({ message: 'meeting_location must be a string' })
+  @IsNotEmpty({ message: 'meeting_location is required' })
+  @MaxLength(500, { message: 'meeting_location must not exceed 500 characters' })
+  meeting_location: string;
+
+  @ApiProperty({
+    description: 'Meeting date and time (ISO 8601 format)',
+    example: '2024-12-25T14:00:00Z',
+  })
+  @IsString()
+  @IsNotEmpty({ message: 'meeting_time is required' })
+  meeting_time: string;
+
+  @ApiPropertyOptional({
+    description: 'Latitude of meeting location (GPS)',
+    example: 21.0285,
+  })
+  @IsOptional()
+  meeting_latitude?: number;
+
+  @ApiPropertyOptional({
+    description: 'Longitude of meeting location (GPS)',
+    example: 105.8542,
+  })
+  @IsOptional()
+  meeting_longitude?: number;
+
+  @ApiPropertyOptional({
+    description: 'Additional notes about the meeting',
+    example: 'Mình sẽ mặc áo xanh, đứng ở cổng chính. Xin hãy mang sách trong tình trạng tốt.',
+    maxLength: 500,
+  })
+  @IsString({ message: 'meeting_notes must be a string' })
+  @IsOptional()
+  @MaxLength(500, { message: 'meeting_notes must not exceed 500 characters' })
+  meeting_notes?: string;
+}
+
 // ==================== UPDATE MEETING INFO ====================
 export class UpdateMeetingInfoDto {
   @ApiPropertyOptional({
     description: 'Meeting location',
     example: 'Central Library, District 1',
-    maxLength: 255,
+    maxLength: 500,
   })
   @IsString({ message: 'meeting_location must be a string' })
   @IsOptional()
-  @MaxLength(255, { message: 'meeting_location must not exceed 255 characters' })
+  @MaxLength(500, { message: 'meeting_location must not exceed 500 characters' })
   meeting_location?: string;
 
   @ApiPropertyOptional({
@@ -123,6 +168,20 @@ export class UpdateMeetingInfoDto {
   meeting_time?: string;
 
   @ApiPropertyOptional({
+    description: 'Latitude of meeting location (GPS)',
+    example: 21.0285,
+  })
+  @IsOptional()
+  meeting_latitude?: number;
+
+  @ApiPropertyOptional({
+    description: 'Longitude of meeting location (GPS)',
+    example: 105.8542,
+  })
+  @IsOptional()
+  meeting_longitude?: number;
+
+  @ApiPropertyOptional({
     description: 'Meeting notes',
     example: 'Please bring both books in good condition',
     maxLength: 500,
@@ -132,6 +191,16 @@ export class UpdateMeetingInfoDto {
   @MaxLength(500, { message: 'meeting_notes must not exceed 500 characters' })
   meeting_notes?: string;
 }
+
+// ==================== CONFIRM MEETING ====================
+export class ConfirmMeetingDto {
+  @ApiProperty({
+    description: 'Confirm that you agree with the scheduled meeting',
+    example: true,
+  })
+  confirm: boolean;
+}
+
 
 // ==================== CANCEL EXCHANGE ====================
 export class CancelExchangeDto {
@@ -196,7 +265,7 @@ export class QueryExchangeRequestsDto {
 export class QueryExchangesDto {
   @ApiPropertyOptional({
     description: 'Filter by status',
-    enum: ['PENDING', 'ACCEPTED', 'COMPLETED', 'CANCELLED'],
+    enum: ['PENDING', 'ACCEPTED', 'MEETING_SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
     example: 'PENDING',
   })
   @IsString()
@@ -274,11 +343,44 @@ export class ExchangeRequestResponseDto {
   responded_at?: Date;
 }
 
+// ==================== MEETING INFO DTO ====================
+export class MeetingInfoDto {
+  @ApiPropertyOptional({ example: 'Thư viện Quốc gia, 31 Tràng Thi, Hà Nội' })
+  location?: string;
+
+  @ApiPropertyOptional({ example: 21.0285 })
+  latitude?: number;
+
+  @ApiPropertyOptional({ example: 105.8542 })
+  longitude?: number;
+
+  @ApiPropertyOptional({ example: '2024-12-25T14:00:00Z' })
+  time?: Date;
+
+  @ApiPropertyOptional({ example: 'Mình sẽ mặc áo xanh' })
+  notes?: string;
+
+  @ApiPropertyOptional({ example: '2024-12-20T10:00:00Z' })
+  scheduled_at?: Date;
+
+  @ApiPropertyOptional({ example: 'member-uuid-1' })
+  scheduled_by?: string;
+
+  @ApiProperty({ example: true })
+  confirmed_by_a: boolean;
+
+  @ApiProperty({ example: false })
+  confirmed_by_b: boolean;
+
+  @ApiProperty({ example: false, description: 'True when both parties confirmed' })
+  is_confirmed: boolean;
+}
+
 export class ExchangeResponseDto {
   @ApiProperty()
   exchange_id: string;
 
-  @ApiProperty()
+  @ApiProperty({ enum: ['PENDING', 'ACCEPTED', 'MEETING_SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] })
   status: string;
 
   @ApiProperty()
@@ -308,6 +410,24 @@ export class ExchangeResponseDto {
 
   @ApiProperty()
   member_b_confirmed: boolean;
+
+  @ApiProperty({ type: MeetingInfoDto, description: 'Meeting arrangement details' })
+  meeting: MeetingInfoDto;
+
+  @ApiPropertyOptional({ description: 'Legacy field for backward compatibility' })
+  meeting_location?: string;
+
+  @ApiPropertyOptional({ description: 'Legacy field for backward compatibility' })
+  meeting_time?: Date;
+
+  @ApiPropertyOptional({ description: 'Legacy field for backward compatibility' })
+  meeting_notes?: string;
+
+  @ApiPropertyOptional()
+  cancellation_reason?: string;
+
+  @ApiPropertyOptional()
+  cancellation_details?: string;
 
   @ApiPropertyOptional()
   completed_at?: Date;

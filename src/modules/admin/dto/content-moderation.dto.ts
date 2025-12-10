@@ -4,7 +4,7 @@
 // ============================================================
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsOptional, IsInt, Min, Max, IsIn, IsBoolean } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 
 // DTO query books
 export class QueryBooksDto {
@@ -30,7 +30,7 @@ export class QueryBooksDto {
 
   @ApiPropertyOptional({ example: true, description: 'Chỉ hiện sách bị báo cáo' })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   reported?: boolean;
 
@@ -43,6 +43,27 @@ export class QueryBooksDto {
 // DTO remove book
 export class RemoveBookDto {
   @ApiProperty({ example: 'Nội dung không phù hợp', description: 'Lý do xóa sách' })
+  @IsString()
+  reason: string;
+}
+
+// DTO restore book
+export class RestoreBookDto {
+  @ApiProperty({ example: 'User appealed, restore after review', description: 'Lý do khôi phục sách' })
+  @IsString()
+  reason: string;
+}
+
+// DTO batch remove books
+export class BatchRemoveBooksDto {
+  @ApiProperty({ 
+    example: ['book-id-1', 'book-id-2'], 
+    description: 'Danh sách book IDs cần xóa (tối đa 50)' 
+  })
+  @IsString({ each: true })
+  bookIds: string[];
+
+  @ApiProperty({ example: 'Spam content from same user', description: 'Lý do xóa hàng loạt' })
   @IsString()
   reason: string;
 }

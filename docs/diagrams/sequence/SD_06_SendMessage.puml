@@ -1,0 +1,51 @@
+@startuml SD_06_SendMessage
+' ============================================================
+' SEQUENCE DIAGRAM - GỬI TIN NHẮN
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+
+title <b>Sequence Diagram - Gửi tin nhắn</b>
+
+actor "Thành viên A" as UserA
+actor "Thành viên B" as UserB
+participant "Frontend A" as FEA
+participant "Frontend B" as FEB
+participant "WebSocket\nGateway" as WS
+participant "MessageService" as MS
+participant "NotificationService" as NS
+database "MySQL" as DB
+
+UserA -> FEA : Nhập tin nhắn, gửi
+FEA -> WS : emit('send_message', data)
+activate WS
+
+WS -> MS : createMessage(senderId, dto)
+activate MS
+
+MS -> DB : INSERT INTO messages
+DB --> MS : message
+
+MS -> DB : UPDATE conversations SET last_message_at
+DB --> MS : success
+
+MS --> WS : message
+deactivate MS
+
+WS -> FEB : emit('new_message', message)
+FEB --> UserB : Hiển thị tin nhắn mới
+
+WS -> NS : notify(receiverId, 'NEW_MESSAGE')
+activate NS
+NS --> WS : success
+deactivate NS
+
+WS --> FEA : emit('message_sent', message)
+deactivate WS
+FEA --> UserA : Tin nhắn đã gửi
+
+@enduml

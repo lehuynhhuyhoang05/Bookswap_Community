@@ -1,0 +1,124 @@
+@startuml AD_04_BookManagement
+' ============================================================
+' ACTIVITY DIAGRAM - QUẢN LÝ SÁCH
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+
+skinparam activity {
+    BackgroundColor #E8F5E9
+    BorderColor #2E7D32
+    DiamondBackgroundColor #C8E6C9
+    DiamondBorderColor #2E7D32
+}
+
+title <b>Activity Diagram - Quản lý Sách</b>
+
+|Member|
+start
+
+:Truy cập Tủ sách cá nhân;
+
+switch (Chọn hành động?)
+case (Thêm sách)
+    :Nhập thông tin sách;
+    
+    if (Có ISBN?) then (Có)
+        |Hệ thống|
+        :Gọi Google Books API;
+        
+        if (Tìm thấy?) then (Có)
+            :Tự động điền thông tin;
+        else (Không)
+            |Member|
+            :Nhập thủ công;
+        endif
+    else (Không)
+        :Nhập thủ công;
+    endif
+    
+    |Member|
+    :Chọn tình trạng sách;
+    
+    :Tải ảnh sách (tùy chọn);
+    
+    :Xác nhận thêm sách;
+    
+    |Hệ thống|
+    :Validate dữ liệu;
+    
+    if (Hợp lệ?) then (Có)
+        :Lưu vào database;
+        :Cập nhật personal_library;
+        
+        |Member|
+        :Hiển thị thông báo thành công;
+    else (Không)
+        |Member|
+        :Hiển thị lỗi;
+    endif
+
+case (Sửa sách)
+    :Chọn sách cần sửa;
+    
+    |Hệ thống|
+    if (Sách đang trong exchange?) then (Có)
+        |Member|
+        :Thông báo không thể sửa;
+    else (Không)
+        |Member|
+        :Sửa thông tin;
+        :Xác nhận lưu;
+        
+        |Hệ thống|
+        :Cập nhật database;
+        
+        |Member|
+        :Hiển thị thành công;
+    endif
+
+case (Xóa sách)
+    :Chọn sách cần xóa;
+    
+    |Hệ thống|
+    if (Sách đang trong exchange?) then (Có)
+        |Member|
+        :Thông báo không thể xóa;
+    else (Không)
+        |Member|
+        :Xác nhận xóa;
+        
+        |Hệ thống|
+        :Soft delete sách;
+        :Cập nhật personal_library;
+        
+        |Member|
+        :Hiển thị thành công;
+    endif
+
+case (Thêm sách muốn)
+    :Tìm kiếm sách;
+    
+    |Hệ thống|
+    :Tìm từ Google Books;
+    
+    |Member|
+    :Chọn sách từ kết quả;
+    :Chọn tình trạng mong muốn;
+    :Đặt độ ưu tiên;
+    
+    |Hệ thống|
+    :Lưu vào books_wanted;
+    :Cập nhật matching suggestions;
+    
+    |Member|
+    :Hiển thị thành công;
+
+endswitch
+
+stop
+
+@enduml

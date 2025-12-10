@@ -1,0 +1,460 @@
+@startuml ERD_Complete
+' ============================================================
+' ENTITY RELATIONSHIP DIAGRAM - BOOKSWAP DATABASE (COMPLETE)
+' UML 2.5 Standard | Full Detail | 24 Tables
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam linetype ortho
+
+skinparam entity {
+    BackgroundColor #FFFDE7
+    BorderColor #37474F
+    BorderThickness 1.5
+}
+
+title <b>Entity Relationship Diagram</b>\nBookSwap Database - 24 Tables
+
+' ============================================================
+' USER MANAGEMENT (4 tables)
+' ============================================================
+package "User Management" #E3F2FD {
+    entity "users" {
+        *user_id : UUID <<PK>>
+        --
+        email : VARCHAR(255) <<UNIQUE>>
+        password_hash : VARCHAR(255)
+        full_name : VARCHAR(255)
+        avatar_url : VARCHAR(500)
+        role : ENUM(GUEST,MEMBER,ADMIN)
+        account_status : ENUM(ACTIVE,LOCKED,SUSPENDED,DELETED)
+        auth_provider : ENUM(LOCAL,GOOGLE)
+        google_id : VARCHAR(255)
+        is_email_verified : BOOLEAN
+        email_verified_at : TIMESTAMP
+        last_login_at : TIMESTAMP
+        lock_reason : VARCHAR(500)
+        locked_until : TIMESTAMP
+        deleted_at : TIMESTAMP
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+
+    entity "members" {
+        *member_id : UUID <<PK>>
+        --
+        user_id : UUID <<FK>> <<UNIQUE>>
+        region : VARCHAR(100)
+        phone : VARCHAR(20)
+        address : TEXT
+        bio : TEXT
+        trust_score : DECIMAL(3,2)
+        average_rating : DECIMAL(2,1)
+        is_verified : BOOLEAN
+        is_online : BOOLEAN
+        last_seen_at : TIMESTAMP
+        notification_settings : JSON
+        verification_date : TIMESTAMP
+        total_exchanges : INT
+        completed_exchanges : INT
+        cancelled_exchanges : INT
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+
+    entity "admins" {
+        *admin_id : UUID <<PK>>
+        --
+        user_id : UUID <<FK>> <<UNIQUE>>
+        admin_level : INT
+        permissions : JSON
+        admin_since : TIMESTAMP
+        created_at : TIMESTAMP
+    }
+
+    entity "trust_score_history" {
+        *change_id : UUID <<PK>>
+        --
+        member_id : UUID <<FK>>
+        old_score : DECIMAL(5,2)
+        new_score : DECIMAL(5,2)
+        change_amount : DECIMAL(5,2)
+        reason : VARCHAR(255)
+        source : ENUM(SYSTEM,ADMIN,AUTO)
+        admin_id : UUID <<FK>>
+        metadata : JSON
+        created_at : TIMESTAMP
+    }
+}
+
+' ============================================================
+' AUTHENTICATION (3 tables)
+' ============================================================
+package "Authentication" #FCE4EC {
+    entity "email_verification_tokens" {
+        *id : UUID <<PK>>
+        --
+        user_id : UUID <<FK>>
+        token : VARCHAR(128) <<UNIQUE>>
+        expires_at : TIMESTAMP
+        is_used : BOOLEAN
+        created_at : TIMESTAMP
+    }
+
+    entity "password_reset_tokens" {
+        *token_id : UUID <<PK>>
+        --
+        user_id : UUID <<FK>>
+        token : VARCHAR(255) <<UNIQUE>>
+        expires_at : TIMESTAMP
+        is_used : BOOLEAN
+        created_at : TIMESTAMP
+    }
+
+    entity "token_blacklist" {
+        *id : UUID <<PK>>
+        --
+        token : TEXT
+        user_id : VARCHAR(36)
+        expires_at : TIMESTAMP
+        created_at : TIMESTAMP
+    }
+}
+
+' ============================================================
+' BOOK MANAGEMENT (3 tables)
+' ============================================================
+package "Book Management" #E8F5E9 {
+    entity "books" {
+        *book_id : UUID <<PK>>
+        --
+        owner_id : UUID <<FK>>
+        title : VARCHAR(255)
+        author : VARCHAR(255)
+        isbn : VARCHAR(20)
+        google_books_id : VARCHAR(100)
+        publisher : VARCHAR(255)
+        publish_date : DATE
+        description : TEXT
+        category : VARCHAR(100)
+        language : VARCHAR(50)
+        page_count : INT
+        cover_image_url : VARCHAR(500)
+        user_photos : JSON
+        book_condition : ENUM(LIKE_NEW,VERY_GOOD,GOOD,FAIR,POOR)
+        status : ENUM(AVAILABLE,EXCHANGING,REMOVED)
+        views : INT
+        deleted_at : TIMESTAMP
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+
+    entity "personal_libraries" {
+        *library_id : UUID <<PK>>
+        --
+        member_id : UUID <<FK>> <<UNIQUE>>
+        total_owned_books : INT
+        total_wanted_books : INT
+        last_updated : TIMESTAMP
+        created_at : TIMESTAMP
+    }
+
+    entity "books_wanted" {
+        *wanted_id : UUID <<PK>>
+        --
+        library_id : UUID <<FK>>
+        title : VARCHAR(255)
+        author : VARCHAR(255)
+        isbn : VARCHAR(20)
+        google_books_id : VARCHAR(100)
+        category : VARCHAR(100)
+        cover_image_url : VARCHAR(500)
+        preferred_condition : ENUM(ANY,FAIR_UP,GOOD_UP,VERY_GOOD_UP,LIKE_NEW)
+        language : VARCHAR(50)
+        priority : INT
+        notes : TEXT
+        added_at : TIMESTAMP
+        created_at : TIMESTAMP
+    }
+}
+
+' ============================================================
+' EXCHANGE SYSTEM (6 tables)
+' ============================================================
+package "Exchange System" #FFF3E0 {
+    entity "exchange_requests" {
+        *request_id : UUID <<PK>>
+        --
+        requester_id : UUID <<FK>>
+        receiver_id : UUID <<FK>>
+        status : ENUM(PENDING,ACCEPTED,REJECTED,COMPLETED,CANCELLED)
+        message : TEXT
+        rejection_reason : TEXT
+        responded_at : TIMESTAMP
+        expires_at : TIMESTAMP
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+
+    entity "exchange_request_books" {
+        *exchange_request_book_id : UUID <<PK>>
+        --
+        request_id : UUID <<FK>>
+        book_id : UUID <<FK>>
+        offered_by_requester : BOOLEAN
+        book_type : ENUM(OFFERED,REQUESTED)
+        created_at : TIMESTAMP
+    }
+
+    entity "exchanges" {
+        *exchange_id : UUID <<PK>>
+        --
+        request_id : UUID <<FK>> <<UNIQUE>>
+        member_a_id : UUID <<FK>>
+        member_b_id : UUID <<FK>>
+        status : ENUM(PENDING,ACCEPTED,MEETING_SCHEDULED,IN_PROGRESS,COMPLETED,CANCELLED)
+        member_a_confirmed : BOOLEAN
+        member_b_confirmed : BOOLEAN
+        confirmed_by_a_at : TIMESTAMP
+        confirmed_by_b_at : TIMESTAMP
+        completed_at : TIMESTAMP
+        meeting_location : VARCHAR(500)
+        meeting_latitude : DECIMAL(10,7)
+        meeting_longitude : DECIMAL(10,7)
+        meeting_time : TIMESTAMP
+        meeting_notes : TEXT
+        meeting_confirmed_by_a : BOOLEAN
+        meeting_confirmed_by_b : BOOLEAN
+        meeting_scheduled_at : TIMESTAMP
+        meeting_scheduled_by : UUID
+        cancellation_reason : ENUM(USER_CANCELLED,NO_SHOW,BOTH_NO_SHOW,DISPUTE,ADMIN_CANCELLED)
+        cancellation_details : TEXT
+        cancelled_by : UUID
+        expires_at : TIMESTAMP
+        cancelled_at : TIMESTAMP
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+
+    entity "exchange_books" {
+        *exchange_book_id : UUID <<PK>>
+        --
+        exchange_id : UUID <<FK>>
+        book_id : UUID <<FK>>
+        from_member_id : UUID <<FK>>
+        to_member_id : UUID <<FK>>
+        exchange_order : INT
+        created_at : TIMESTAMP
+    }
+
+    entity "exchange_suggestions" {
+        *suggestion_id : UUID <<PK>>
+        --
+        member_a_id : UUID <<FK>>
+        member_b_id : UUID <<FK>>
+        match_score : DECIMAL(4,3)
+        total_matching_books : INT
+        is_viewed : BOOLEAN
+        viewed_at : TIMESTAMP
+        expired_at : TIMESTAMP
+        score_breakdown : JSON
+        created_at : TIMESTAMP
+    }
+
+    entity "book_match_pairs" {
+        *pair_id : UUID <<PK>>
+        --
+        suggestion_id : UUID <<FK>>
+        book_a_id : UUID <<FK>>
+        book_b_id : UUID <<FK>>
+        pair_direction : ENUM(THEY_WANT_FROM_ME,I_WANT_FROM_THEM)
+        match_reason : VARCHAR(255)
+        match_score : DECIMAL(4,3)
+        created_at : TIMESTAMP
+    }
+}
+
+' ============================================================
+' MESSAGING (3 tables)
+' ============================================================
+package "Messaging" #E1F5FE {
+    entity "conversations" {
+        *conversation_id : UUID <<PK>>
+        --
+        exchange_request_id : UUID <<FK>>
+        member_a_id : UUID <<FK>>
+        member_b_id : UUID <<FK>>
+        total_messages : INT
+        last_message_at : TIMESTAMP
+        created_at : TIMESTAMP
+    }
+
+    entity "messages" {
+        *message_id : UUID <<PK>>
+        --
+        conversation_id : UUID <<FK>>
+        sender_id : UUID <<FK>>
+        receiver_id : UUID <<FK>>
+        content : TEXT
+        is_read : BOOLEAN
+        status : ENUM(sent,delivered,read)
+        read_at : TIMESTAMP
+        delivered_at : TIMESTAMP
+        sent_at : TIMESTAMP
+        deleted_at : TIMESTAMP
+        attachment_url : VARCHAR(500)
+        attachment_type : ENUM(image,file)
+        attachment_name : VARCHAR(255)
+        attachment_size : INT
+        metadata : JSON
+        created_at : TIMESTAMP
+    }
+
+    entity "message_reactions" {
+        *reaction_id : UUID <<PK>>
+        --
+        message_id : UUID <<FK>>
+        member_id : UUID <<FK>>
+        emoji : VARCHAR(10)
+        created_at : TIMESTAMP
+    }
+}
+
+' ============================================================
+' REVIEWS & REPORTS (3 tables)
+' ============================================================
+package "Reviews & Reports" #F3E5F5 {
+    entity "reviews" {
+        *review_id : UUID <<PK>>
+        --
+        exchange_id : UUID <<FK>>
+        reviewer_id : UUID <<FK>>
+        reviewee_id : UUID <<FK>>
+        rating : INT
+        comment : TEXT
+        trust_score_impact : DECIMAL(3,2)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+
+    entity "violation_reports" {
+        *report_id : UUID <<PK>>
+        --
+        reporter_id : UUID <<FK>>
+        reported_member_id : UUID <<FK>>
+        report_type : VARCHAR(100)
+        reported_item_type : VARCHAR(50)
+        reported_item_id : VARCHAR(36)
+        description : TEXT
+        evidence_urls : JSON
+        status : ENUM(PENDING,IN_REVIEW,RESOLVED,DISMISSED)
+        priority : ENUM(LOW,MEDIUM,HIGH,CRITICAL)
+        severity : ENUM(LOW,MEDIUM,HIGH)
+        resolved_by : UUID <<FK>>
+        resolution : TEXT
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+
+    entity "notifications" {
+        *notification_id : UUID <<PK>>
+        --
+        member_id : UUID <<FK>>
+        notification_type : VARCHAR(64)
+        payload : JSON
+        is_read : BOOLEAN
+        read_at : TIMESTAMP
+        deleted_at : TIMESTAMP
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+}
+
+' ============================================================
+' AUDIT & LOGGING (2 tables)
+' ============================================================
+package "Audit & Logging" #ECEFF1 {
+    entity "audit_logs" {
+        *log_id : UUID <<PK>>
+        --
+        admin_id : UUID <<FK>>
+        action : VARCHAR(100)
+        entity_type : VARCHAR(50)
+        entity_id : VARCHAR(36)
+        old_values : JSON
+        new_values : JSON
+        ip_address : VARCHAR(45)
+        user_agent : TEXT
+        created_at : TIMESTAMP
+    }
+
+    entity "user_activity_logs" {
+        *log_id : UUID <<PK>>
+        --
+        user_id : UUID <<FK>>
+        action : VARCHAR(100)
+        entity_type : VARCHAR(50)
+        entity_id : VARCHAR(36)
+        metadata : JSON
+        ip_address : VARCHAR(45)
+        user_agent : TEXT
+        created_at : TIMESTAMP
+    }
+}
+
+' ============================================================
+' RELATIONSHIPS
+' ============================================================
+
+' User Management
+users ||--o| members : "1:1 profile"
+users ||--o| admins : "1:1 admin"
+members ||--o{ trust_score_history : "has history"
+
+' Authentication
+users ||--o{ email_verification_tokens : "has tokens"
+users ||--o{ password_reset_tokens : "has tokens"
+
+' Book Management
+members ||--|| personal_libraries : "1:1 library"
+members ||--o{ books : "owns"
+personal_libraries ||--o{ books_wanted : "contains"
+
+' Exchange System
+members ||--o{ exchange_requests : "sends"
+members ||--o{ exchange_requests : "receives"
+exchange_requests ||--o{ exchange_request_books : "contains"
+books ||--o{ exchange_request_books : "in request"
+
+exchange_requests ||--o| exchanges : "creates"
+members ||--o{ exchanges : "participates"
+exchanges ||--o{ exchange_books : "contains"
+books ||--o{ exchange_books : "exchanged"
+
+members ||--o{ exchange_suggestions : "receives"
+exchange_suggestions ||--o{ book_match_pairs : "has pairs"
+books ||--o{ book_match_pairs : "matched"
+
+' Messaging
+exchange_requests ||--o| conversations : "has"
+members ||--o{ conversations : "participates"
+conversations ||--o{ messages : "contains"
+members ||--o{ messages : "sends"
+messages ||--o{ message_reactions : "has"
+
+' Reviews & Reports
+exchanges ||--o{ reviews : "has"
+members ||--o{ reviews : "writes"
+members ||--o{ reviews : "receives"
+
+members ||--o{ violation_reports : "reports"
+members ||--o{ violation_reports : "reported"
+members ||--o{ notifications : "receives"
+
+' Audit
+admins ||--o{ audit_logs : "creates"
+users ||--o{ user_activity_logs : "creates"
+
+@enduml

@@ -1,0 +1,652 @@
+@startuml CD_01_Entities
+' ============================================================
+' CLASS DIAGRAM - BOOKSWAP SYSTEM ENTITIES (COMPLETE)
+' UML 2.5 Standard | Full Detail | 24 Classes
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam linetype ortho
+
+skinparam class {
+    BackgroundColor #FFFDE7
+    BorderColor #37474F
+    BorderThickness 1.5
+    ArrowColor #37474F
+}
+
+skinparam package {
+    BackgroundColor #FAFAFA
+    BorderColor #BDBDBD
+}
+
+title <b>Class Diagram - BookSwap System</b>\n24 Entity Classes
+
+' ============================================================
+' ENUMERATIONS
+' ============================================================
+package "Enumerations" #ECEFF1 {
+    enum UserRole {
+        GUEST
+        MEMBER
+        ADMIN
+    }
+
+    enum AccountStatus {
+        ACTIVE
+        LOCKED
+        SUSPENDED
+        DELETED
+    }
+
+    enum AuthProvider {
+        LOCAL
+        GOOGLE
+    }
+
+    enum BookCondition {
+        LIKE_NEW
+        VERY_GOOD
+        GOOD
+        FAIR
+        POOR
+    }
+
+    enum BookStatus {
+        AVAILABLE
+        EXCHANGING
+        REMOVED
+    }
+
+    enum PreferredCondition {
+        ANY
+        FAIR_UP
+        GOOD_UP
+        VERY_GOOD_UP
+        LIKE_NEW
+    }
+
+    enum ExchangeRequestStatus {
+        PENDING
+        ACCEPTED
+        REJECTED
+        COMPLETED
+        CANCELLED
+    }
+
+    enum ExchangeStatus {
+        PENDING
+        ACCEPTED
+        MEETING_SCHEDULED
+        IN_PROGRESS
+        COMPLETED
+        CANCELLED
+    }
+
+    enum BookType {
+        OFFERED
+        REQUESTED
+    }
+
+    enum CancellationReason {
+        USER_CANCELLED
+        NO_SHOW
+        BOTH_NO_SHOW
+        DISPUTE
+        ADMIN_CANCELLED
+    }
+
+    enum MessageStatus {
+        sent
+        delivered
+        read
+    }
+
+    enum AttachmentType {
+        image
+        file
+    }
+
+    enum ReportStatus {
+        PENDING
+        IN_REVIEW
+        RESOLVED
+        DISMISSED
+    }
+
+    enum ReportPriority {
+        LOW
+        MEDIUM
+        HIGH
+        CRITICAL
+    }
+
+    enum TrustScoreSource {
+        SYSTEM
+        ADMIN
+        AUTO
+    }
+
+    enum PairDirection {
+        THEY_WANT_FROM_ME
+        I_WANT_FROM_THEM
+    }
+}
+
+' ============================================================
+' USER MANAGEMENT PACKAGE
+' ============================================================
+package "User Management" #E3F2FD {
+    class User {
+        - user_id: UUID
+        - email: string
+        - password_hash: string
+        - full_name: string
+        - avatar_url: string
+        - role: UserRole
+        - account_status: AccountStatus
+        - auth_provider: AuthProvider
+        - google_id: string
+        - is_email_verified: boolean
+        - email_verified_at: Date
+        - last_login_at: Date
+        - lock_reason: string
+        - locked_until: Date
+        - deleted_at: Date
+        - created_at: Date
+        - updated_at: Date
+        --
+        + register(email, password): User
+        + login(email, password): JWT
+        + verifyEmail(token): boolean
+        + updateProfile(data): User
+        + changePassword(old, new): boolean
+        + deactivate(): void
+    }
+
+    class Member {
+        - member_id: UUID
+        - user_id: UUID
+        - region: string
+        - phone: string
+        - address: string
+        - bio: string
+        - trust_score: decimal
+        - average_rating: decimal
+        - is_verified: boolean
+        - is_online: boolean
+        - last_seen_at: Date
+        - notification_settings: JSON
+        - verification_date: Date
+        - total_exchanges: int
+        - completed_exchanges: int
+        - cancelled_exchanges: int
+        - created_at: Date
+        - updated_at: Date
+        --
+        + updateProfile(data): Member
+        + updateTrustScore(amount, reason): void
+        + updateRating(rating): void
+        + getLibrary(): PersonalLibrary
+        + getBooks(): Book[]
+        + getExchangeHistory(): Exchange[]
+    }
+
+    class Admin {
+        - admin_id: UUID
+        - user_id: UUID
+        - admin_level: int
+        - permissions: JSON
+        - admin_since: Date
+        - created_at: Date
+        --
+        + lockUser(userId, reason): void
+        + unlockUser(userId): void
+        + deleteUser(userId): void
+        + resolveReport(reportId): void
+        + adjustTrustScore(memberId, amount): void
+        + viewAuditLogs(): AuditLog[]
+    }
+
+    class TrustScoreHistory {
+        - change_id: UUID
+        - member_id: UUID
+        - old_score: decimal
+        - new_score: decimal
+        - change_amount: decimal
+        - reason: string
+        - source: TrustScoreSource
+        - admin_id: UUID
+        - metadata: JSON
+        - created_at: Date
+    }
+}
+
+' ============================================================
+' AUTHENTICATION PACKAGE
+' ============================================================
+package "Authentication" #FCE4EC {
+    class EmailVerificationToken {
+        - id: UUID
+        - user_id: UUID
+        - token: string
+        - expires_at: Date
+        - is_used: boolean
+        - created_at: Date
+        --
+        + isValid(): boolean
+        + markUsed(): void
+    }
+
+    class PasswordResetToken {
+        - token_id: UUID
+        - user_id: UUID
+        - token: string
+        - expires_at: Date
+        - is_used: boolean
+        - created_at: Date
+        --
+        + isValid(): boolean
+        + markUsed(): void
+    }
+
+    class TokenBlacklist {
+        - id: UUID
+        - token: string
+        - user_id: string
+        - expires_at: Date
+        - created_at: Date
+        --
+        + isBlacklisted(token): boolean
+    }
+}
+
+' ============================================================
+' BOOK MANAGEMENT PACKAGE
+' ============================================================
+package "Book Management" #E8F5E9 {
+    class Book {
+        - book_id: UUID
+        - owner_id: UUID
+        - title: string
+        - author: string
+        - isbn: string
+        - google_books_id: string
+        - publisher: string
+        - publish_date: Date
+        - description: string
+        - category: string
+        - language: string
+        - page_count: int
+        - cover_image_url: string
+        - user_photos: string[]
+        - book_condition: BookCondition
+        - status: BookStatus
+        - views: int
+        - deleted_at: Date
+        - created_at: Date
+        - updated_at: Date
+        --
+        + create(data): Book
+        + update(data): Book
+        + delete(): void
+        + markAsExchanging(): void
+        + markAsAvailable(): void
+        + incrementViews(): void
+        + searchByISBN(isbn): Book
+    }
+
+    class PersonalLibrary {
+        - library_id: UUID
+        - member_id: UUID
+        - total_owned_books: int
+        - total_wanted_books: int
+        - last_updated: Date
+        - created_at: Date
+        --
+        + addBook(book): void
+        + removeBook(bookId): void
+        + addWantedBook(data): BookWanted
+        + removeWantedBook(wantedId): void
+        + getOwnedBooks(): Book[]
+        + getWantedBooks(): BookWanted[]
+    }
+
+    class BookWanted {
+        - wanted_id: UUID
+        - library_id: UUID
+        - title: string
+        - author: string
+        - isbn: string
+        - google_books_id: string
+        - category: string
+        - cover_image_url: string
+        - preferred_condition: PreferredCondition
+        - language: string
+        - priority: int
+        - notes: string
+        - added_at: Date
+        - created_at: Date
+        --
+        + update(data): BookWanted
+        + delete(): void
+        + findMatches(): Book[]
+    }
+}
+
+' ============================================================
+' EXCHANGE SYSTEM PACKAGE
+' ============================================================
+package "Exchange System" #FFF3E0 {
+    class ExchangeRequest {
+        - request_id: UUID
+        - requester_id: UUID
+        - receiver_id: UUID
+        - status: ExchangeRequestStatus
+        - message: string
+        - rejection_reason: string
+        - responded_at: Date
+        - expires_at: Date
+        - created_at: Date
+        - updated_at: Date
+        --
+        + create(data): ExchangeRequest
+        + accept(): Exchange
+        + reject(reason): void
+        + cancel(): void
+        + isExpired(): boolean
+        + getBooks(): ExchangeRequestBook[]
+    }
+
+    class ExchangeRequestBook {
+        - exchange_request_book_id: UUID
+        - request_id: UUID
+        - book_id: UUID
+        - offered_by_requester: boolean
+        - book_type: BookType
+        - created_at: Date
+    }
+
+    class Exchange {
+        - exchange_id: UUID
+        - request_id: UUID
+        - member_a_id: UUID
+        - member_b_id: UUID
+        - status: ExchangeStatus
+        - member_a_confirmed: boolean
+        - member_b_confirmed: boolean
+        - confirmed_by_a_at: Date
+        - confirmed_by_b_at: Date
+        - completed_at: Date
+        - meeting_location: string
+        - meeting_latitude: decimal
+        - meeting_longitude: decimal
+        - meeting_time: Date
+        - meeting_notes: string
+        - meeting_confirmed_by_a: boolean
+        - meeting_confirmed_by_b: boolean
+        - meeting_scheduled_at: Date
+        - meeting_scheduled_by: UUID
+        - cancellation_reason: CancellationReason
+        - cancellation_details: string
+        - cancelled_by: UUID
+        - expires_at: Date
+        - cancelled_at: Date
+        - created_at: Date
+        - updated_at: Date
+        --
+        + confirmByMember(memberId): void
+        + scheduleMeeting(location, time): void
+        + confirmMeeting(memberId): void
+        + complete(): void
+        + cancel(reason, details): void
+        + isCompleted(): boolean
+        + getBooks(): ExchangeBook[]
+    }
+
+    class ExchangeBook {
+        - exchange_book_id: UUID
+        - exchange_id: UUID
+        - book_id: UUID
+        - from_member_id: UUID
+        - to_member_id: UUID
+        - exchange_order: int
+        - created_at: Date
+        --
+        + transferOwnership(): void
+    }
+
+    class ExchangeSuggestion {
+        - suggestion_id: UUID
+        - member_a_id: UUID
+        - member_b_id: UUID
+        - match_score: decimal
+        - total_matching_books: int
+        - is_viewed: boolean
+        - viewed_at: Date
+        - expired_at: Date
+        - score_breakdown: JSON
+        - created_at: Date
+        --
+        + markAsViewed(): void
+        + getMatchPairs(): BookMatchPair[]
+        + calculateScore(): decimal
+        + isExpired(): boolean
+    }
+
+    class BookMatchPair {
+        - pair_id: UUID
+        - suggestion_id: UUID
+        - book_a_id: UUID
+        - book_b_id: UUID
+        - pair_direction: PairDirection
+        - match_reason: string
+        - match_score: decimal
+        - created_at: Date
+    }
+}
+
+' ============================================================
+' MESSAGING PACKAGE
+' ============================================================
+package "Messaging" #E1F5FE {
+    class Conversation {
+        - conversation_id: UUID
+        - exchange_request_id: UUID
+        - member_a_id: UUID
+        - member_b_id: UUID
+        - total_messages: int
+        - last_message_at: Date
+        - created_at: Date
+        --
+        + sendMessage(senderId, content): Message
+        + getMessages(): Message[]
+        + markAllAsRead(memberId): void
+        + getUnreadCount(memberId): int
+    }
+
+    class Message {
+        - message_id: UUID
+        - conversation_id: UUID
+        - sender_id: UUID
+        - receiver_id: UUID
+        - content: string
+        - is_read: boolean
+        - status: MessageStatus
+        - read_at: Date
+        - delivered_at: Date
+        - sent_at: Date
+        - deleted_at: Date
+        - attachment_url: string
+        - attachment_type: AttachmentType
+        - attachment_name: string
+        - attachment_size: int
+        - metadata: JSON
+        - created_at: Date
+        --
+        + markAsRead(): void
+        + markAsDelivered(): void
+        + delete(): void
+        + addReaction(memberId, emoji): MessageReaction
+        + removeReaction(memberId, emoji): void
+    }
+
+    class MessageReaction {
+        - reaction_id: UUID
+        - message_id: UUID
+        - member_id: UUID
+        - emoji: string
+        - created_at: Date
+    }
+}
+
+' ============================================================
+' REVIEWS & REPORTS PACKAGE
+' ============================================================
+package "Reviews & Reports" #F3E5F5 {
+    class Review {
+        - review_id: UUID
+        - exchange_id: UUID
+        - reviewer_id: UUID
+        - reviewee_id: UUID
+        - rating: int
+        - comment: string
+        - trust_score_impact: decimal
+        - created_at: Date
+        - updated_at: Date
+        --
+        + create(data): Review
+        + update(data): Review
+        + delete(): void
+        + calculateTrustImpact(): decimal
+    }
+
+    class ViolationReport {
+        - report_id: UUID
+        - reporter_id: UUID
+        - reported_member_id: UUID
+        - report_type: string
+        - reported_item_type: string
+        - reported_item_id: string
+        - description: string
+        - evidence_urls: string[]
+        - status: ReportStatus
+        - priority: ReportPriority
+        - severity: string
+        - resolved_by: UUID
+        - resolution: string
+        - created_at: Date
+        - updated_at: Date
+        --
+        + create(data): ViolationReport
+        + resolve(adminId, resolution): void
+        + dismiss(adminId): void
+        + escalate(): void
+    }
+
+    class Notification {
+        - notification_id: UUID
+        - member_id: UUID
+        - notification_type: string
+        - payload: JSON
+        - is_read: boolean
+        - read_at: Date
+        - deleted_at: Date
+        - created_at: Date
+        - updated_at: Date
+        --
+        + send(memberId, type, payload): Notification
+        + markAsRead(): void
+        + delete(): void
+    }
+}
+
+' ============================================================
+' AUDIT & LOGGING PACKAGE
+' ============================================================
+package "Audit & Logging" #ECEFF1 {
+    class AuditLog {
+        - log_id: UUID
+        - admin_id: UUID
+        - action: string
+        - entity_type: string
+        - entity_id: string
+        - old_values: JSON
+        - new_values: JSON
+        - ip_address: string
+        - user_agent: string
+        - created_at: Date
+        --
+        + log(adminId, action, entity, changes): AuditLog
+    }
+
+    class UserActivityLog {
+        - log_id: UUID
+        - user_id: UUID
+        - action: string
+        - entity_type: string
+        - entity_id: string
+        - metadata: JSON
+        - ip_address: string
+        - user_agent: string
+        - created_at: Date
+        --
+        + log(userId, action, entity, metadata): UserActivityLog
+    }
+}
+
+' ============================================================
+' RELATIONSHIPS
+' ============================================================
+
+' User Management
+User "1" -- "0..1" Member : has
+User "1" -- "0..1" Admin : has
+Member "1" -- "*" TrustScoreHistory : has
+
+' Authentication
+User "1" -- "*" EmailVerificationToken : has
+User "1" -- "*" PasswordResetToken : has
+
+' Book Management
+Member "1" -- "1" PersonalLibrary : owns
+Member "1" -- "*" Book : owns
+PersonalLibrary "1" -- "*" BookWanted : contains
+
+' Exchange System
+Member "1" -- "*" ExchangeRequest : sends
+Member "1" -- "*" ExchangeRequest : receives
+ExchangeRequest "1" -- "*" ExchangeRequestBook : contains
+Book "1" -- "*" ExchangeRequestBook : included
+
+ExchangeRequest "1" -- "0..1" Exchange : creates
+Member "1" -- "*" Exchange : participates
+Exchange "1" -- "*" ExchangeBook : contains
+Book "1" -- "*" ExchangeBook : transferred
+
+Member "1" -- "*" ExchangeSuggestion : receives
+ExchangeSuggestion "1" -- "*" BookMatchPair : has
+Book "1" -- "*" BookMatchPair : matched
+
+' Messaging
+ExchangeRequest "1" -- "0..1" Conversation : has
+Member "1" -- "*" Conversation : participates
+Conversation "1" -- "*" Message : contains
+Member "1" -- "*" Message : sends
+Message "1" -- "*" MessageReaction : has
+
+' Reviews & Reports
+Exchange "1" -- "*" Review : has
+Member "1" -- "*" Review : writes
+Member "1" -- "*" Review : receives
+
+Member "1" -- "*" ViolationReport : reports
+Member "1" -- "*" ViolationReport : reported
+Member "1" -- "*" Notification : receives
+
+' Audit
+Admin "1" -- "*" AuditLog : creates
+User "1" -- "*" UserActivityLog : creates
+
+@enduml

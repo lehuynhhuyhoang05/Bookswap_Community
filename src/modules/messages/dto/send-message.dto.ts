@@ -1,5 +1,5 @@
 // src/modules/messages/dto/send-message.dto.ts
-import { IsString, IsNotEmpty, MaxLength, IsOptional, IsUUID, ValidateIf, IsEmpty, MinLength } from 'class-validator';
+import { IsString, IsNotEmpty, MaxLength, IsOptional, IsUUID, ValidateIf, IsEmpty, MinLength, IsEnum, IsInt } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class SendMessageDto {
@@ -22,32 +22,61 @@ export class SendMessageDto {
   exchange_request_id?: string;
 
   @ApiProperty({
-    description: 'Receiver Member ID (to start direct conversation, e.g., from book detail)',
-    example: 'member-uuid-456',
-    required: false,
-  })
-  @IsOptional()
-  @IsUUID('4', { message: 'receiver_member_id must be a valid UUID' })
-  receiver_member_id?: string;
-
-  @ApiProperty({
     description: 'Message content',
     example: 'Hi! Is the book still available?',
     maxLength: 2000,
+    required: false,
   })
+  @IsOptional()
   @IsString({ message: 'content must be a string' })
-  @IsNotEmpty({ message: 'content is required' })
+  @ValidateIf((obj) => obj.content && obj.content.length > 0)
   @MinLength(1, { message: 'content must not be empty' })
   @MaxLength(2000, { message: 'content must not exceed 2000 characters' })
-  content: string;
+  content?: string;
 
-  // Custom validation: must provide either conversation_id, exchange_request_id, or receiver_member_id
-  @ValidateIf((obj) => !obj.conversation_id && !obj.exchange_request_id && !obj.receiver_member_id)
-  @IsNotEmpty({ message: 'Must provide either conversation_id, exchange_request_id, or receiver_member_id' })
+  @ApiProperty({
+    description: 'Attachment URL (from upload endpoint)',
+    example: '/uploads/messages/abc123.jpg',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  attachment_url?: string;
+
+  @ApiProperty({
+    description: 'Attachment type',
+    enum: ['image', 'file'],
+    required: false,
+  })
+  @IsOptional()
+  @IsEnum(['image', 'file'])
+  attachment_type?: 'image' | 'file';
+
+  @ApiProperty({
+    description: 'Original filename',
+    example: 'my-photo.jpg',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  attachment_name?: string;
+
+  @ApiProperty({
+    description: 'File size in bytes',
+    example: 1024000,
+    required: false,
+  })
+  @IsOptional()
+  @IsInt()
+  attachment_size?: number;
+
+  // Custom validation: must provide either conversation_id or exchange_request_id
+  @ValidateIf((obj) => !obj.conversation_id && !obj.exchange_request_id)
+  @IsNotEmpty({ message: 'Must provide either conversation_id or exchange_request_id' })
   _validateEither?: any;
 
-  // Reject if content is only whitespace
-  @ValidateIf((obj) => typeof obj.content === 'string' && obj.content.trim().length === 0)
-  @IsEmpty({ message: 'content cannot be only whitespace' })
-  _validateWhitespace?: any;
+  // Content or attachment required
+  @ValidateIf((obj) => !obj.content && !obj.attachment_url)
+  @IsNotEmpty({ message: 'Must provide either content or attachment' })
+  _validateContentOrAttachment?: any;
 }

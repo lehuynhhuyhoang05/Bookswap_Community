@@ -1,0 +1,82 @@
+@startuml SD_04_CreateExchangeRequest
+' ============================================================
+' SEQUENCE DIAGRAM - TẠO YÊU CẦU TRAO ĐỔI
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+
+title <b>Sequence Diagram - Tạo yêu cầu trao đổi</b>
+
+actor "Thành viên" as User
+participant "Frontend" as FE
+participant "ExchangeController" as EC
+participant "ExchangeRequestService" as ERS
+participant "BookRepository" as BR
+participant "ConversationService" as CS
+participant "NotificationService" as NS
+database "MySQL" as DB
+
+User -> FE : Chọn sách, gửi yêu cầu
+FE -> EC : POST /exchanges/requests
+activate EC
+
+EC -> ERS : createRequest(requesterId, dto)
+activate ERS
+
+ERS -> BR : findByIds(offeredBookIds)
+activate BR
+BR -> DB : SELECT * FROM books
+DB --> BR : offered_books
+BR --> ERS : books[]
+deactivate BR
+
+loop Validate offered books
+    alt Sách không thuộc requester
+        ERS --> EC : throw BadRequestException
+        EC --> FE : 400 Bad Request
+        FE --> User : "Sách không thuộc về bạn"
+    else Sách không available
+        ERS --> EC : throw BadRequestException
+        EC --> FE : 400 Bad Request
+        FE --> User : "Sách không khả dụng"
+    end
+end
+
+ERS -> BR : findByIds(requestedBookIds)
+activate BR
+BR -> DB : SELECT * FROM books
+DB --> BR : requested_books
+BR --> ERS : books[]
+deactivate BR
+
+ERS -> DB : INSERT INTO exchange_requests
+DB --> ERS : request_id
+
+ERS -> DB : INSERT INTO exchange_request_books
+DB --> ERS : success
+
+ERS -> BR : updateStatus(bookIds, 'EXCHANGING')
+
+ERS -> CS : createConversation(requesterId, receiverId)
+activate CS
+CS -> DB : INSERT INTO conversations
+DB --> CS : conversation_id
+CS --> ERS : conversation
+deactivate CS
+
+ERS -> NS : notify(receiverId, 'NEW_REQUEST')
+activate NS
+NS --> ERS : success
+deactivate NS
+
+ERS --> EC : request
+deactivate ERS
+EC --> FE : 201 Created
+deactivate EC
+FE --> User : "Gửi yêu cầu thành công"
+
+@enduml

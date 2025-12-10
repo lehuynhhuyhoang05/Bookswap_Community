@@ -4,6 +4,7 @@ import { Member } from './member.entity';
 
 export enum BookCondition {
   LIKE_NEW = 'LIKE_NEW',
+  VERY_GOOD = 'VERY_GOOD',
   GOOD = 'GOOD',
   FAIR = 'FAIR',
   POOR = 'POOR',
@@ -59,6 +60,9 @@ export class Book {
 
   @Column({ nullable: true, length: 500 })
   cover_image_url: string;
+
+  @Column({ type: 'json', nullable: true })
+  user_photos: string[]; // URLs of photos taken by user to verify real book ownership
 
   @Column({
     type: 'enum',

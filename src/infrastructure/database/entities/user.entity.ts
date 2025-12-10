@@ -73,6 +73,12 @@ export class User {
   @Column({ type: 'timestamp', nullable: true })
   deleted_at: Date;
 
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  lock_reason: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  locked_until: Date | null;
+
   @CreateDateColumn()
   created_at: Date;
 

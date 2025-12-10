@@ -1,0 +1,324 @@
+import api from './config';
+
+export const messagesService = {
+  /**
+   * 1️⃣ Send a message
+   * POST /api/v1/messages
+   */
+  async sendMessage(messageData) {
+    try {
+      const response = await api.post('/api/v1/messages', messageData);
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data;
+      if (error.response?.status === 400) {
+        throw { message: 'Dữ liệu không hợp lệ' };
+      }
+      throw errorData || { message: 'Gửi tin nhắn thất bại' };
+    }
+  },
+
+  /**
+   * 2️⃣ Delete a message
+   * DELETE /api/v1/messages/{messageId}
+   */
+  async deleteMessage(messageId) {
+    try {
+      const response = await api.delete(`/api/v1/messages/${messageId}`);
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data;
+      if (error.response?.status === 400) {
+        throw { message: 'Không thể xóa tin nhắn' };
+      } else if (error.response?.status === 403) {
+        throw { message: 'Chỉ có thể xóa tin nhắn của chính bạn' };
+      } else if (error.response?.status === 404) {
+        throw { message: 'Tin nhắn không tồn tại' };
+      }
+      throw errorData || { message: 'Xóa tin nhắn thất bại' };
+    }
+  },
+
+  /**
+   * 3️⃣ Add emoji reaction
+   * POST /api/v1/messages/{messageId}/reactions
+   */
+  async addReaction(messageId, emoji) {
+    try {
+      const response = await api.post(`/api/v1/messages/${messageId}/reactions`, { emoji });
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data;
+      if (error.response?.status === 400) {
+        throw { message: 'Emoji không hợp lệ hoặc tin nhắn đã bị xóa' };
+      } else if (error.response?.status === 403) {
+        throw { message: 'Không có quyền truy cập conversation' };
+      } else if (error.response?.status === 404) {
+        throw { message: 'Tin nhắn không tồn tại' };
+      }
+      throw errorData || { message: 'Thêm reaction thất bại' };
+    }
+  },
+
+  /**
+   * 4️⃣ Remove emoji reaction
+   * DELETE /api/v1/messages/{messageId}/reactions/{reactionId}
+   */
+  async removeReaction(messageId, reactionId) {
+    try {
+      const response = await api.delete(`/api/v1/messages/${messageId}/reactions/${reactionId}`);
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data;
+      if (error.response?.status === 403) {
+        throw { message: 'Chỉ có thể xóa reaction của chính bạn' };
+      } else if (error.response?.status === 404) {
+        throw { message: 'Reaction không tồn tại' };
+      }
+      throw errorData || { message: 'Xóa reaction thất bại' };
+    }
+  },
+
+  /**
+   * 5️⃣ Get my conversations
+   * GET /api/v1/messages/conversations
+   */
+  async getConversations(params = {}) {
+    try {
+      const response = await api.get('/api/v1/messages/conversations', {
+        params: {
+          page: params.page || 1,
+          limit: params.limit || 20,
+          ...params
+        }
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Tải danh sách hội thoại thất bại' };
+    }
+  },
+
+  /**
+   * 🆕 Create or get direct conversation with another user
+   * POST /api/v1/messages/conversations/direct
+   */
+  async createDirectConversation(receiverUserId) {
+    try {
+      const response = await api.post('/api/v1/messages/conversations/direct', {
+        receiver_user_id: receiverUserId
+      });
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data;
+      if (error.response?.status === 400) {
+        throw { message: 'Không thể nhắn tin với chính mình' };
+      } else if (error.response?.status === 404) {
+        throw { message: 'Người dùng không tồn tại' };
+      }
+      throw errorData || { message: 'Tạo hội thoại thất bại' };
+    }
+  },
+
+  /**
+   * 6️⃣ Get messages in a conversation
+   * GET /api/v1/messages/conversations/{conversationId}
+   */
+  async getConversationMessages(conversationId, params = {}) {
+    try {
+      const response = await api.get(`/api/v1/messages/conversations/${conversationId}`, {
+        params: {
+          page: params.page || 1,
+          limit: params.limit || 50,
+          ...params
+        }
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Tải tin nhắn thất bại' };
+    }
+  },
+
+  /**
+   * 7️⃣ Mark all messages as read
+   * PATCH /api/v1/messages/conversations/{conversationId}/read
+   */
+  async markAsRead(conversationId) {
+    try {
+      const response = await api.patch(`/api/v1/messages/conversations/${conversationId}/read`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Đánh dấu đã đọc thất bại' };
+    }
+  },
+
+  /**
+   * 8️⃣ Search messages in a conversation
+   * GET /api/v1/messages/search
+   */
+  async searchMessages(query, conversationId, params = {}) {
+    try {
+      const response = await api.get('/api/v1/messages/search', {
+        params: {
+          q: query,
+          conversation_id: conversationId,
+          page: params.page || 1,
+          limit: params.limit || 20,
+          ...params
+        }
+      });
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data;
+      if (error.response?.status === 400) {
+        throw { message: 'Từ khóa tìm kiếm không hợp lệ' };
+      } else if (error.response?.status === 404) {
+        throw { message: 'Hội thoại không tồn tại' };
+      }
+      throw errorData || { message: 'Tìm kiếm tin nhắn thất bại' };
+    }
+  },
+
+  /**
+   * 9️⃣ Get unread message count
+   * GET /api/v1/messages/unread/count
+   */
+  async getUnreadCount() {
+    try {
+      const response = await api.get('/api/v1/messages/unread/count');
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Tải số tin nhắn chưa đọc thất bại' };
+    }
+  },
+
+  // ========== UTILITY METHODS ==========
+
+  /**
+   * Validate message data before sending
+   */
+  validateMessageData(messageData) {
+    const errors = [];
+    
+    if (!messageData.conversation_id?.trim()) {
+      errors.push('Conversation ID là bắt buộc');
+    }
+    
+    if (!messageData.content?.trim()) {
+      errors.push('Nội dung tin nhắn không được để trống');
+    }
+    
+    if (messageData.content?.length > 1000) {
+      errors.push('Tin nhắn không được vượt quá 1000 ký tự');
+    }
+    
+    return errors;
+  },
+
+  /**
+   * Format message data for sending
+   */
+  formatMessageData(messageData) {
+    return {
+      conversation_id: messageData.conversation_id,
+      exchange_request_id: messageData.exchange_request_id || null,
+      content: messageData.content.trim()
+    };
+  },
+
+  /**
+   * Common emoji reactions
+   */
+  getCommonEmojis() {
+    return ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '👏', '🙏', '🔥'];
+  },
+
+  /**
+   * Check if message can be deleted (within 1 hour)
+   */
+  canDeleteMessage(messageTimestamp) {
+    if (!messageTimestamp) return false;
+    
+    try {
+      const messageTime = new Date(messageTimestamp).getTime();
+      const currentTime = new Date().getTime();
+      const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
+      
+      return (currentTime - messageTime) <= oneHour;
+    } catch (error) {
+      console.error('Error checking if message can be deleted:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Format message timestamp for display
+   */
+  formatMessageTime(timestamp) {
+    if (!timestamp) return '';
+    
+    try {
+      const messageTime = new Date(timestamp);
+      const now = new Date();
+      const diffInMinutes = Math.floor((now - messageTime) / (1000 * 60));
+      
+      if (diffInMinutes < 1) return 'Vừa xong';
+      if (diffInMinutes < 60) return `${diffInMinutes} phút trước`;
+      
+      const diffInHours = Math.floor(diffInMinutes / 60);
+      if (diffInHours < 24) return `${diffInHours} giờ trước`;
+      
+      const diffInDays = Math.floor(diffInHours / 24);
+      if (diffInDays < 7) return `${diffInDays} ngày trước`;
+      
+      return messageTime.toLocaleDateString('vi-VN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+    } catch (error) {
+      console.error('Error formatting message time:', error);
+      return '';
+    }
+  },
+
+  /**
+   * Extract error message from error object
+   */
+  getErrorMessage(error) {
+    if (typeof error === 'string') return error;
+    if (error?.message) return error.message;
+    if (error?.response?.data?.message) return error.response.data.message;
+    return 'Đã xảy ra lỗi không xác định';
+  },
+
+  /**
+   * 🆕 Upload file/image attachment
+   * POST /api/v1/messages/upload
+   */
+  async uploadAttachment(file, conversationId) {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (conversationId) {
+        formData.append('conversation_id', conversationId);
+      }
+
+      const response = await api.post('/api/v1/messages/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data;
+      if (error.response?.status === 400) {
+        throw { message: 'File không hợp lệ hoặc quá lớn' };
+      } else if (error.response?.status === 413) {
+        throw { message: 'File quá lớn (tối đa 10MB)' };
+      }
+      throw errorData || { message: 'Upload file thất bại' };
+    }
+  }
+};
+
+export default messagesService;

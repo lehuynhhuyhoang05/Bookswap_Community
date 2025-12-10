@@ -1,0 +1,142 @@
+@startuml UC_01_Overview
+' ============================================================
+' USE CASE DIAGRAM - TỔNG QUAN HỆ THỐNG
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 10
+skinparam linetype ortho
+skinparam ranksep 40
+skinparam nodesep 25
+
+skinparam actor {
+    BackgroundColor #E3F2FD
+    BorderColor #1565C0
+    BorderThickness 2
+}
+
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #37474F
+    BorderThickness 1.5
+}
+
+skinparam rectangle {
+    BackgroundColor #FAFAFA
+    BorderColor #1565C0
+    BorderThickness 2
+}
+
+skinparam package {
+    BackgroundColor #F5F5F5
+    BorderColor #90A4AE
+    BorderThickness 1
+}
+
+left to right direction
+
+title <b>Use Case Diagram - Tổng quan Hệ thống BookSwap</b>
+
+' === ACTORS ===
+actor "Khách" as Guest
+actor "Thành viên" as Member
+actor "Quản trị viên" as Admin
+actor "Email Service" as Email <<system>>
+actor "Google Books API" as GoogleAPI <<system>>
+
+Guest <|-- Member
+Member <|-- Admin
+
+' === SYSTEM BOUNDARY ===
+rectangle "Hệ thống Trao đổi Sách BookSwap" {
+    
+    package "Xác thực" {
+        usecase "Đăng ký" as UC01
+        usecase "Đăng nhập" as UC02
+        usecase "Đăng xuất" as UC03
+        usecase "Quên mật khẩu" as UC04
+    }
+    
+    package "Quản lý Sách" {
+        usecase "Xem danh sách sách" as UC05
+        usecase "Tìm kiếm sách" as UC06
+        usecase "Thêm sách" as UC07
+        usecase "Sửa sách" as UC08
+        usecase "Xóa sách" as UC09
+        usecase "Quản lý sách mong muốn" as UC10
+    }
+    
+    package "Trao đổi" {
+        usecase "Tạo yêu cầu trao đổi" as UC11
+        usecase "Xem yêu cầu" as UC12
+        usecase "Chấp nhận/Từ chối" as UC13
+        usecase "Sắp xếp cuộc hẹn" as UC14
+        usecase "Xác nhận hoàn thành" as UC15
+        usecase "Hủy trao đổi" as UC16
+    }
+    
+    package "Gợi ý Matching" {
+        usecase "Xem gợi ý" as UC17
+        usecase "Tạo gợi ý mới" as UC18
+    }
+    
+    package "Tin nhắn" {
+        usecase "Xem cuộc trò chuyện" as UC19
+        usecase "Gửi tin nhắn" as UC20
+        usecase "Gửi file đính kèm" as UC21
+    }
+    
+    package "Đánh giá" {
+        usecase "Viết đánh giá" as UC22
+        usecase "Xem đánh giá" as UC23
+    }
+    
+    package "Quản trị" {
+        usecase "Quản lý người dùng" as UC24
+        usecase "Xử lý báo cáo" as UC25
+        usecase "Xem thống kê" as UC26
+    }
+}
+
+' === GUEST ===
+Guest -- UC01
+Guest -- UC02
+Guest -- UC05
+Guest -- UC06
+
+' === MEMBER ===
+Member -- UC03
+Member -- UC04
+Member -- UC07
+Member -- UC08
+Member -- UC09
+Member -- UC10
+Member -- UC11
+Member -- UC12
+Member -- UC13
+Member -- UC14
+Member -- UC15
+Member -- UC16
+Member -- UC17
+Member -- UC18
+Member -- UC19
+Member -- UC20
+Member -- UC21
+Member -- UC22
+Member -- UC23
+
+' === ADMIN ===
+Admin -- UC24
+Admin -- UC25
+Admin -- UC26
+
+' === EXTERNAL ===
+UC01 -- Email
+UC04 -- Email
+UC06 -- GoogleAPI
+UC07 -- GoogleAPI
+
+@enduml

@@ -32,14 +32,35 @@ export class Message {
   @Column('boolean', { default: false })
   is_read: boolean;
 
+  @Column('enum', { enum: ['sent', 'delivered', 'read'], default: 'sent' })
+  status: 'sent' | 'delivered' | 'read';
+
   @Column('timestamp', { nullable: true })
   read_at: Date;
+
+  @Column('timestamp', { nullable: true })
+  delivered_at: Date;
 
   @Column('timestamp', { default: () => 'CURRENT_TIMESTAMP' })
   sent_at: Date;
 
   @Column('timestamp', { nullable: true })
   deleted_at: Date | null;
+
+  @Column('varchar', { length: 500, nullable: true })
+  attachment_url: string | null;
+
+  @Column('enum', { enum: ['image', 'file'], nullable: true })
+  attachment_type: 'image' | 'file' | null;
+
+  @Column('varchar', { length: 255, nullable: true })
+  attachment_name: string | null;
+
+  @Column('int', { nullable: true })
+  attachment_size: number | null;
+
+  @Column('json', { nullable: true })
+  metadata: any | null;
 
   @CreateDateColumn()
   created_at: Date;

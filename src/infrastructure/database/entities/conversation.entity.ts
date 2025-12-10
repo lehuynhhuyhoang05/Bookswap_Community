@@ -35,9 +35,9 @@ export class Conversation {
   @CreateDateColumn()
   created_at: Date;
 
-  @ManyToOne(() => ExchangeRequest)
+  @ManyToOne(() => ExchangeRequest, { nullable: true })
   @JoinColumn({ name: 'exchange_request_id' })
-  exchange_request: ExchangeRequest;
+  exchange_request: ExchangeRequest | null;
 
   @ManyToOne(() => Member)
   @JoinColumn({ name: 'member_a_id' })

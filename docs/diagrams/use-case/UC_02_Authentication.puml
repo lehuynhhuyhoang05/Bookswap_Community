@@ -1,0 +1,80 @@
+@startuml UC_02_Authentication
+' ============================================================
+' USE CASE DIAGRAM - MODULE XÁC THỰC
+' BookSwap System | UML 2.5 Standard
+' ============================================================
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam linetype ortho
+skinparam ranksep 60
+skinparam nodesep 40
+
+skinparam actor {
+    BackgroundColor #E3F2FD
+    BorderColor #1565C0
+    BorderThickness 2
+}
+
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #455A64
+    BorderThickness 1.5
+}
+
+skinparam rectangle {
+    BackgroundColor #FAFAFA
+    BorderColor #1565C0
+    BorderThickness 2
+}
+
+left to right direction
+
+title <b>Use Case Diagram</b>\nModule Xác thực (Authentication)
+
+' === ACTORS ===
+actor "Khách" as Guest
+actor "Thành viên" as Member
+actor "Email Service" as EmailSvc <<system>>
+
+Guest <|-- Member
+
+' === SYSTEM BOUNDARY ===
+rectangle "Hệ thống BookSwap" {
+    
+    usecase "Đăng ký tài khoản" as UC01
+    usecase "Xác thực Email" as UC02
+    usecase "Gửi lại Email xác thực" as UC03
+    usecase "Đăng nhập" as UC04
+    usecase "Đăng xuất" as UC05
+    usecase "Làm mới Token" as UC06
+    usecase "Quên mật khẩu" as UC07
+    usecase "Đặt lại mật khẩu" as UC08
+    usecase "Đổi mật khẩu" as UC09
+}
+
+' === GUEST ASSOCIATIONS ===
+Guest -- UC01
+Guest -- UC02
+Guest -- UC04
+Guest -- UC07
+Guest -- UC08
+
+' === MEMBER ASSOCIATIONS ===
+Member -- UC05
+Member -- UC06
+Member -- UC09
+
+' === RELATIONSHIPS ===
+UC01 .down.> UC02 : <<include>>
+UC03 .up.> UC02 : <<extend>>
+UC07 .down.> UC08 : <<include>>
+
+' === EXTERNAL SYSTEM ===
+UC01 -- EmailSvc
+UC03 -- EmailSvc
+UC07 -- EmailSvc
+
+@enduml

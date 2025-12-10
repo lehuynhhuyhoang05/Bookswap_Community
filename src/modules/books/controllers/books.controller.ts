@@ -13,6 +13,9 @@ import {
   ParseIntPipe,
   UseGuards,
   UnauthorizedException,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -21,7 +24,14 @@ import {
   ApiBearerAuth,
   ApiQuery,
   ApiParam,
+  ApiConsumes,
+  ApiBody,
 } from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import { v4 as uuidv4 } from 'uuid';
+import { existsSync, mkdirSync } from 'fs';
 
 import { BooksService } from '../services/books.service';
 import { CreateBookDto, UpdateBookDto } from '../dto/create-book.dto';
@@ -35,6 +45,28 @@ import { SearchBooksDto, AdvancedSearchDto } from '../dto/books.dto';
 import { Public } from '../../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { Logger } from '@nestjs/common';
+
+// Multer config for book photos
+const bookPhotosStorage = diskStorage({
+  destination: (req, file, cb) => {
+    const uploadPath = join(process.cwd(), 'uploads', 'books');
+    if (!existsSync(uploadPath)) {
+      mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = `${uuidv4()}${extname(file.originalname)}`;
+    cb(null, uniqueName);
+  },
+});
+
+const imageFileFilter = (req: any, file: any, cb: any) => {
+  if (!file.mimetype.match(/\/(jpg|jpeg|png|gif|webp)$/)) {
+    return cb(new BadRequestException('Only image files are allowed!'), false);
+  }
+  cb(null, true);
+};
 
 @ApiTags('Books')
 @Controller('books')
@@ -78,6 +110,55 @@ export class BooksController {
       );
       throw error;
     }
+  }
+
+  /** =========================================================
+   *  SECTION 1.5: UPLOAD BOOK PHOTOS
+   *  ========================================================= */
+  @Post('upload-photos')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @UseInterceptors(
+    FilesInterceptor('photos', 5, {
+      storage: bookPhotosStorage,
+      fileFilter: imageFileFilter,
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB per file
+    }),
+  )
+  @ApiOperation({ summary: 'Upload photos of your actual book' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        photos: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+          description: 'Book photos (max 5 files, 5MB each)',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Photos uploaded successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid file type or too many files' })
+  async uploadBookPhotos(
+    @Request() req,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('Vui lòng upload ít nhất 1 ảnh');
+    }
+
+    const urls = files.map(
+      (file) => `/uploads/books/${file.filename}`,
+    );
+
+    this.logger.log(`[uploadBookPhotos] userId=${req.user?.sub} uploaded ${files.length} photos`);
+
+    return {
+      message: 'Upload thành công',
+      urls,
+    };
   }
 
   /** =========================================================
@@ -362,6 +443,23 @@ export class BooksController {
   @ApiResponse({ status: 404, description: 'Book not found' })
   remove(@Param('id') id: string, @Request() req) {
     return this.booksService.remove(id, req.user.sub || req.user.userId);
+  }
+
+  @Get(':id/exchanges')
+  @Public()
+  @ApiOperation({ 
+    summary: 'Get exchange history for a book',
+    description: 'Returns all completed exchanges involving this book, showing the journey through different owners'
+  })
+  @ApiParam({ name: 'id', description: 'Book UUID' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Max results (default: 20)' })
+  @ApiResponse({ status: 200, description: 'Book exchange history retrieved' })
+  @ApiResponse({ status: 404, description: 'Book not found' })
+  getBookExchangeHistory(
+    @Param('id') id: string,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.booksService.getBookExchangeHistory(id, limit);
   }
   // ============= DEBUG ENDPOINTS (XÓA SAU KHI DONE) =============
 @Post('test/auth')

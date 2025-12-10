@@ -23,9 +23,9 @@ export class QueryExchangesDto {
   @Max(100)
   limit?: number = 20;
 
-  @ApiPropertyOptional({ example: 'PENDING', description: 'Lọc theo trạng thái (PENDING, ACCEPTED, COMPLETED, CANCELLED)' })
+  @ApiPropertyOptional({ example: 'PENDING', description: 'Lọc theo trạng thái (PENDING, ACCEPTED, MEETING_SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED)' })
   @IsOptional()
-  @IsIn(['PENDING', 'ACCEPTED', 'COMPLETED', 'CANCELLED'])
+  @IsIn(['PENDING', 'ACCEPTED', 'MEETING_SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'])
   status?: string;
 
   @ApiPropertyOptional({ example: 'member-uuid-001', description: 'Lọc theo member_a_id' })

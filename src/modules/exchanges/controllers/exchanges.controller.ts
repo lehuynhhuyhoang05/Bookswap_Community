@@ -39,8 +39,10 @@ import {
   PaginatedExchangesDto,
   PaginatedExchangeRequestsDto,
   ExchangeSuggestionsResponseDto,
+  ScheduleMeetingDto,
   UpdateMeetingInfoDto,
   CancelExchangeDto,
+  ConfirmMeetingDto,
 } from '../dto/exchange.dto';
 
 @ApiTags('Exchanges')
@@ -146,6 +148,24 @@ export class ExchangesController {
     return this.exchangesService.getExchangeStats(req.user.userId);
   }
 
+  // ==================== PUBLIC MEMBER EXCHANGE HISTORY ====================
+  
+  @Get('member/:memberId/history')
+  @ApiOperation({ 
+    summary: 'Get public exchange history for a member',
+    description: 'Returns completed exchanges for a member - useful for checking trustworthiness'
+  })
+  @ApiParam({ name: 'memberId', description: 'Member ID (UUID)', schema: { type: 'string', format: 'uuid' } })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Max results (default: 10)' })
+  @ApiResponse({ status: 200, description: 'Member exchange history' })
+  async getMemberPublicHistory(
+    @Param('memberId', new ParseUUIDPipe({ version: '4' })) memberId: string,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+  ) {
+    this.logger.log(`[getMemberPublicHistory] memberId=${memberId} limit=${limit}`);
+    return this.exchangesService.getMemberPublicExchangeHistory(memberId, limit);
+  }
+
   // ==================== SUGGESTIONS (STATIC ROUTES FIRST) ====================
 
   @Post('suggestions/generate')
@@ -194,6 +214,19 @@ export class ExchangesController {
   ) {
     this.logger.log(`[getMySuggestions] userId=${req.user?.userId} limit=${limit}`);
     return this.matchingService.getMySuggestions(req.user.userId, limit);
+  }
+
+  @Delete('suggestions/:id')
+  @ApiOperation({ summary: 'Delete/dismiss a suggestion' })
+  @ApiParam({ name: 'id', description: 'Suggestion ID (UUID)', schema: { type: 'string', format: 'uuid' } })
+  @ApiResponse({ status: 200, description: 'Suggestion deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Suggestion not found' })
+  async deleteSuggestion(
+    @Request() req,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) suggestionId: string,
+  ) {
+    this.logger.log(`[deleteSuggestion] suggestionId=${suggestionId} userId=${req.user?.userId}`);
+    return this.matchingService.deleteSuggestion(req.user.userId, suggestionId);
   }
 
   @Patch('suggestions/:id/view')
@@ -261,6 +294,61 @@ export class ExchangesController {
   ): Promise<ExchangeResponseDto> {
     this.logger.log(`[updateMeetingInfo] id=${id} userId=${req.user?.userId}`);
     return this.exchangesService.updateMeetingInfo(req.user.userId, id, dto);
+  }
+
+  @Post(':id/meeting/schedule')
+  @ApiOperation({ 
+    summary: 'Schedule a meeting for exchange',
+    description: 'Schedule meeting time and location. The person who schedules automatically confirms. Other person needs to confirm separately.'
+  })
+  @ApiParam({ name: 'id', description: 'Exchange ID (UUID)', schema: { type: 'string', format: 'uuid' } })
+  @ApiResponse({ status: 201, description: 'Meeting scheduled successfully', type: ExchangeResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid meeting time or exchange status' })
+  @ApiResponse({ status: 403, description: 'Not part of this exchange' })
+  @ApiResponse({ status: 404, description: 'Exchange not found' })
+  async scheduleMeeting(
+    @Request() req,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() dto: ScheduleMeetingDto,
+  ): Promise<ExchangeResponseDto> {
+    this.logger.log(`[scheduleMeeting] id=${id} userId=${req.user?.userId}`);
+    return this.exchangesService.scheduleMeeting(req.user.userId, id, dto);
+  }
+
+  @Patch(':id/meeting/confirm')
+  @ApiOperation({ 
+    summary: 'Confirm scheduled meeting',
+    description: 'Confirm that you agree with the scheduled meeting. When both parties confirm, exchange status changes to MEETING_SCHEDULED.'
+  })
+  @ApiParam({ name: 'id', description: 'Exchange ID (UUID)', schema: { type: 'string', format: 'uuid' } })
+  @ApiResponse({ status: 200, description: 'Meeting confirmed', type: ExchangeResponseDto })
+  @ApiResponse({ status: 400, description: 'No meeting scheduled' })
+  @ApiResponse({ status: 403, description: 'Not part of this exchange' })
+  @ApiResponse({ status: 404, description: 'Exchange not found' })
+  async confirmMeeting(
+    @Request() req,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<ExchangeResponseDto> {
+    this.logger.log(`[confirmMeeting] id=${id} userId=${req.user?.userId}`);
+    return this.exchangesService.confirmMeeting(req.user.userId, id);
+  }
+
+  @Patch(':id/start')
+  @ApiOperation({ 
+    summary: 'Start the exchange process',
+    description: 'Mark that the meeting has happened and exchange is in progress. Can only be called after meeting is confirmed by both parties.'
+  })
+  @ApiParam({ name: 'id', description: 'Exchange ID (UUID)', schema: { type: 'string', format: 'uuid' } })
+  @ApiResponse({ status: 200, description: 'Exchange started', type: ExchangeResponseDto })
+  @ApiResponse({ status: 400, description: 'Meeting not confirmed yet' })
+  @ApiResponse({ status: 403, description: 'Not part of this exchange' })
+  @ApiResponse({ status: 404, description: 'Exchange not found' })
+  async startExchange(
+    @Request() req,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ): Promise<ExchangeResponseDto> {
+    this.logger.log(`[startExchange] id=${id} userId=${req.user?.userId}`);
+    return this.exchangesService.startExchange(req.user.userId, id);
   }
 
   @Patch(':id/cancel')
