@@ -53,66 +53,59 @@ export class MatchingService {
   ) {}
 
   /**
-   * F-MEM-07: Gợi ý các cặp trao đổi tiềm năng - IMPROVED VERSION
+   * AI MATCHING ALGORITHM - Tìm gợi ý trao đổi phù hợp
+   * Flow chính: 
+   * 1. Lấy wanted books của user (sách tôi muốn)
+   * 2. Tìm ai có sách đó (available)
+   * 3. Kiểm tra 2 chiều: Họ có muốn sách của tôi không?
+   * 4. Tính điểm matching (8 factors)
+   * 5. Lưu top suggestions vào DB
    */
   async findMatchingSuggestions(userId: string) {
     this.logger.log(`[findMatchingSuggestions] Finding matches for userId=${userId}`);
 
-    // 1) Lấy member theo userId
-    const member = await this.memberRepo.findOne({
-      where: { user_id: userId },
-    });
-    if (!member) throw new NotFoundException('Member profile not found');
+    const member = await this.memberRepo.findOne({ where: { user_id: userId } }); // Lấy member profile từ DB
+    if (!member) throw new NotFoundException('Member profile not found'); // Không tìm thấy → throw error
 
-    // 2) Get blocked members list
-    const blockedMemberIds = await this.getBlockedMembers(member.member_id);
+    const blockedMemberIds = await this.getBlockedMembers(member.member_id); // Lấy danh sách đã chặn (blocked)
+    const excludeMemberIds = await this.getMembersWithPendingRequests(member.member_id); // Lấy members có pending request (để tránh gợi ý trùng)
+    const excludeSet = new Set([...blockedMemberIds, ...excludeMemberIds, member.member_id]); // Set chứa IDs cần loại trừ
 
-    // 3) Get members with pending requests
-    const excludeMemberIds = await this.getMembersWithPendingRequests(member.member_id);
-
-    // Combine blocked and pending
-    const excludeSet = new Set([...blockedMemberIds, ...excludeMemberIds, member.member_id]);
-
-    // 4) Wanted books của tôi (priority desc)
+    // Lấy wanted books (sách tôi muốn), sắp xếp theo priority DESC
     const myWantedBooks = await this.wantedRepo.find({
       where: { library: { member_id: member.member_id } },
       relations: ['library'],
-      order: { priority: 'DESC' },
+      order: { priority: 'DESC' }, // Ưu tiên cao nhất trước
     });
 
     this.logger.debug(`[findMatchingSuggestions] Found ${myWantedBooks.length} wanted books`);
-    if (myWantedBooks.length === 0) {
-      this.logger.debug('[findMatchingSuggestions] No wanted books found');
-      return { suggestions: [], total: 0 };
-    }
+    if (myWantedBooks.length === 0) return { suggestions: [], total: 0 }; // Không có wanted books → return rỗng
 
-    // 5) Sách AVAILABLE của tôi
+    // Lấy sách AVAILABLE của tôi (để dùng trao đổi)
     const myAvailableBooks = await this.bookRepo.find({
       where: {
         owner_id: member.member_id,
-        status: BookStatus.AVAILABLE,
-        deleted_at: IsNull(),
+        status: BookStatus.AVAILABLE, // Chỉ lấy sách sẵn sàng
+        deleted_at: IsNull(), // Chưa bị xóa
       },
     });
 
     this.logger.debug(`[findMatchingSuggestions] Found ${myAvailableBooks.length} available books to offer`);
-    // HIGH #3: Allow browsing even with 0 books (for new users to explore)
-    // Users can see what books others want, helping them decide what to add to library
 
-    // 6) Pre-collect potential owner IDs
-    const potentialOwnerIds = new Set<string>();
+    // Tìm người có sách tôi muốn (potential owners)
+    const potentialOwnerIds = new Set<string>(); // Set để tránh duplicate
     this.logger.debug(`[findMatchingSuggestions] Searching through ${myWantedBooks.length} wanted books...`);
     
     for (const myWant of myWantedBooks) {
-      if (potentialOwnerIds.size >= this.config.maxProcessedMembers) break;
+      if (potentialOwnerIds.size >= this.config.maxProcessedMembers) break; // Giới hạn 50 members
 
       this.logger.debug(`[findMatchingSuggestions] Searching for: "${myWant.title}" by "${myWant.author}"`);
-      const booksIWant = await this.findBooksMatchingWant(myWant, member.member_id);
+      const booksIWant = await this.findBooksMatchingWant(myWant, member.member_id); // Tìm sách match (3-priority: ISBN > Google Books ID > Fuzzy)
       
       booksIWant.forEach((book) => {
-        if (!excludeSet.has(book.owner_id)) {
+        if (!excludeSet.has(book.owner_id)) { // Không phải blocked/pending
           this.logger.debug(`[findMatchingSuggestions] Found potential match: ${book.title} owned by ${book.owner_id}`);
-          potentialOwnerIds.add(book.owner_id);
+          potentialOwnerIds.add(book.owner_id); // Thêm vào Set
         } else {
           this.logger.debug(`[findMatchingSuggestions] Excluded owner: ${book.owner_id} (blocked or has pending request)`);
         }
@@ -120,53 +113,50 @@ export class MatchingService {
     }
 
     this.logger.debug(`[findMatchingSuggestions] Total potential owners found: ${potentialOwnerIds.size}`);
-    if (potentialOwnerIds.size === 0) {
-      this.logger.debug('[findMatchingSuggestions] No potential matches found');
-      return { suggestions: [], total: 0 };
-    }
+    if (potentialOwnerIds.size === 0) return { suggestions: [], total: 0 }; // Không tìm thấy ai → return rỗng
 
-    // 7) Batch load potential members
+    // Batch load members (tối ưu query - 1 lần thay vì loop)
     const potentialMembers = await this.memberRepo.find({
       where: { member_id: In([...potentialOwnerIds]) },
-      relations: ['user'],
+      relations: ['user'], // Load luôn user info (name, avatar...)
     });
-    const memberMap = new Map(potentialMembers.map((m) => [m.member_id, m]));
+    const memberMap = new Map(potentialMembers.map((m) => [m.member_id, m])); // Convert sang Map để lookup nhanh O(1)
 
-    // 8) Batch load their wanted books
+    // Batch load wanted books của họ (kiểm tra 2 chiều: họ có muốn sách của tôi không?)
     const theirWantedBooksMap = await this.loadWantedBooksForMembers([...potentialOwnerIds]);
 
-    // 9) Two-way matching + comprehensive scoring
+    // TWO-WAY MATCHING: Kiểm tra cả 2 chiều và tính điểm
     const potentialMatches: PotentialMatch[] = [];
-    const processedMembers = new Set<string>();
+    const processedMembers = new Set<string>(); // Tránh xử lý 1 member nhiều lần
 
     for (const myWant of myWantedBooks) {
-      if (potentialMatches.length >= this.config.maxProcessedMembers) break;
+      if (potentialMatches.length >= this.config.maxProcessedMembers) break; // Giới hạn 50
 
-      const booksIWant = await this.findBooksMatchingWant(myWant, member.member_id);
+      const booksIWant = await this.findBooksMatchingWant(myWant, member.member_id); // Sách tôi muốn
 
       for (const bookIWant of booksIWant) {
-        if (excludeSet.has(bookIWant.owner_id)) continue;
-        if (processedMembers.has(bookIWant.owner_id)) continue;
+        if (excludeSet.has(bookIWant.owner_id)) continue; // Skip blocked/pending
+        if (processedMembers.has(bookIWant.owner_id)) continue; // Đã xử lý rồi
 
-        const otherMember = memberMap.get(bookIWant.owner_id);
+        const otherMember = memberMap.get(bookIWant.owner_id); // Lấy member từ Map
         if (!otherMember) continue;
 
-        const theirWants = theirWantedBooksMap.get(bookIWant.owner_id) || [];
+        const theirWants = theirWantedBooksMap.get(bookIWant.owner_id) || []; // Wanted books của họ
 
-        const myBooksTheyWant: PotentialMatch['myBooksTheyWant'] = [];
-        const theirBooksIWant: PotentialMatch['theirBooksIWant'] = [];
+        const myBooksTheyWant: PotentialMatch['myBooksTheyWant'] = []; // Sách của tôi mà họ muốn
+        const theirBooksIWant: PotentialMatch['theirBooksIWant'] = []; // Sách của họ mà tôi muốn
 
-        // They want from me
+        // Kiểm tra: Họ có muốn sách của tôi không?
         for (const theirWant of theirWants) {
           for (const myBook of myAvailableBooks) {
             const comprehensiveScore = this.calculateComprehensiveScore(
               myBook,
               theirWant,
-              member, // owner of myBook
-              otherMember, // requester
+              member, // chủ sách (tôi)
+              otherMember, // người muốn (họ)
             );
 
-            if (comprehensiveScore.score >= this.config.minMatchScore) {
+            if (comprehensiveScore.score >= this.config.minMatchScore) { // Điểm >= ngưỡng tối thiểu (VD: 0.3)
               myBooksTheyWant.push({
                 myBook,
                 theirWant,
@@ -176,39 +166,36 @@ export class MatchingService {
           }
         }
 
-        // HIGH #2: ONE-WAY SUGGESTIONS - Show if I want their books (even if they don't want mine)
-        // This allows users to browse and send requests freely
+        // ONE-WAY SUGGESTIONS: Hiển thị nếu tôi muốn sách của họ (không bắt buộc 2 chiều)
         
-        // I want from them (always add)
+        // Tính điểm sách họ có mà tôi muốn
         const comprehensiveScore = this.calculateComprehensiveScore(
           bookIWant,
           myWant,
-          otherMember, // owner of bookIWant
-          member, // requester (me)
+          otherMember, // chủ sách (họ)
+          member, // người muốn (tôi)
         );
 
-        theirBooksIWant.push({
+        theirBooksIWant.push({ // Luôn thêm vào (không cần điều kiện)
           theirBook: bookIWant,
           myWant,
           score: comprehensiveScore,
         });
 
-        // Check if two-way match exists (for bonus scoring)
-        const isTwoWayMatch = myBooksTheyWant.length > 0;
+        const isTwoWayMatch = myBooksTheyWant.length > 0; // Có phải match 2 chiều?
         
-        // Total score (if no two-way, only count theirBooksIWant)
+        // Tổng điểm: Nếu 2 chiều thì cộng 2 bên, không thì chỉ tính theirBooksIWant
         const totalScore = isTwoWayMatch
           ? myBooksTheyWant.reduce((sum, m) => sum + m.score.score, 0) +
             theirBooksIWant.reduce((sum, m) => sum + m.score.score, 0)
           : theirBooksIWant.reduce((sum, m) => sum + m.score.score, 0);
 
-        const scoreBreakdown = this.aggregateScoreBreakdown([
+        const scoreBreakdown = this.aggregateScoreBreakdown([ // Tổng hợp điểm từ tất cả cặp sách
           ...myBooksTheyWant.map((m) => m.score.breakdown),
           ...theirBooksIWant.map((m) => m.score.breakdown),
         ]);
 
-        // Add to suggestions (no longer requires two-way match)
-        potentialMatches.push({
+        potentialMatches.push({ // Thêm vào danh sách suggestions
           otherMember,
           myBooksTheyWant,
           theirBooksIWant,
@@ -216,20 +203,19 @@ export class MatchingService {
           scoreBreakdown,
         });
 
-        processedMembers.add(bookIWant.owner_id);
+        processedMembers.add(bookIWant.owner_id); // Đánh dấu đã xử lý
       }
     }
 
-    // 10) Sort theo điểm
-    potentialMatches.sort((a, b) => b.totalScore - a.totalScore);
+    potentialMatches.sort((a, b) => b.totalScore - a.totalScore); // Sắp xếp giảm dần theo điểm
 
-    // 11) Lưu top suggestions
-    const topMatches = potentialMatches.slice(0, this.config.maxSuggestions);
+    const topMatches = potentialMatches.slice(0, this.config.maxSuggestions); // Lấy top 20 (default)
     const savedSuggestions: ReturnType<typeof this.formatSuggestion>[] = [];
 
+    // Lưu vào database
     for (const match of topMatches) {
-      const suggestion = await this.saveSuggestion(member.member_id, match);
-      savedSuggestions.push(this.formatSuggestion(suggestion, match));
+      const suggestion = await this.saveSuggestion(member.member_id, match); // Lưu vào matching_suggestions
+      savedSuggestions.push(this.formatSuggestion(suggestion, match)); // Format trả về cho frontend
     }
 
     this.logger.log(`[findMatchingSuggestions] Found ${savedSuggestions.length} suggestions`);
@@ -245,18 +231,18 @@ export class MatchingService {
         SELECT blocked_member_id AS member_id FROM blocked_members WHERE blocked_by_id = ?
         UNION
         SELECT blocked_by_id AS member_id FROM blocked_members WHERE blocked_member_id = ?
-        `,
+        `, // Bi-directional: Lấy cả người tôi chặn và người chặn tôi
         [memberId, memberId],
       );
-      return result.map((r: any) => r.member_id);
+      return result.map((r: any) => r.member_id); // Trả về array các member_id
     } catch (error: any) {
       this.logger.warn(`Failed to get blocked members: ${error.message}`);
-      return [];
+      return []; // Lỗi thì return rỗng
     }
   }
 
   private async getMembersWithPendingRequests(memberId: string): Promise<string[]> {
-    const pendingRequests = await this.requestRepo.find({
+    const pendingRequests = await this.requestRepo.find({ // Lấy requests đang pending
       where: [
         { requester_id: memberId, status: ExchangeRequestStatus.PENDING },
         { receiver_id: memberId, status: ExchangeRequestStatus.PENDING },
@@ -421,6 +407,18 @@ export class MatchingService {
 
   // ========== Scoring ==========
 
+  /**
+   * Tính điểm matching tổng hợp (8 factors)
+   * Weighted scoring:
+   * 1. Book Match (0.3) - Sách có match không (ISBN, title, author)
+   * 2. Trust Score (0.2) - Độ tin cậy (0-100 scale)
+   * 3. Geographic (0.15) - Cùng khu vực (giao dịch dễ hơn)
+   * 4. History (0.1) - Số lần trao đổi thành công
+   * 5. Rating (0.08) - Đánh giá trung bình
+   * 6. Priority (0.1) - Độ ưu tiên wanted book (1-10)
+   * 7. Condition (0.05) - Tình trạng sách
+   * 8. Verification (0.05) - Email/Phone verified
+   */
   private calculateComprehensiveScore(
     book: Book,
     want: BookWanted,
@@ -450,108 +448,133 @@ export class MatchingService {
     };
   }
 
+  /**
+   * Tính điểm khớp sách (max 0.5 = 50%)
+   * - Title exact match: 0.3
+   * - Title partial: 0.2
+   * - Author exact: 0.15
+   * - Author partial: 0.08
+   * - Category match: 0.05
+   */
   private calculateBookMatchScore(book: Book, want: BookWanted): number {
     let score = 0;
 
     // Title matching (up to 0.3)
     if (book.title && want.title) {
-      const bt = book.title.toLowerCase().trim();
-      const wt = want.title.toLowerCase().trim();
-      if (bt === wt) score += 0.3;
-      else if (bt.includes(wt) || wt.includes(bt)) score += 0.2;
+      const bt = book.title.toLowerCase().trim(); // Normalize title của book
+      const wt = want.title.toLowerCase().trim(); // Normalize title của wanted
+      if (bt === wt) score += 0.3; // Tên chính xác 100% → 0.3 điểm
+      else if (bt.includes(wt) || wt.includes(bt)) score += 0.2; // Chứa nhau → 0.2 điểm
     }
 
     // Author matching (up to 0.15)
     if (book.author && want.author) {
-      const ba = book.author.toLowerCase().trim();
-      const wa = want.author.toLowerCase().trim();
-      if (ba === wa) score += 0.15;
-      else if (ba.includes(wa) || wa.includes(ba)) score += 0.08;
+      const ba = book.author.toLowerCase().trim(); // Normalize author của book
+      const wa = want.author.toLowerCase().trim(); // Normalize author của wanted
+      if (ba === wa) score += 0.15; // Tác giả chính xác → 0.15 điểm
+      else if (ba.includes(wa) || wa.includes(ba)) score += 0.08; // Chứa nhau → 0.08 điểm
     }
 
     // Category matching (up to 0.05)
     if (book.category && want.category && book.category === want.category) {
-      score += 0.05;
+      score += 0.05; // Thể loại giống nhau → 0.05 điểm
     }
 
-    return score;
+    return score; // Tổng điểm (max 0.5)
   }
 
+  /**
+   * Trust score (0-100 scale) → Bonus/penalty
+   * 95-100: +0.2 (VIP)
+   * 90-94: +0.15 (Excellent)
+   * 80-89: +0.1 (Very good)
+   * 60-79: 0 (Normal)
+   * <60: -0.05 (Below average - penalty)
+   */
   private calculateTrustScore(member: Member): number {
-    // Trust score is now on 0-100 scale with adjusted thresholds
-    const trust = Number(member.trust_score as any);
-    if (trust >= 95) return 0.2;   // VIP: 95-100
-    if (trust >= 90) return 0.15;  // Excellent: 90-94
-    if (trust >= 80) return 0.1;   // Very good: 80-89
-    if (trust >= 60) return 0.0;   // Normal: 60-79
-    if (trust < 60) return -0.05;  // Below average: < 60
+    const trust = Number(member.trust_score as any); // Trust score scale 0-100
+    if (trust >= 95) return 0.2;   // VIP: 95-100 → +0.2
+    if (trust >= 90) return 0.15;  // Excellent: 90-94 → +0.15
+    if (trust >= 80) return 0.1;   // Very good: 80-89 → +0.1
+    if (trust >= 60) return 0.0;   // Normal: 60-79 → 0 (neutral)
+    if (trust < 60) return -0.05;  // Below average: < 60 → -0.05 (penalty)
     return 0;
   }
 
   private calculateHistoryScore(member: Member): number {
-    if (member.completed_exchanges >= 20) return 0.1;
-    if (member.completed_exchanges >= 10) return 0.08;
-    if (member.completed_exchanges >= 5) return 0.05;
-    if (member.completed_exchanges >= 1) return 0.02;
-    return 0;
+    if (member.completed_exchanges >= 20) return 0.1;  // 20+ giao dịch → 0.1
+    if (member.completed_exchanges >= 10) return 0.08; // 10-19 giao dịch → 0.08
+    if (member.completed_exchanges >= 5) return 0.05;  // 5-9 giao dịch → 0.05
+    if (member.completed_exchanges >= 1) return 0.02;  // 1-4 giao dịch → 0.02
+    return 0; // Chưa có giao dịch → 0
   }
 
   private calculateRatingScore(member: Member): number {
-    const rating = Number(member.average_rating as any);
-    if (rating >= 4.8) return 0.08;
-    if (rating >= 4.5) return 0.06;
-    if (rating >= 4.0) return 0.04;
-    if (rating >= 3.5) return 0.02;
-    return 0;
+    const rating = Number(member.average_rating as any); // Đánh giá trung bình (1-5)
+    if (rating >= 4.8) return 0.08; // 4.8-5.0 → 0.08
+    if (rating >= 4.5) return 0.06; // 4.5-4.7 → 0.06
+    if (rating >= 4.0) return 0.04; // 4.0-4.4 → 0.04
+    if (rating >= 3.5) return 0.02; // 3.5-3.9 → 0.02
+    return 0; // < 3.5 → 0
   }
 
+  /**
+   * Geographic proximity score (max 0.15)
+   * - Cùng region: 0.15
+   * - Cùng major city (HCM/HN/DN): 0.1
+   * - Cả 2 đều major cities: 0.05
+   * - Khác region: 0
+   */
   private calculateGeographicScore(myRegion: string, theirRegion: string): number {
-    if (!myRegion || !theirRegion) return 0;
+    if (!myRegion || !theirRegion) return 0; // Thiếu thông tin → 0
 
     const normalize = (region: string) => region.toLowerCase().trim();
-    const my = normalize(myRegion);
-    const their = normalize(theirRegion);
+    const my = normalize(myRegion); // Normalize region của tôi
+    const their = normalize(theirRegion); // Normalize region của họ
 
-    if (my === their) return 0.15;
+    if (my === their) return 0.15; // Cùng region chính xác → 0.15
 
+    // Định nghĩa major cities (HCM, Hà Nội, Đà Nẵng)
     const hcmVariants = ['ho chi minh', 'hcm', 'sai gon', 'saigon'];
     const hnVariants = ['ha noi', 'hanoi', 'hn'];
     const dnVariants = ['da nang', 'danang'];
 
+    // Kiểm tra cùng major city
     const isInSameArea = (variants: string[]) =>
       variants.some((v) => my.includes(v)) && variants.some((v) => their.includes(v));
 
     if (isInSameArea(hcmVariants) || isInSameArea(hnVariants) || isInSameArea(dnVariants)) {
-      return 0.1;
+      return 0.1; // Cùng thành phố lớn → 0.1
     }
 
+    // Cả 2 đều ở major cities (nhưng khác city)
     const majorCities = [...hcmVariants, ...hnVariants, ...dnVariants];
     const myInMajor = majorCities.some((city) => my.includes(city));
     const theirInMajor = majorCities.some((city) => their.includes(city));
-    if (myInMajor && theirInMajor) return 0.05;
+    if (myInMajor && theirInMajor) return 0.05; // Cả 2 major cities → 0.05
 
-    return 0;
+    return 0; // Khác region, không match → 0
   }
 
   private calculatePriorityScore(priority: number): number {
-    if (priority >= 9) return 0.1;
-    if (priority >= 7) return 0.08;
-    if (priority >= 5) return 0.05;
-    if (priority >= 3) return 0.02;
-    return 0;
+    if (priority >= 9) return 0.1;   // Priority 9-10 → 0.1
+    if (priority >= 7) return 0.08;  // Priority 7-8 → 0.08
+    if (priority >= 5) return 0.05;  // Priority 5-6 → 0.05
+    if (priority >= 3) return 0.02;  // Priority 3-4 → 0.02
+    return 0; // Priority < 3 → 0
   }
 
   private calculateConditionScore(condition: string): number {
-    if (!condition) return 0;
+    if (!condition) return 0; // Không có thông tin → 0
     switch (condition) {
       case 'LIKE_NEW':
-        return 0.05;
+        return 0.05; // Như mới → 0.05
       case 'GOOD':
-        return 0.03;
+        return 0.03; // Tốt → 0.03
       case 'FAIR':
-        return 0.01;
+        return 0.01; // Trung bình → 0.01
       default:
-        return 0;
+        return 0; // POOR hoặc khác → 0
     }
   }
 
@@ -678,14 +701,14 @@ export class MatchingService {
     
     let results: Book[] = [];
 
-    // 1. PRIORITY 1: Match by ISBN (most accurate)
+    // PRIORITY 1: Match by ISBN (chính xác nhất)
     if (myWant.isbn) {
       this.logger.debug(`[findBooksMatchingWant] Trying ISBN match: ${myWant.isbn}`);
       const isbnResults = await this.bookRepo.query(
         `SELECT * FROM books 
          WHERE status = ? 
          AND deleted_at IS NULL 
-         AND owner_id != ?
+         AND owner_id != ? 
          AND isbn = ?
          LIMIT 50`,
         [BookStatus.AVAILABLE, excludeOwnerId, myWant.isbn]
@@ -693,11 +716,11 @@ export class MatchingService {
       
       if (isbnResults.length > 0) {
         this.logger.debug(`[findBooksMatchingWant] ISBN match found: ${isbnResults.length} results`);
-        results = isbnResults.map(raw => this.bookRepo.create(raw));
+        results = isbnResults.map(raw => this.bookRepo.create(raw)); // Convert raw SQL → Entity
       }
     }
 
-    // 2. PRIORITY 2: Match by Google Books ID
+    // PRIORITY 2: Match by Google Books ID (nếu không có ISBN)
     if (results.length === 0 && myWant.google_books_id) {
       this.logger.debug(`[findBooksMatchingWant] Trying Google Books ID match: ${myWant.google_books_id}`);
       const gbResults = await this.bookRepo.query(
@@ -716,53 +739,52 @@ export class MatchingService {
       }
     }
 
-    // 3. PRIORITY 3: Fuzzy match by title + author
+    // PRIORITY 3: Fuzzy match by title + author (nếu 2 cái trên không match)
     if (results.length === 0 && myWant.title) {
       this.logger.debug(`[findBooksMatchingWant] Trying fuzzy title/author match`);
       
-      // Normalize title: remove punctuation, extra spaces for better matching
+      // Normalize title: bỏ dấu câu, khoảng trắng dư để match tốt hơn
       const normalizedTitle = myWant.title
         .toLowerCase()
-        .replace(/[,.:;!?()-]/g, ' ')  // Remove punctuation
-        .replace(/\s+/g, ' ')           // Collapse multiple spaces
+        .replace(/[,.:;!?()-]/g, ' ')  // Bỏ dấu câu
+        .replace(/\s+/g, ' ')           // Gộp nhiều spaces thành 1
         .trim();
       
-      // Split into keywords for flexible matching
-      const titleKeywords = normalizedTitle.split(' ').filter(word => word.length > 2);
+      const titleKeywords = normalizedTitle.split(' ').filter(word => word.length > 2); // Tách thành keywords (bỏ từ < 3 ký tự)
       
       this.logger.debug(`[findBooksMatchingWant] Normalized title: "${normalizedTitle}", keywords: ${titleKeywords.join(', ')}`);
       
-      // Build flexible query using keywords
+      // Build query linh hoạt dùng keywords
       let query = `SELECT * FROM books 
          WHERE status = ? 
          AND deleted_at IS NULL 
          AND owner_id != ?`;
       const params: any[] = [BookStatus.AVAILABLE, excludeOwnerId];
       
-      // Match if title contains most keywords (more flexible)
+      // Match nếu title chứa hầu hết keywords
       if (titleKeywords.length > 0) {
         const titleConditions = titleKeywords
           .map(() => `LOWER(REPLACE(REPLACE(REPLACE(title, ',', ''), '.', ''), ':', '')) LIKE ?`)
           .join(' AND ');
         query += ` AND (${titleConditions})`;
-        titleKeywords.forEach(keyword => params.push(`%${keyword}%`));
+        titleKeywords.forEach(keyword => params.push(`%${keyword}%`)); // Thêm % để LIKE search
       }
 
-      // Add author filter if available
+      // Thêm filter author nếu có
       if (myWant.author) {
         const authorPattern = `%${myWant.author.toLowerCase()}%`;
         query += ` AND LOWER(author) LIKE ?`;
         params.push(authorPattern);
       }
 
-      query += ` LIMIT 100`;
+      query += ` LIMIT 100`; // Giới hạn 100 results
 
       const rawResults = await this.bookRepo.query(query, params);
       this.logger.debug(`[findBooksMatchingWant] Fuzzy match returned ${rawResults.length} results`);
       results = rawResults.map(raw => this.bookRepo.create(raw));
     }
 
-    // 4. Filter by preferred_condition
+    // Filter theo preferred_condition (VD: chỉ muốn GOOD trở lên)
     if (myWant.preferred_condition && myWant.preferred_condition !== PreferredCondition.ANY) {
       const beforeFilter = results.length;
       results = results.filter(book => 
@@ -771,7 +793,7 @@ export class MatchingService {
       this.logger.debug(`[findBooksMatchingWant] Condition filter: ${beforeFilter} -> ${results.length} (preferred: ${myWant.preferred_condition})`);
     }
 
-    // 5. Filter by language if specified
+    // Filter theo language nếu đã chỉ định
     if (myWant.language) {
       const beforeFilter = results.length;
       results = results.filter(book => 

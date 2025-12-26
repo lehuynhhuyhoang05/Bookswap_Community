@@ -985,7 +985,19 @@ export class ExchangesService {
       });
     }
 
-    const successRate = sentCount > 0 ? (completedExchanges / sentCount) * 100 : 0;
+    // Count total exchanges (all statuses)
+    let totalExchanges = 0;
+    for (const memberId of memberIds) {
+      totalExchanges += await this.exchangeRepo.count({
+        where: [
+          { member_a_id: memberId },
+          { member_b_id: memberId },
+        ],
+      });
+    }
+
+    // Success rate = completed / total exchanges (not requests)
+    const successRate = totalExchanges > 0 ? (completedExchanges / totalExchanges) * 100 : 0;
 
     return {
       total_requests_sent: sentCount,
@@ -1046,6 +1058,15 @@ export class ExchangesService {
   }
 
   // ==================== SCHEDULE MEETING ====================
+  /**
+   * Đặt lịch hẹn gặp mặt cho exchange
+   * Flow: 1. Validate user là member của exchange
+   *       2. Check exchange đang PENDING
+   *       3. Validate meeting_time là tương lai
+   *       4. Lưu thông tin lịch (location, time, coordinates)
+   *       5. Người đặt tự động confirm
+   *       6. Notify người kia cần confirm
+   */
   async scheduleMeeting(
     userId: string,
     exchangeId: string,
@@ -1053,7 +1074,7 @@ export class ExchangesService {
   ) {
     this.logger.log(`[scheduleMeeting] exchangeId=${exchangeId}`);
 
-    // Get ALL member records for user
+    // Lấy tất cả member records của user (1 user có thể có nhiều members)
     const members = await this.memberRepo.find({
       where: { user_id: userId },
     });
@@ -1062,10 +1083,10 @@ export class ExchangesService {
       throw new NotFoundException('Member profile not found');
     }
 
-    const memberIds = members.map((m) => m.member_id);
-    const currentMemberId = members[0].member_id;
+    const memberIds = members.map((m) => m.member_id); // Array các member_id
+    const currentMemberId = members[0].member_id; // Lấy member_id đầu tiên
 
-    const exchange = await this.exchangeRepo.findOne({
+    const exchange = await this.exchangeRepo.findOne({ // Lấy exchange từ DB
       where: { exchange_id: exchangeId },
     });
 
@@ -1073,16 +1094,16 @@ export class ExchangesService {
       throw new NotFoundException('Exchange not found');
     }
 
-    // Verify user is part of exchange
+    // Kiểm tra user có phải member A hoặc B không
     let isPartOfExchange = false;
     let userIsMemberA = false;
     for (const memberId of memberIds) {
-      if (exchange.member_a_id === memberId) {
+      if (exchange.member_a_id === memberId) { // User là member A
         isPartOfExchange = true;
         userIsMemberA = true;
         break;
       }
-      if (exchange.member_b_id === memberId) {
+      if (exchange.member_b_id === memberId) { // User là member B
         isPartOfExchange = true;
         userIsMemberA = false;
         break;
@@ -1093,49 +1114,49 @@ export class ExchangesService {
       throw new ForbiddenException('You are not part of this exchange');
     }
 
-    // Can only schedule meeting for PENDING exchanges
+    // Chỉ được đặt lịch khi status = PENDING
     if (exchange.status !== ExchangeStatus.PENDING) {
       throw new BadRequestException('Can only schedule meeting for pending exchanges');
     }
 
-    // Validate meeting time is in the future
-    const meetingTime = new Date(dto.meeting_time);
-    if (meetingTime <= new Date()) {
+    // Validate meeting time phải trong tương lai
+    const meetingTime = new Date(dto.meeting_time); // Parse ISO string → Date
+    if (meetingTime <= new Date()) { // So sánh với hiện tại
       throw new BadRequestException('Meeting time must be in the future');
     }
 
-    // Update exchange with meeting details
-    exchange.meeting_location = dto.meeting_location;
-    exchange.meeting_time = meetingTime;
-    exchange.meeting_notes = dto.meeting_notes || null;
-    exchange.meeting_latitude = dto.meeting_latitude || null;
-    exchange.meeting_longitude = dto.meeting_longitude || null;
-    exchange.meeting_scheduled_at = new Date();
-    exchange.meeting_scheduled_by = currentMemberId;
+    // Lưu thông tin lịch hẹn (location, time, GPS coordinates...)
+    exchange.meeting_location = dto.meeting_location; // Ví dụ: "Starbucks Nguyễn Huệ"
+    exchange.meeting_time = meetingTime; // Thời gian hẹn
+    exchange.meeting_notes = dto.meeting_notes || null; // Ghi chú (optional)
+    exchange.meeting_latitude = dto.meeting_latitude || null;   // GPS lat để chỉ đường
+    exchange.meeting_longitude = dto.meeting_longitude || null; // GPS lng
+    exchange.meeting_scheduled_at = new Date(); // Thời điểm tạo lịch
+    exchange.meeting_scheduled_by = currentMemberId; // Người tạo lịch
 
-    // The person who schedules automatically confirms
+    // Người đặt lịch tự động confirm (không cần confirm lại)
     if (userIsMemberA) {
-      exchange.meeting_confirmed_by_a = true;
+      exchange.meeting_confirmed_by_a = true; // Member A confirm
     } else {
-      exchange.meeting_confirmed_by_b = true;
+      exchange.meeting_confirmed_by_b = true; // Member B confirm
     }
 
-    // Status changes to MEETING_SCHEDULED once both confirm
-    // For now, it stays PENDING until the other person confirms
+    // Status còn PENDING cho đến khi người kia confirm
+    // Khi cả 2 confirm → status = MEETING_SCHEDULED (logic ở confirmMeeting)
 
-    await this.exchangeRepo.save(exchange);
+    await this.exchangeRepo.save(exchange); // Lưu vào DB
 
     this.logger.log(`Meeting scheduled for exchange: ${exchangeId}`);
 
-    // Send notification to the other member
+    // Gửi notification cho người kia cần confirm
     try {
-      const otherMemberId = userIsMemberA ? exchange.member_b_id : exchange.member_a_id;
-      const scheduler = await this.memberRepo.findOne({
+      const otherMemberId = userIsMemberA ? exchange.member_b_id : exchange.member_a_id; // Lấy member_id người kia
+      const scheduler = await this.memberRepo.findOne({ // Lấy thông tin người đặt lịch
         where: { member_id: currentMemberId },
         relations: ['user'],
       });
       
-      await this.notificationsService.create(
+      await this.notificationsService.create( // Gửi notification
         otherMemberId,
         'MEETING_SCHEDULED',
         {
@@ -1153,10 +1174,17 @@ export class ExchangesService {
   }
 
   // ==================== CONFIRM MEETING ====================
+  /**
+   * Xác nhận lịch hẹn - Cần 2 người cùng confirm
+   * Flow: 1. Kiểm tra đã có lịch hẹn chưa (meeting_time)
+   *       2. Update meeting_confirmed_by_a hoặc _by_b
+   *       3. Nếu cả 2 confirm → status = MEETING_SCHEDULED
+   *       4. Gửi notification cho cả 2 hoặc người chưa confirm
+   */
   async confirmMeeting(userId: string, exchangeId: string) {
     this.logger.log(`[confirmMeeting] exchangeId=${exchangeId}`);
 
-    // Get ALL member records for user
+    // Lấy tất cả member records
     const members = await this.memberRepo.find({
       where: { user_id: userId },
     });
@@ -1165,9 +1193,9 @@ export class ExchangesService {
       throw new NotFoundException('Member profile not found');
     }
 
-    const memberIds = members.map((m) => m.member_id);
+    const memberIds = members.map((m) => m.member_id); // Array member_id
 
-    const exchange = await this.exchangeRepo.findOne({
+    const exchange = await this.exchangeRepo.findOne({ // Lấy exchange
       where: { exchange_id: exchangeId },
     });
 
@@ -1175,16 +1203,16 @@ export class ExchangesService {
       throw new NotFoundException('Exchange not found');
     }
 
-    // Verify user is part of exchange
+    // Kiểm tra user là member A hay B
     let isPartOfExchange = false;
     let userIsMemberA = false;
     for (const memberId of memberIds) {
-      if (exchange.member_a_id === memberId) {
+      if (exchange.member_a_id === memberId) { // User là member A
         isPartOfExchange = true;
         userIsMemberA = true;
         break;
       }
-      if (exchange.member_b_id === memberId) {
+      if (exchange.member_b_id === memberId) { // User là member B
         isPartOfExchange = true;
         userIsMemberA = false;
         break;
@@ -1195,26 +1223,26 @@ export class ExchangesService {
       throw new ForbiddenException('You are not part of this exchange');
     }
 
-    // Must have meeting scheduled first
+    // Phải có meeting đã được schedule trước
     if (!exchange.meeting_time || !exchange.meeting_location) {
       throw new BadRequestException('No meeting has been scheduled yet');
     }
 
-    // Update confirmation
+    // Update confirmation flag
     if (userIsMemberA) {
-      exchange.meeting_confirmed_by_a = true;
+      exchange.meeting_confirmed_by_a = true; // Member A confirm
     } else {
-      exchange.meeting_confirmed_by_b = true;
+      exchange.meeting_confirmed_by_b = true; // Member B confirm
     }
 
-    // If both confirmed, update status to MEETING_SCHEDULED
+    // Nếu CẢ 2 đã confirm → Đổi status = MEETING_SCHEDULED
     if (exchange.meeting_confirmed_by_a && exchange.meeting_confirmed_by_b) {
-      exchange.status = ExchangeStatus.MEETING_SCHEDULED;
+      exchange.status = ExchangeStatus.MEETING_SCHEDULED; // Cập nhật status
       this.logger.log(`Meeting confirmed by both parties for exchange: ${exchangeId}`);
       
-      // Send notifications to both members
+      // Gửi notification cho cả 2 người
       try {
-        await this.notificationsService.createMany([
+        await this.notificationsService.createMany([ // Batch create 2 notifications
           {
             memberId: exchange.member_a_id,
             type: 'MEETING_CONFIRMED',
@@ -1238,15 +1266,15 @@ export class ExchangesService {
         this.logger.warn('Failed to send MEETING_CONFIRMED notifications:', err.message);
       }
     } else {
-      // Only one person confirmed, notify the other
+      // Chỉ 1 người confirm → Notify người kia
       try {
-        const otherMemberId = userIsMemberA ? exchange.member_b_id : exchange.member_a_id;
-        const confirmer = await this.memberRepo.findOne({
+        const otherMemberId = userIsMemberA ? exchange.member_b_id : exchange.member_a_id; // Lấy member kia
+        const confirmer = await this.memberRepo.findOne({ // Lấy thông tin người confirm
           where: { member_id: userIsMemberA ? exchange.member_a_id : exchange.member_b_id },
           relations: ['user'],
         });
         
-        await this.notificationsService.create(
+        await this.notificationsService.create( // Gửi notification
           otherMemberId,
           'MEETING_CONFIRMATION_PENDING',
           {
@@ -1261,9 +1289,9 @@ export class ExchangesService {
       }
     }
 
-    await this.exchangeRepo.save(exchange);
+    await this.exchangeRepo.save(exchange); // Lưu vào DB
 
-    return this.getExchangeById(exchangeId);
+    return this.getExchangeById(exchangeId); // Trả về full exchange data
   }
 
   // ==================== START EXCHANGE (After meeting) ====================
@@ -1625,175 +1653,7 @@ export class ExchangesService {
     };
   }
 
-  // ==================== UPDATE MEETING INFO ====================
-  async updateMeetingInfo(
-    userId: string,
-    exchangeId: string,
-    dto: any, // UpdateMeetingInfoDto
-  ) {
-    this.logger.log(`[updateMeetingInfo] exchangeId=${exchangeId}`);
 
-    // Get ALL member records for user
-    const members = await this.memberRepo.find({
-      where: { user_id: userId },
-    });
-
-    if (!members || members.length === 0) {
-      throw new NotFoundException('Member profile not found');
-    }
-
-    const memberIds = members.map((m) => m.member_id);
-
-    const exchange = await this.exchangeRepo.findOne({
-      where: { exchange_id: exchangeId },
-    });
-
-    if (!exchange) {
-      throw new NotFoundException('Exchange not found');
-    }
-
-    // Verify user is part of exchange
-    let isPartOfExchange = false;
-    for (const memberId of memberIds) {
-      if (exchange.member_a_id === memberId || exchange.member_b_id === memberId) {
-        isPartOfExchange = true;
-        break;
-      }
-    }
-
-    if (!isPartOfExchange) {
-      throw new ForbiddenException('You are not part of this exchange');
-    }
-
-    // Can only update meeting info for PENDING or ACCEPTED exchanges
-    if (![ExchangeStatus.PENDING, 'ACCEPTED'].includes(exchange.status as any)) {
-      throw new BadRequestException('Cannot update meeting info for this exchange status');
-    }
-
-    // Update meeting info
-    if (dto.meeting_location !== undefined) {
-      exchange.meeting_location = dto.meeting_location;
-    }
-    if (dto.meeting_time !== undefined) {
-      if (dto.meeting_time) {
-        exchange.meeting_time = new Date(dto.meeting_time);
-      } else {
-        exchange.meeting_time = null as any;
-      }
-    }
-    if (dto.meeting_notes !== undefined) {
-      exchange.meeting_notes = dto.meeting_notes;
-    }
-
-    await this.exchangeRepo.save(exchange);
-
-    return this.getExchangeById(exchangeId);
-  }
-
-  // ==================== CANCEL EXCHANGE ====================
-  async cancelExchange(
-    userId: string,
-    exchangeId: string,
-    dto: any, // CancelExchangeDto
-  ) {
-    this.logger.log(`[cancelExchange] exchangeId=${exchangeId} reason=${dto.cancellation_reason}`);
-
-    // Get ALL member records for user
-    const members = await this.memberRepo.find({
-      where: { user_id: userId },
-    });
-
-    if (!members || members.length === 0) {
-      throw new NotFoundException('Member profile not found');
-    }
-
-    const memberIds = members.map((m) => m.member_id);
-
-    const exchange = await this.exchangeRepo.findOne({
-      where: { exchange_id: exchangeId },
-      relations: ['exchange_books', 'exchange_books.book'],
-    });
-
-    if (!exchange) {
-      throw new NotFoundException('Exchange not found');
-    }
-
-    // Verify user is part of exchange
-    let isPartOfExchange = false;
-    for (const memberId of memberIds) {
-      if (exchange.member_a_id === memberId || exchange.member_b_id === memberId) {
-        isPartOfExchange = true;
-        break;
-      }
-    }
-
-    if (!isPartOfExchange) {
-      throw new ForbiddenException('You are not part of this exchange');
-    }
-
-    // Cannot cancel completed exchanges
-    if (exchange.status === ExchangeStatus.COMPLETED) {
-      throw new BadRequestException('Cannot cancel a completed exchange');
-    }
-
-    // Update exchange status
-    exchange.status = ExchangeStatus.CANCELLED;
-    exchange.cancellation_reason = dto.cancellation_reason;
-    exchange.cancellation_details = dto.cancellation_details || null;
-
-    await this.exchangeRepo.save(exchange);
-
-    // Release books back to AVAILABLE
-    const bookIds = exchange.exchange_books.map((eb) => eb.book_id);
-    await this.bookRepo.update(
-      { book_id: In(bookIds) },
-      { status: BookStatus.AVAILABLE },
-    );
-
-    // Update member stats for cancellations (trust score impact)
-    await this.memberRepo.increment(
-      { member_id: exchange.member_a_id },
-      'cancelled_exchanges',
-      1,
-    );
-    await this.memberRepo.increment(
-      { member_id: exchange.member_b_id },
-      'cancelled_exchanges',
-      1,
-    );
-
-    // Decrease trust score for cancellations (except ADMIN_CANCELLED)
-    if (dto.cancellation_reason !== 'ADMIN_CANCELLED') {
-      const penaltyPoints = this.getCancellationPenalty(dto.cancellation_reason);
-      
-      await this.memberRepo.decrement(
-        { member_id: exchange.member_a_id },
-        'trust_score',
-        penaltyPoints,
-      );
-      await this.memberRepo.decrement(
-        { member_id: exchange.member_b_id },
-        'trust_score',
-        penaltyPoints,
-      );
-    }
-
-    this.logger.log(`Exchange cancelled: ${exchange.exchange_id}`);
-
-    return this.getExchangeById(exchangeId);
-  }
-
-  // ==================== GET CANCELLATION PENALTY ====================
-  private getCancellationPenalty(reason: string): number {
-    const penalties = {
-      USER_CANCELLED: 2,
-      NO_SHOW: 5,
-      BOTH_NO_SHOW: 5,
-      DISPUTE: 3,
-      ADMIN_CANCELLED: 0,
-    };
-    return penalties[reason] || 2;
-  }
 
   private formatExchangeResponse(exchange: Exchange) {
     return {

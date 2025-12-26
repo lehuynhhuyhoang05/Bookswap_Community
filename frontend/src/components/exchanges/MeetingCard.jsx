@@ -153,7 +153,16 @@ const MeetingCard = ({
             )}
 
             <div className="flex gap-2 mt-3">
-              <button className="text-xs bg-white border border-gray-300 px-3 py-1.5 rounded-md hover:bg-gray-50 flex items-center gap-1">
+              <button 
+                onClick={() => {
+                  if (meetingData.meeting_latitude && meetingData.meeting_longitude) {
+                    window.open(`https://www.google.com/maps/dir/?api=1&destination=${meetingData.meeting_latitude},${meetingData.meeting_longitude}`, '_blank');
+                  } else if (locationValue) {
+                    window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationValue)}`, '_blank');
+                  }
+                }}
+                className="text-xs bg-white border border-gray-300 px-3 py-1.5 rounded-md hover:bg-gray-50 flex items-center gap-1"
+              >
                 <Navigation className="w-3 h-3" />
                 Chỉ đường
               </button>
@@ -217,17 +226,19 @@ const MeetingCard = ({
             <div className="font-semibold text-gray-900 text-lg">
               {locationValue}
             </div>
-            {meetingData.latitude && meetingData.longitude && (
-              <a 
-                href={`https://www.google.com/maps/search/?api=1&query=${meetingData.latitude},${meetingData.longitude}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-blue-600 hover:text-blue-800 mt-2 inline-flex items-center gap-1"
-              >
-                <Navigation className="w-4 h-4" />
-                Xem bản đồ & chỉ đường
-              </a>
-            )}
+            <button
+              onClick={() => {
+                if (meetingData.latitude && meetingData.longitude) {
+                  window.open(`https://www.google.com/maps/dir/?api=1&destination=${meetingData.latitude},${meetingData.longitude}`, '_blank');
+                } else if (locationValue) {
+                  window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationValue)}`, '_blank');
+                }
+              }}
+              className="text-sm text-blue-600 hover:text-blue-800 mt-2 inline-flex items-center gap-1 font-medium"
+            >
+              <Navigation className="w-4 h-4" />
+              Chỉ đường đến đây
+            </button>
           </div>
         </div>
 

@@ -334,33 +334,55 @@ export class MessagesService {
   }
 
   /**
-   * Send a message (create conversation if needed)
+   * ============================================
+   * CORE METHOD: sendMessage
+   * ============================================
+   * Xử lý business logic khi gửi tin nhắn
+   * 
+   * TÁCH RA SERVICE VÌ:
+   * - Gateway chỉ lo WebSocket/networking
+   * - Service chứa business logic
+   * - Có thể tái sử dụng (VD: Admin gửi tin nhắn qua REST API)
+   * - Dễ test: Mock service thay vì test toàn bộ WebSocket
+   * 
+   * FLOW:
+   * 1. Validate sender/receiver tồn tại
+   * 2. Find or create Conversation (3 cases)
+   * 3. Create Message record
+   * 4. Update Conversation metadata
+   * 5. Log activity
+   * 6. Return full data với relations
+   * ============================================
    */
   async sendMessage(userId: string, dto: SendMessageDto) {
     this.logger.log(`[sendMessage] userId=${userId}`);
 
+    // ===== VALIDATION: KIỂM TRA SENDER TỒN TẠI =====
     const member = await this.memberRepo.findOne({
       where: { user_id: userId },
-      relations: ['user'],
+      relations: ['user'],  // Load user profile (full_name, avatar...)
     });
     if (!member) throw new NotFoundException('Member profile not found');
 
-    let conversation: Conversation;
+    let conversation: Conversation; // Biến lưu conversation (sẽ tìm hoặc tạo mới)
 
-    // Case 1: Existing conversation
+    // ============================================
+    // CASE 1: EXISTING CONVERSATION
+    // ============================================
+    // Client đã biết conversation_id (đang chat trong hộp thoại có sẵn)
     if (dto.conversation_id) {
-      const existingConv = await this.conversationRepo.findOne({
+      const existingConv = await this.conversationRepo.findOne({ // Tìm conversation trong DB
         where: { conversation_id: dto.conversation_id },
-        relations: ['member_a', 'member_a.user', 'member_b', 'member_b.user'],
+        relations: ['member_a', 'member_a.user', 'member_b', 'member_b.user'], // Load cả 2 members
       });
 
       if (!existingConv) {
         throw new NotFoundException('Conversation not found');
       }
 
-      conversation = existingConv;
+      conversation = existingConv; // Gán vào biến
 
-      // Check if user is part of conversation
+      // Check if user is part of conversation (không phải member A hoặc B → throw error)
       if (
         conversation.member_a_id !== member.member_id &&
         conversation.member_b_id !== member.member_id
@@ -368,19 +390,22 @@ export class MessagesService {
         throw new ForbiddenException('You are not part of this conversation');
       }
     }
-    // Case 2: Create new conversation from exchange request
+    // ============================================
+    // CASE 2: CREATE NEW CONVERSATION FROM EXCHANGE REQUEST
+    // ============================================
+    // Client gửi exchange_request_id (lần đầu tiên chat sau khi accept request)
     else if (dto.exchange_request_id) {
-      // Check if conversation already exists
+      // Kiểm tra conversation đã tồn tại chưa (tránh duplicate)
       const existingConversation = await this.conversationRepo.findOne({
         where: { exchange_request_id: dto.exchange_request_id },
         relations: ['member_a', 'member_a.user', 'member_b', 'member_b.user'],
       });
 
       if (existingConversation) {
-        conversation = existingConversation;
+        conversation = existingConversation; // Đã tồn tại → dùng luôn
       } else {
-        // Create new conversation
-        const request = await this.requestRepo.findOne({
+        // Tạo conversation mới
+        const request = await this.requestRepo.findOne({ // Lấy exchange request
           where: { request_id: dto.exchange_request_id },
           relations: ['requester', 'receiver'],
         });
@@ -389,7 +414,7 @@ export class MessagesService {
           throw new NotFoundException('Exchange request not found');
         }
 
-        // Check if user is part of request
+        // Check if user is part of request (phải là requester hoặc receiver)
         if (
           request.requester_id !== member.member_id &&
           request.receiver_id !== member.member_id
@@ -397,23 +422,23 @@ export class MessagesService {
           throw new ForbiddenException('You are not part of this exchange request');
         }
 
-        // Request must be ACCEPTED to start conversation
+        // Request must be ACCEPTED to start conversation (chỉ chat khi đã accept)
         if (request.status !== ExchangeRequestStatus.ACCEPTED) {
           throw new BadRequestException(
             'Can only message after exchange request is accepted'
           );
         }
 
-        const newConversation = this.conversationRepo.create({
+        const newConversation = this.conversationRepo.create({ // Tạo conversation mới
           conversation_id: uuidv4(),
           exchange_request_id: dto.exchange_request_id,
-          member_a_id: request.requester_id,
-          member_b_id: request.receiver_id,
+          member_a_id: request.requester_id, // member_a = người gửi request
+          member_b_id: request.receiver_id,  // member_b = người nhận request
         });
 
-        conversation = await this.conversationRepo.save(newConversation);
+        conversation = await this.conversationRepo.save(newConversation); // Lưu vào DB
 
-        // Load relations for response
+        // Load lại với relations để trả về
         const savedConversation = await this.conversationRepo.findOne({
           where: { conversation_id: conversation.conversation_id },
           relations: ['member_a', 'member_a.user', 'member_b', 'member_b.user'],
@@ -423,73 +448,91 @@ export class MessagesService {
           throw new NotFoundException('Failed to load saved conversation');
         }
 
-        conversation = savedConversation;
+        conversation = savedConversation; // Gán lại
       }
-    } else {
+    }
+    // ============================================
+    // CASE 3: NEITHER PROVIDED → ERROR
+    // ============================================
+    else {
       throw new BadRequestException(
         'Must provide either conversation_id or exchange_request_id'
       );
     }
 
-    // Determine receiver
+    // Xác định receiver (người nhận tin nhắn)
     const receiverId =
       conversation.member_a_id === member.member_id
-        ? conversation.member_b_id
-        : conversation.member_a_id;
+        ? conversation.member_b_id // Nếu sender = member_a → receiver = member_b
+        : conversation.member_a_id; // Ngược lại
 
-    const receiver =
+    const receiver = // Lấy entity receiver
       conversation.member_a_id === receiverId
         ? conversation.member_a
         : conversation.member_b;
 
-    // Create message
+    // Tạo message record
     const message = this.messageRepo.create({
       message_id: uuidv4(),
       conversation_id: conversation.conversation_id,
       sender_id: member.member_id,
       receiver_id: receiverId,
-      content: dto.content,
-      attachment_url: dto.attachment_url,
-      attachment_type: dto.attachment_type,
+      content: dto.content,               // Nội dung text
+      attachment_url: dto.attachment_url, // URL file đính kèm (nếu có)
+      attachment_type: dto.attachment_type, // VD: 'image', 'pdf'...
       attachment_name: dto.attachment_name,
       attachment_size: dto.attachment_size,
       sent_at: new Date(),
-      status: 'sent', // Initial status
+      status: 'sent',                     // Initial status: sent → delivered → read
     });
 
-    await this.messageRepo.save(message);
+    await this.messageRepo.save(message); // Lưu vào DB
 
-    // Check if receiver is online - if yes, mark as delivered
-    if (receiver.is_online) {
-      message.status = 'delivered';
-      message.delivered_at = new Date();
-      await this.messageRepo.save(message);
+    // ===== CHECK RECEIVER ONLINE → AUTO MARK DELIVERED =====
+    // Nếu receiver đang online → Cập nhật status = 'delivered' (✓✓)
+    // Tương tự WhatsApp: sent (✓) → delivered (✓✓) → read (✓✓ xanh)
+    if (receiver.is_online) { // Check online status từ member table
+      message.status = 'delivered'; // Cập nhật status
+      message.delivered_at = new Date(); // Timestamp khi delivered
+      await this.messageRepo.save(message); // Lưu lại
     }
 
-    // Update conversation
-    conversation.total_messages += 1;
-    conversation.last_message_at = new Date();
-    await this.conversationRepo.save(conversation);
+    // ===== UPDATE CONVERSATION METADATA =====
+    // Cập nhật thông tin conversation:
+    // - total_messages: Tăng counter (để hiển thị "100 messages")
+    // - last_message_at: Dùng để sort conversations (mới nhất lên đầu)
+    conversation.total_messages += 1; // Tăng counter
+    conversation.last_message_at = new Date(); // Timestamp tin nhắn cuối
+    await this.conversationRepo.save(conversation); // Lưu vào DB
 
-    // Log activity
+    // ===== LOG ACTIVITY (CHO ADMIN TRACKING) =====
+    // Lưu vào user_activity_logs để:
+    // - Admin có thể xem lịch sử hoạt động
+    // - Phát hiện spam/abuse (gửi quá nhiều tin nhắn)
+    // - Analytics: Tính engagement, active users
     await this.activityLogService.logActivity({
       user_id: userId,
-      action: UserActivityAction.SEND_MESSAGE,
+      action: UserActivityAction.SEND_MESSAGE, // Action type
       entity_type: 'MESSAGE',
       entity_id: message.message_id,
-      metadata: { conversation_id: conversation.conversation_id },
+      metadata: { conversation_id: conversation.conversation_id }, // Extra data
     });
 
+    // ===== RETURN FULL DATA VỚI RELATIONS =====
+    // Frontend cần đầy đủ thông tin để hiển thị UI:
+    // - Sender profile (name, avatar)
+    // - Receiver profile
+    // - Message content & metadata
     return {
       message: {
         message_id: message.message_id,
         conversation_id: message.conversation_id,
-        sender: {
+        sender: { // Thông tin người gửi
           member_id: member.member_id,
           full_name: member.user.full_name,
           avatar_url: member.user.avatar_url,
         },
-        receiver: {
+        receiver: { // Thông tin người nhận
           member_id: receiver.member_id,
           full_name: receiver.user.full_name,
           avatar_url: receiver.user.avatar_url,
@@ -500,7 +543,7 @@ export class MessagesService {
         attachment_name: message.attachment_name,
         attachment_size: message.attachment_size,
         is_read: message.is_read,
-        status: message.status,
+        status: message.status, // 'sent', 'delivered', 'read'
         sent_at: message.sent_at,
         delivered_at: message.delivered_at,
         read_at: message.read_at,
